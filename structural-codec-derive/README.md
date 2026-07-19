@@ -52,7 +52,7 @@ the whole fixture family:
 | `delegate(inner = T)` | `Delegate(T::CORE_TYPE)` | a transparent wrapper over `T` |
 | `newtype_declaration(inner = T, delimiter = D)` | `Object.{ Type }` | object + wrapped-type identifiers |
 | `struct_declaration(field_type = F, delimiter = D, fields = [..])` | `Object.{ Field* }` | object identifier + `Vec<F>` |
-| `field_meta` | a bare `Type` \| an explicit `name.Type` | a two-variant enum |
+| `field_meta` | a bare `Type` (the elided name) | a single-field struct `{ type_name }` |
 
 ## The mirrored fixture family
 
@@ -60,16 +60,19 @@ the whole fixture family:
 through the macro — `Integer`/`Float`/`Text` leaves, the `Documentation → Summary →
 Text` string-rejoin delegate chain, the `Field` meta-type, the
 `CommitSequence`/`StateDigest` newtype declarations, and the `DatabaseMarker` struct
-exercising both `Field` alternatives (elided-name twice, explicit-name once). The
-tests prove:
+whose three bare positional fields include two same-typed `StateDigest` fields told
+apart by position alone (field names are illegal). The test here proves:
 
-- **Derived == authored** (`tests/entries.rs`): every `T::structural_entry()` equals
-  `core-schema`'s hand-authored entry for the same type — drift is a test failure.
-- **Signatures agree with Core** (`tests/entries.rs`): the derived table passes
-  `CoreUniverse::validate_table` and its `Field` constructors are provably disjoint.
 - **Law 5** (`tests/conformance.rs`): the generated codecs agree with the evaluator
   on all four outputs across the whole family, including typed-error agreement on
-  wrong-delimiter, unknown-constructor-shape, and failed-leaf-parse inputs.
+  wrong-delimiter, unknown-constructor-shape, failed-leaf-parse, and the now-illegal
+  explicit `name.Type` field inputs.
+
+The complementary **derived == authored** cross-check — that every
+`T::structural_entry()` equals `core-schema`'s hand-authored entry for the same type
+— lives downstream in `core-schema`, where the machinery and the derive resolve at a
+single protos pin and the entry types unify. Holding it here would force two
+machinery versions into one dependency graph.
 
 ## Dependencies
 

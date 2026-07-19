@@ -589,43 +589,29 @@ impl TypeSpec {
         let name = &self.name;
         let vis = &self.visibility;
         let core_type = self.core_type();
-        let payload_kind = Self::block_kind(&quote! { payload });
+        let block_kind = Self::block_kind(&quote! { block });
 
+        // Field names are illegal in every Protos surface (psyche ruling 2026-07-19:
+        // field names are COMPLETELY illegal everywhere), so a field is nothing but
+        // the bare `Type` standing at its position. There is ONE constructor — the
+        // elided form — and the explicit `name.Type` application no longer parses.
         let item = quote! {
-            #vis enum #name {
-                /// A bare `Type`: the field name is elided and derived from the type.
-                TypeOnly { type_name: ::name_table::Identifier },
-                /// An explicit `name.Type`.
-                Named {
-                    name: ::name_table::Identifier,
-                    type_name: ::name_table::Identifier,
-                },
+            #vis struct #name {
+                type_name: ::name_table::Identifier,
             }
         };
 
         let entry_body = quote! {
             let core_type = #core_type;
             let type_only = ::structural_codec::StructuralForm::pascal_atom();
-            let named = ::structural_codec::StructuralForm::application(
-                ::structural_codec::StructuralForm::camel_atom(),
-                ::structural_codec::StructuralForm::pascal_atom(),
-            );
             ::structural_codec::StructuralEntry::new(
                 core_type,
-                ::std::vec![
-                    ::structural_codec::ConstructorCodec::new(
-                        ::structural_codec::ids::CoreConstructorId::new(core_type, 0),
-                        ::std::vec![type_only.clone()],
-                        type_only,
-                        ::structural_codec::ids::PositionalSignature::default(),
-                    ),
-                    ::structural_codec::ConstructorCodec::new(
-                        ::structural_codec::ids::CoreConstructorId::new(core_type, 1),
-                        ::std::vec![named.clone()],
-                        named,
-                        ::structural_codec::ids::PositionalSignature::default(),
-                    ),
-                ],
+                ::std::vec![::structural_codec::ConstructorCodec::new(
+                    ::structural_codec::ids::CoreConstructorId::new(core_type, 0),
+                    ::std::vec![type_only.clone()],
+                    type_only,
+                    ::structural_codec::ids::PositionalSignature::default(),
+                )],
             )
         };
 
@@ -634,43 +620,19 @@ impl TypeSpec {
                 block: &::raw_discovery::Block,
                 interner: &mut Interner,
             ) -> ::core::result::Result<Self, ::structural_codec::DecodeError> {
-                // Constructor 0: a bare PascalCase atom (name elided, derived).
-                if let ::core::option::Option::Some(atom) = block.atom() {
-                    if ::raw_discovery::AtomCase::of(atom) == ::raw_discovery::AtomCase::PascalCase {
-                        let type_name = interner.intern(::name_table::Name::new(atom.text()));
-                        return ::core::result::Result::Ok(Self::TypeOnly { type_name });
+                // The sole constructor: a bare PascalCase atom (name elided, derived
+                // from the type). An explicit `name.Type` application is illegal.
+                let atom = block.atom().ok_or_else(|| {
+                    ::structural_codec::DecodeError::BlockKindMismatch {
+                        expected: "atom",
+                        found: #block_kind,
                     }
+                })?;
+                if ::raw_discovery::AtomCase::of(atom) != ::raw_discovery::AtomCase::PascalCase {
                     return ::core::result::Result::Err(::structural_codec::DecodeError::CaseMismatch);
                 }
-                // Constructor 1: an explicit `camelCase.PascalCase` application.
-                if let ::core::option::Option::Some((head, payload)) = block.as_application() {
-                    let name_atom = head.atom().ok_or_else(|| {
-                        ::structural_codec::DecodeError::BlockKindMismatch {
-                            expected: "atom",
-                            found: "application",
-                        }
-                    })?;
-                    if ::raw_discovery::AtomCase::of(name_atom) != ::raw_discovery::AtomCase::CamelCase {
-                        return ::core::result::Result::Err(::structural_codec::DecodeError::CaseMismatch);
-                    }
-                    let type_atom = payload.atom().ok_or_else(|| {
-                        ::structural_codec::DecodeError::BlockKindMismatch {
-                            expected: "atom",
-                            found: #payload_kind,
-                        }
-                    })?;
-                    if ::raw_discovery::AtomCase::of(type_atom) != ::raw_discovery::AtomCase::PascalCase {
-                        return ::core::result::Result::Err(::structural_codec::DecodeError::CaseMismatch);
-                    }
-                    // Shape validated; intern head (name) then payload (type), the
-                    // evaluator's DFS order.
-                    let name = interner.intern(::name_table::Name::new(name_atom.text()));
-                    let type_name = interner.intern(::name_table::Name::new(type_atom.text()));
-                    return ::core::result::Result::Ok(Self::Named { name, type_name });
-                }
-                ::core::result::Result::Err(::structural_codec::DecodeError::NoAlternative {
-                    core_type: #core_type,
-                })
+                let type_name = interner.intern(::name_table::Name::new(atom.text()));
+                ::core::result::Result::Ok(Self { type_name })
             }
         };
 
@@ -679,43 +641,18 @@ impl TypeSpec {
                 &self,
                 resolver: &dyn ::name_table::NameResolver,
             ) -> ::core::result::Result<::raw_discovery::Block, ::structural_codec::EncodeError> {
-                match self {
-                    Self::TypeOnly { type_name } => {
-                        let text = resolver.resolve(*type_name)?.as_str().to_owned();
-                        ::core::result::Result::Ok(::raw_discovery::Block::Atom(
-                            ::raw_discovery::Atom::new(text),
-                        ))
-                    }
-                    Self::Named { name, type_name } => {
-                        let name_text = resolver.resolve(*name)?.as_str().to_owned();
-                        let type_text = resolver.resolve(*type_name)?.as_str().to_owned();
-                        ::core::result::Result::Ok(::raw_discovery::Block::Application {
-                            head: ::std::boxed::Box::new(::raw_discovery::Block::Atom(
-                                ::raw_discovery::Atom::new(name_text),
-                            )),
-                            payload: ::std::boxed::Box::new(::raw_discovery::Block::Atom(
-                                ::raw_discovery::Atom::new(type_text),
-                            )),
-                        })
-                    }
-                }
+                let text = resolver.resolve(self.type_name)?.as_str().to_owned();
+                ::core::result::Result::Ok(::raw_discovery::Block::Atom(
+                    ::raw_discovery::Atom::new(text),
+                ))
             }
         };
 
         let to_structural_body = quote! {
-            match self {
-                Self::TypeOnly { type_name } => ::structural_codec::StructuralValue::chosen(
-                    0,
-                    ::structural_codec::StructuralValue::Atom(*type_name),
-                ),
-                Self::Named { name, type_name } => ::structural_codec::StructuralValue::chosen(
-                    1,
-                    ::structural_codec::StructuralValue::Application(
-                        ::std::boxed::Box::new(::structural_codec::StructuralValue::Atom(*name)),
-                        ::std::boxed::Box::new(::structural_codec::StructuralValue::Atom(*type_name)),
-                    ),
-                ),
-            }
+            ::structural_codec::StructuralValue::chosen(
+                0,
+                ::structural_codec::StructuralValue::Atom(self.type_name),
+            )
         };
 
         self.assemble(

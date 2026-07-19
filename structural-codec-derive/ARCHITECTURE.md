@@ -86,9 +86,10 @@ variant set lives in the `Kind` enum, never a string flag consulted at codegen.
   Delimited{D, Product([Delegate(field_type); n])})`, signature = the fields'
   referenced types. Capture: object identifier + `Vec<field_type>`. Each field is
   decoded through the meta-type and wrapped in a `Delegated` layer.
-- **`field_meta`** → two structurally-disjoint constructors: a bare `PascalCase`
-  atom (elided name) and a `camelCase.PascalCase` application (explicit name). Capture:
-  a two-variant enum. This is the elided-vs-explicit `Field` alternative.
+- **`field_meta`** → ONE constructor: a bare `PascalCase` atom (elided name).
+  Capture: a single-field struct `{ type_name }`. Field names are illegal in every
+  Protos surface (psyche ruling 2026-07-19), so a field is nothing but the type at
+  its position; the explicit `camelCase.PascalCase` application no longer parses.
 
 ## The mirrored fixture family (the proof)
 

@@ -52,10 +52,12 @@ pub struct Summary;
 #[structural_form(id = 31, delegate(inner = Summary))]
 pub struct Documentation;
 
-// ===== the Field meta-type: two structurally-disjoint constructors =====
+// ===== the Field meta-type: one constructor, the bare type reference =====
 
-/// The `Field` meta-type: a bare elided-name `Type` versus an explicit `name.Type`.
-/// Both alternatives are exercised by `DatabaseMarker`.
+/// The `Field` meta-type: ONE constructor, the bare elided-name `Type`. Field names
+/// are illegal in every Protos surface (psyche ruling 2026-07-19), so a field carries
+/// nothing but the type standing at its position — the explicit `name.Type` form no
+/// longer parses. Exercised by `DatabaseMarker`'s three positional fields.
 #[structural_form(id = 23, field_meta)]
 pub struct Field;
 
@@ -70,9 +72,10 @@ pub struct CommitSequence;
 #[structural_form(id = 2, newtype_declaration(inner = Integer, delimiter = Brace))]
 pub struct StateDigest;
 
-/// `DatabaseMarker`: a struct DECLARATION whose three delegated fields exercise the
-/// elided-name form twice (`CommitSequence`, `StateDigest`) and the explicit-name
-/// form once (`secretDigest.StateDigest`).
+/// `DatabaseMarker`: a struct DECLARATION whose three delegated fields are each the
+/// bare elided-name form (`CommitSequence`, `StateDigest`, `StateDigest`). The two
+/// same-typed `StateDigest` fields are told apart by position alone — field names are
+/// illegal, so no explicit `name.Type` form exists to distinguish them.
 #[structural_form(
     id = 3,
     struct_declaration(

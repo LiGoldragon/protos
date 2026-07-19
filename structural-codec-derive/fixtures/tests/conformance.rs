@@ -56,7 +56,10 @@ fn law_five_the_generated_codecs_match_the_evaluator() {
     conforms::<Summary>(&table, &["hello", "alpha.beta", "{ x }"]);
     conforms::<Documentation>(&table, &["alpha.beta.gamma", "word", "{ x }"]);
 
-    // The Field meta-type: both disjoint constructors, plus shape errors.
+    // The Field meta-type: the sole elided-name constructor, plus shape errors. Field
+    // names are illegal, so the explicit `name.Type` applications
+    // (`commitSequence.Integer`, `secretDigest.StateDigest`) are now rejected — the
+    // generated codec and the evaluator agree they no longer parse.
     conforms::<Field>(
         &table,
         &[
@@ -84,13 +87,15 @@ fn law_five_the_generated_codecs_match_the_evaluator() {
         &["StateDigest.{ Integer }", "StateDigest.( Integer )"],
     );
 
-    // The struct declaration exercising both Field alternatives, plus errors.
+    // The struct declaration: three bare positional fields (valid), plus errors —
+    // wrong arity, wrong delimiter, and a now-illegal explicit `name.Type` field.
     conforms::<DatabaseMarker>(
         &table,
         &[
-            "DatabaseMarker.{ CommitSequence StateDigest secretDigest.StateDigest }",
+            "DatabaseMarker.{ CommitSequence StateDigest StateDigest }",
             "DatabaseMarker.{ CommitSequence }",
-            "DatabaseMarker.( CommitSequence StateDigest secretDigest.StateDigest )",
+            "DatabaseMarker.( CommitSequence StateDigest StateDigest )",
+            "DatabaseMarker.{ CommitSequence StateDigest secretDigest.StateDigest }",
         ],
     );
 }
@@ -130,6 +135,8 @@ fn malformed_inputs_are_rejected_by_both_paths() {
     // Unknown constructor shape.
     rejected_by_both::<CommitSequence>(&evaluator, "notADeclaration");
     rejected_by_both::<Field>(&evaluator, "123");
+    // The explicit `name.Type` field form is illegal: both paths reject it.
+    rejected_by_both::<Field>(&evaluator, "secretDigest.StateDigest");
     // Wrong arity.
     rejected_by_both::<DatabaseMarker>(&evaluator, "DatabaseMarker.{ CommitSequence }");
 }

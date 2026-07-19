@@ -37,8 +37,9 @@ pub enum Kind {
         delimiter: Delimiter,
         fields: Vec<Path>,
     },
-    /// The `Field` meta-type: two structurally-disjoint constructors (a bare
-    /// elided-name `Type` and an explicit `name.Type`).
+    /// The `Field` meta-type: ONE constructor, the bare elided-name `Type`. Field
+    /// names are illegal everywhere, so the explicit `name.Type` form no longer
+    /// parses.
     FieldMeta,
 }
 

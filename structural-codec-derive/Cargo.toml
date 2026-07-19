@@ -1,0 +1,24 @@
+[package]
+name         = "structural-codec-derive"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.85"
+license      = "MIT OR Apache-2.0"
+repository   = "https://github.com/LiGoldragon/protos"
+description  = "The generated-codec side of conformance law 5: an attribute macro that lowers one structural-form authority into the authoritative StructuralEntry data AND an optimized GeneratedCodec, proven equivalent to structural-codec's trusted evaluator by the conformance harness."
+publish      = false
+
+[lib]
+name          = "structural_codec_derive"
+path          = "src/lib.rs"
+proc-macro    = true
+
+[dependencies]
+proc-macro2 = "1"
+quote       = "1"
+syn         = { version = "2", features = ["full", "extra-traits"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+unused      = { level = "warn", priority = -1 }
+dead_code   = "warn"

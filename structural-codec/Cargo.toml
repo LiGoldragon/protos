@@ -1,0 +1,25 @@
+[package]
+name         = "structural-codec"
+version      = "0.2.0"
+edition      = "2024"
+rust-version = "1.85"
+license      = "MIT OR Apache-2.0"
+repository   = "https://github.com/LiGoldragon/protos"
+description  = "The Core-associated, bidirectional, revisioned structural-form kernel: a trusted runtime evaluator over data-loadable dialect tables, governed by conformance laws."
+publish      = false
+
+[lib]
+name = "structural_codec"
+path = "src/lib.rs"
+
+[dependencies]
+content-identity = { path = "../content-identity" }
+name-table       = { path = "../name-table" }
+raw-discovery    = { path = "../raw-discovery" }
+rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+thiserror        = "2"
+
+[lints.rust]
+unsafe_code = "forbid"
+unused      = { level = "warn", priority = -1 }
+dead_code   = "warn"

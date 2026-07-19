@@ -1,0 +1,23 @@
+[package]
+name         = "name-table"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.85"
+license      = "MIT OR Apache-2.0"
+repository   = "https://github.com/LiGoldragon/protos"
+description  = "The stringless-Core identifier space: Identifier indices, the interning NameTable with a transactional staging surface, and the one home for the derived-name walkers."
+publish      = false
+
+[lib]
+name = "name_table"
+path = "src/lib.rs"
+
+[dependencies]
+content-identity = { path = "../content-identity" }
+rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+thiserror        = "2"
+
+[lints.rust]
+unsafe_code = "forbid"
+unused      = { level = "warn", priority = -1 }
+dead_code   = "warn"

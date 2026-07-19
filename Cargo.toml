@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "content-identity",
+    "name-table",
+    "raw-discovery",
+    "structural-codec",
+    "structural-codec-derive",
+    "structural-codec-derive/fixtures",
+]

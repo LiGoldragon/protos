@@ -109,6 +109,13 @@ which the `walkers` tests assert against the exact ported expectations.
   `to_archive_bytes` and `identity` (proven in `tests/transaction.rs`).
 - `field_name`/`screaming` reproduce the two source walkers exactly (proven in
   `tests/walkers.rs`).
+- The derived-name walkers build strings ONLY at the `NameTable`
+  interning/emission boundary — the psyche ruled of them "that is necessary." They
+  are never reached inside the Nomos schema-to-logos transformation, which is
+  stringless by his ruling that "in the nomos transformation (schema to logos),
+  there shall be no string manipulation/introduction/reading of any kind." String
+  work here is a boundary concern; the transformation between stringless forms
+  stays index-only.
 
 ## Code map
 

@@ -6,7 +6,7 @@
 //! decision. TODAY the evaluator is the sole implementation — this trait has no
 //! generated implementor yet, so the harness is compiled-but-dormant scaffolding.
 
-use name_table::{NameResolver, NameTable, NameTableError};
+use name_table::{IdentifierNamespace, NameResolver, NameTable, NameTableError};
 use raw_discovery::Block;
 
 use crate::error::{DecodeError, EncodeError};
@@ -60,10 +60,10 @@ impl<'table> ConformanceHarness<'table> {
     /// Assert the generated codec `T` agrees with the evaluator on every fixture.
     pub fn check<T: GeneratedCodec>(&self, fixtures: &[Block]) -> Result<(), ConformanceError> {
         for block in fixtures {
-            let mut names_generated = NameTable::new();
+            let mut names_generated = NameTable::new(IdentifierNamespace::Fixture);
             let generated = T::decode(block, &mut names_generated);
 
-            let mut names_interpreted = NameTable::new();
+            let mut names_interpreted = NameTable::new(IdentifierNamespace::Fixture);
             let interpreted = self
                 .evaluator
                 .decode(self.expected, block, &mut names_interpreted);

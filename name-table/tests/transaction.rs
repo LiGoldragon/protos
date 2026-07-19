@@ -2,10 +2,10 @@
 //! observably identical (down to its archived bytes and identity); a committed
 //! one merges its staged names at their staged identifiers.
 
-use name_table::{Identifier, Name, NameTable};
+use name_table::{Identifier, IdentifierNamespace, Name, NameTable};
 
 fn populated() -> NameTable {
-    let mut table = NameTable::new();
+    let mut table = NameTable::new(IdentifierNamespace::Schema);
     table.intern(Name::new("CommitSequence"));
     table.intern(Name::new("Field"));
     table
@@ -56,7 +56,10 @@ fn a_commit_merges_staged_names_at_their_staged_identifiers() {
     let mut transaction = table.begin();
     let staged = transaction.intern(Name::new("Committed"));
     // The staged identifier occupies the index above the committed table.
-    assert_eq!(staged.value(), before_len as u32);
+    assert_eq!(
+        staged,
+        Identifier::Schema(u16::try_from(before_len).unwrap())
+    );
     transaction.commit();
 
     assert_eq!(table.len(), before_len + 1);

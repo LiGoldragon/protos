@@ -111,6 +111,25 @@ impl<Language> TextualForm<Language> {
             other => Err(SingleChunkRequired { count: other.len() }),
         }
     }
+
+    /// The one chunk selected by a manifest file name. A filename is an index key,
+    /// not an instruction to pick an arbitrary duplicate: absent and duplicate names
+    /// are both loud typed failures.
+    pub fn named_chunk(
+        &self,
+        name: &ChunkName,
+    ) -> Result<&TextChunk, crate::error::NamedChunkRequired> {
+        let mut matches = self.chunks.iter().filter(|chunk| chunk.name == *name);
+        match (matches.next(), matches.next()) {
+            (Some(chunk), None) => Ok(chunk),
+            (first, second) => Err(crate::error::NamedChunkRequired {
+                name: name.0.clone(),
+                count: usize::from(first.is_some())
+                    + usize::from(second.is_some())
+                    + matches.count(),
+            }),
+        }
+    }
 }
 
 /// One textual mouth of an [`EncodedForm<T>`](crate::EncodedForm): a [`TextualForm<T>`]
@@ -133,7 +152,8 @@ pub trait Textual {
     type Error: From<RecognizeError>
         + From<DecodeError>
         + From<EncodeError>
-        + From<SingleChunkRequired>;
+        + From<SingleChunkRequired>
+        + From<crate::error::NamedChunkRequired>;
 
     /// The structuretree organ: the sealed table the trusted evaluator walks in both
     /// directions. This is the data-driven enc/decoder itself, expressed as data.
@@ -207,8 +227,43 @@ pub trait Textual {
         encoded: &Self::Encoded,
         names: &mut NameTable,
     ) -> Result<TextualForm<Self::Language>, Self::Error> {
+        self.view_named(expected, encoded, &ChunkName::unit(), names)
+    }
+
+    /// un-view one manifest-selected chunk through the same structuretree and
+    /// nametree operation as the single-document path. Selecting a file does not
+    /// create a second parser or decoder.
+    fn unview_named(
+        &self,
+        expected: ScopedEncodedTypeId,
+        view: &TextualForm<Self::Language>,
+        name: &ChunkName,
+        names: &mut NameTable,
+    ) -> Result<Self::Encoded, Self::Error> {
+        let text = view.named_chunk(name)?.text.as_str();
+        let document = Recognizer::standard().recognize(text)?;
+        let block = document
+            .root_object_at(0)
+            .ok_or_else(|| self.missing_root_object())?;
+        let mirror = self.evaluator().decode(expected, block, names)?;
+        self.reify(expected, &mirror, names)
+    }
+
+    /// view one encoded value into a manifest-selected chunk through the same
+    /// structuretree and nametree operation as the single-document path. The caller
+    /// composes these single-chunk views into a first-class multi-file TextualForm.
+    fn view_named(
+        &self,
+        expected: ScopedEncodedTypeId,
+        encoded: &Self::Encoded,
+        name: &ChunkName,
+        names: &mut NameTable,
+    ) -> Result<TextualForm<Self::Language>, Self::Error> {
         let mirror = self.reflect(expected, encoded, names)?;
         let block = self.evaluator().encode(expected, &mirror, names)?;
-        Ok(TextualForm::single(block.canonical_text()))
+        Ok(TextualForm::from_chunks(vec![TextChunk {
+            name: name.clone(),
+            text: block.canonical_text(),
+        }]))
     }
 }

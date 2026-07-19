@@ -50,15 +50,18 @@ pub mod writer;
 pub use codec::{ConstructorCodec, StructuralEntry};
 pub use conformance::{ConformanceError, ConformanceHarness, GeneratedCodec};
 pub use encoded_form::{Converted, EncodedConversion, EncodedForm};
-pub use error::{DecodeError, DisjointnessError, EncodeError, TableError};
+pub use error::{
+    DecodeError, DisjointnessError, EncodeError, NamedChunkRequired, SingleChunkRequired,
+    TableError,
+};
 pub use evaluator::StructuralEvaluator;
 pub use form::{
     AtomForm, CarrierLeaf, CaseExpectation, ForeignLeafId, LeafCodec, LeafForm, ScalarLeaf,
     SequenceForm, SigilPosition, SigilSpec, StructuralForm,
 };
 pub use ids::{
-    EncodedConstructorId, EncodedUniverseId, FIXTURE_UNIVERSE, PositionalSignature, ScopedEncodedTypeId,
-    StructuralRevision,
+    EncodedConstructorId, EncodedUniverseId, FIXTURE_UNIVERSE, PositionalSignature,
+    ScopedEncodedTypeId, StructuralRevision,
 };
 pub use table::{
     AddressedStructuralTable, EncodedLayoutIdentity, LeafCodecContractId, RawProfileIdentity,

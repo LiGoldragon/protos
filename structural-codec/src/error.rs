@@ -84,3 +84,15 @@ pub struct SingleChunkRequired {
     /// How many chunks the view actually carried.
     pub count: usize,
 }
+
+/// A [`TextualForm`](crate::TextualForm) did not contain exactly one chunk under a
+/// manifest-selected name. Multi-file textual forms are indexed values, so a caller
+/// must never silently choose between duplicate files or invent a missing one.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("the textual form carried {count} chunks named {name:?}; exactly one is required")]
+pub struct NamedChunkRequired {
+    /// The manifest-selected chunk name.
+    pub name: String,
+    /// How many chunks carried that name.
+    pub count: usize,
+}

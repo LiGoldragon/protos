@@ -110,3 +110,40 @@ fn textual_form_multi_chunk_view_refuses_a_sole_text_read() {
     let error = view.sole_text().expect_err("two chunks has no sole text");
     assert_eq!(error.count, 2);
 }
+
+#[test]
+fn textual_form_manifest_selection_requires_one_named_chunk() {
+    use structural_codec::{ChunkName, TextChunk};
+    let unit = ChunkName("signal.schema".to_string());
+    let view: TextualForm<SourceLanguage> = TextualForm::from_chunks(vec![
+        TextChunk {
+            name: unit.clone(),
+            text: "schema".to_string(),
+        },
+        TextChunk {
+            name: ChunkName("other.schema".to_string()),
+            text: "other".to_string(),
+        },
+    ]);
+    assert_eq!(view.named_chunk(&unit).unwrap().text, "schema");
+
+    let missing = view
+        .named_chunk(&ChunkName("missing.schema".to_string()))
+        .expect_err("a manifest cannot invent a missing file");
+    assert_eq!(missing.count, 0);
+
+    let duplicated: TextualForm<SourceLanguage> = TextualForm::from_chunks(vec![
+        TextChunk {
+            name: unit.clone(),
+            text: "first".to_string(),
+        },
+        TextChunk {
+            name: unit.clone(),
+            text: "second".to_string(),
+        },
+    ]);
+    let duplicate = duplicated
+        .named_chunk(&unit)
+        .expect_err("a manifest cannot choose a duplicate file");
+    assert_eq!(duplicate.count, 2);
+}

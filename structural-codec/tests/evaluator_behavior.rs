@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use name_table::NameTable;
+use name_table::{IdentifierNamespace, NameTable};
 use raw_discovery::{Block, Recognizer};
 use structural_codec::fixture::{DATABASE_MARKER, DOCUMENTATION, FLOAT, FixtureBuilder};
 use structural_codec::{
@@ -26,7 +26,7 @@ fn delegation_constructs_every_wrapper_level() {
     let table = FixtureBuilder::new().build().expect("seal");
     let evaluator = StructuralEvaluator::new(&table);
     let block = recognize_single("alpha.beta.gamma");
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Fixture);
     let value = evaluator
         .decode(DOCUMENTATION, &block, &mut names)
         .expect("decode Documentation");
@@ -61,7 +61,7 @@ fn float_leaf_flattens_and_parses() {
     let table = FixtureBuilder::new().build().expect("seal");
     let evaluator = StructuralEvaluator::new(&table);
     let block = recognize_single("-122.3");
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Fixture);
     let value = evaluator
         .decode(FLOAT, &block, &mut names)
         .expect("decode Float");
@@ -84,7 +84,7 @@ fn struct_body_decodes_disjoint_field_alternatives() {
     let table = FixtureBuilder::new().build().expect("seal");
     let evaluator = StructuralEvaluator::new(&table);
     let block = recognize_single("DatabaseMarker.{ Integer commitSequence.Integer }");
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Fixture);
     let value = evaluator
         .decode(DATABASE_MARKER, &block, &mut names)
         .expect("decode DatabaseMarker");
@@ -150,7 +150,7 @@ fn transparent_delegation_cycle_is_rejected() {
     let evaluator = StructuralEvaluator::new(&table);
 
     let block = recognize_single("Whatever");
-    let mut names = NameTable::new();
+    let mut names = NameTable::new(IdentifierNamespace::Fixture);
     let outcome = evaluator.decode(type_a, &block, &mut names);
     assert!(outcome.is_err(), "a transparent cycle must be rejected");
 }

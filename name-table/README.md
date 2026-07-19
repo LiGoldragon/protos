@@ -1,8 +1,8 @@
 # name-table
 
-The stringless-Core identifier space: `Identifier` indices, the interning
-`NameTable` with a transactional staging surface, and the one home for the
-derived-name walkers.
+The stringless encoded-form identifier space: namespace-variant `Identifier`
+values, composed `NameTable` slices with transactional interning, transparent
+aliases, and the one home for derived-name walkers.
 
 This is crate L2 of the shared-codec language family. The family's rule is that
 dependencies run strictly downward and stringless Core never depends on text:
@@ -12,9 +12,10 @@ sits just above the leaf and depends only on `content-identity` (for the shared
 
 ## The stringless principle
 
-Every `Core*` type in the family is stringless: it carries `Identifier` indices,
-never names. All names live here, in a `NameTable`. A `Core` value made only of
-identifiers has no name in its bytes, so:
+Every `Encoded*` type in the family is stringless: it carries `Identifier`
+values, never names. An identifier is its component namespace variant plus a
+`u16` local allocation, not a flat integer. All names live in `NameTable`; an
+encoded value made only of identifiers has no name in its bytes, so:
 
 - **Rename-stability by construction.** Content identity (from `content-identity`,
   over a `Core` value's stringless bytes) never folds a name. A rename is a
@@ -25,11 +26,17 @@ identifiers has no name in its bytes, so:
 
 ## What it carries
 
-- `Identifier` — the `u32` index a `Core` value holds in place of a string.
-- `NameTable` — an interned, append-only, index-stable identifier space:
-  `intern`, `resolve`, and `extend_from`. `extend_from` is the one continuous
-  identifier space that carries schema's allocation into logos: the extension
-  begins with every base name at its exact identifier, and new names append above.
+- `Identifier` — a closed namespace enum (`Schema(u16)`, `Logos(u16)`,
+  `LogosStandard(u16)`, `Nomos(u16)`, and fixtures). Equal locals in different
+  variants are distinct without namespace arithmetic.
+- `NameTable` — one component's composed view: it owns one append-only home slice
+  and borrows completed source slices without copying or renumbering them.
+  `intern` writes only the home slice and `resolve` dispatches by identifier
+  variant. The old `extend_from` flat table is retired.
+- Transparent aliases — additional NameTree names for one structural identifier.
+  Decode resolves aliases directly to the target identifier; emitters retain the
+  alias relation for a transparent target-language alias without an encoded alias
+  declaration.
 - `NameTransaction` — a speculative interning overlay that merges on commit. A
   failed decode alternative leaves no allocation effect, because the committed
   table is never mutated until commit — a dropped transaction is an effect-free
@@ -68,8 +75,7 @@ cargo test           # inner-loop tests
 
 ## Status
 
-Version 0.1.0. This is slice one, crate L2 of the accepted language-family
-design. It depends on `content-identity` (crate L1) pinned by git revision for
-the shared `PortableArchive` bound. Consumption and integration — schema, nomos,
-logos, and the other consumers adopting these types — will readapt to the
-forthcoming release-train flow.
+Version 0.2.0 introduces the sliced identifier archive layout. Existing
+flat-table archives are intentionally not decoded as sliced data: consumers must
+advance in the producer-to-consumer train and regenerate their encoded/name-table
+pairs under the new layout.

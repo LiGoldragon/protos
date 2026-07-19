@@ -9,11 +9,11 @@
 //!
 //! ## What this crate owns
 //!
-//! - [`Identifier`] — the `u32` index a `Core` value carries in place of a string.
-//! - [`NameTable`] — the interned, append-only, index-stable identifier space,
-//!   with [`intern`](NameTable::intern), [`resolve`](NameTable::resolve), and
-//!   [`extend_from`](NameTable::extend_from) for the one continuous schema-into-
-//!   logos identifier space.
+//! - [`Identifier`] — a closed namespace enum whose variants carry `u16` local
+//!   allocations, so identity is never flat-integer arithmetic.
+//! - [`NameTable`] — one component's composed view: an owned append target plus
+//!   borrowed read-only namespace slices, with [`intern`](NameTable::intern) and
+//!   [`resolve`](NameTable::resolve).
 //! - [`NameTransaction`] — a speculative interning overlay that merges on commit,
 //!   so a failed decode alternative leaves no allocation effect (the accepted
 //!   transactional-interning hardening).
@@ -45,7 +45,7 @@ mod transaction;
 
 pub use boundary::{NameInterner, NameResolver};
 pub use error::NameTableError;
-pub use identifier::Identifier;
+pub use identifier::{Identifier, IdentifierNamespace};
 pub use name::Name;
 pub use projection::TextualProjection;
 pub use table::{NameTable, NameTableDomain};

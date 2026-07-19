@@ -1,7 +1,10 @@
 //! The Textual-projection surface: a named view is derived from a stringless Core
 //! value plus a table, and a rename moves only the projection, never the Core.
 
-use name_table::{Identifier, Name, NameResolver, NameTable, NameTableError, TextualProjection};
+use name_table::{
+    Identifier, IdentifierNamespace, Name, NameResolver, NameTable, NameTableError,
+    TextualProjection,
+};
 
 /// A stringless toy Core value: a struct declaration carrying identifier indices
 /// only — no names. Stands in for the real `Core*` types of later crates.
@@ -42,7 +45,7 @@ impl TextualProjection for StructProjection {
 
 #[test]
 fn projection_derives_the_named_view_from_the_table() {
-    let mut table = NameTable::new();
+    let mut table = NameTable::new(IdentifierNamespace::Schema);
     let name = table.intern(Name::new("CommitSequence"));
     let author = table.intern(Name::new("Author"));
     let core = CoreStruct {
@@ -64,16 +67,16 @@ fn projection_derives_the_named_view_from_the_table() {
 fn a_rename_moves_the_projection_but_not_the_core() {
     // One stringless Core value: indices only.
     let core = CoreStruct {
-        name: Identifier::new(0),
-        fields: vec![Identifier::new(1)],
+        name: Identifier::Schema(0),
+        fields: vec![Identifier::Schema(1)],
     };
 
-    let mut original = NameTable::new();
+    let mut original = NameTable::new(IdentifierNamespace::Schema);
     original.intern(Name::new("CommitSequence"));
     original.intern(Name::new("Author"));
 
     // A rename is a table-only edit: identifier 0 now names a different type.
-    let mut renamed = NameTable::new();
+    let mut renamed = NameTable::new(IdentifierNamespace::Schema);
     renamed.intern(Name::new("CommitLog"));
     renamed.intern(Name::new("Author"));
 
@@ -82,15 +85,15 @@ fn a_rename_moves_the_projection_but_not_the_core() {
 
     assert_ne!(before.name, after.name); // the projection moved
     // ...but the Core value carries only indices; nothing about it changed.
-    assert_eq!(core.name, Identifier::new(0));
-    assert_eq!(core.fields, vec![Identifier::new(1)]);
+    assert_eq!(core.name, Identifier::Schema(0));
+    assert_eq!(core.fields, vec![Identifier::Schema(1)]);
 }
 
 #[test]
 fn projecting_a_torn_core_names_the_missing_identifier() {
-    let table = NameTable::new();
+    let table = NameTable::new(IdentifierNamespace::Schema);
     let core = CoreStruct {
-        name: Identifier::new(7),
+        name: Identifier::Schema(7),
         fields: vec![],
     };
     assert!(matches!(

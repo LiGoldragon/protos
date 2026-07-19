@@ -13,10 +13,11 @@ only on `content-identity` (for the shared `PortableArchive` rkyv discipline) an
 
 The psyche's settled rulings this crate embodies:
 
-- All `Core*` types are stringless; every identifier is an index into the
-  corresponding `NameTable`, and all names live here.
-- One continuous identifier space extends schema's allocation into logos
-  (`extend_from`): a carried-over identifier keeps its exact index.
+- All `Encoded*` types are stringless; every identifier is a closed namespace
+  enum variant carrying one `u16` local allocation, and all names live here.
+- One component NameTable is a composed view: it owns one allocation slice and
+  borrows completed source slices without copying or renumbering them. The former
+  `extend_from` flat-table model is retired.
 - The `NameTable` is excluded from `Core` content hashes by construction —
   renaming is a `NameTable`-only edit and never moves `Core` identity. Names and
   `Core` values never serialize together.
@@ -37,18 +38,20 @@ types in later train slices.
 
 ## Components and boundaries
 
-- `Identifier` (`src/identifier.rs`) — a `u32` newtype, rkyv-archivable, the index
-  a `Core` value carries in place of a string.
+- `Identifier` / `IdentifierNamespace` (`src/identifier.rs`) — the closed,
+  rkyv-archivable namespace enum and its registry. `Schema(u16)`, `Logos(u16)`,
+  `LogosStandard(u16)`, `Nomos(u16)`, and fixture values are distinct without
+  arithmetic or a flat integer representation.
 - `Name` (`src/name.rs`) — the interned name and the one home of the derived-name
   rule. The two source walkers (`schema`'s `field_name`, `schema-rust`'s
   `screaming`) are the same word-boundary walk under two casings; `DerivedCasing`
   names that difference as data so the loop is written once. `pascal_case` is the
   inverse round-trip partner.
-- `NameTable` (`src/table.rs`) — the interned, append-only, index-stable
-  identifier space. Its canonical archivable state is the ordered name vector
-  alone; the name-to-identifier lookup is a derived accelerator, rebuilt on load
-  and never serialized. `NameTableDomain` gives the table its own content
-  identity for co-versioned sibling storage.
+- `NameTable` (`src/table.rs`) — one composed component view with an owned,
+  append-only home slice and borrowed read-only source slices. Its canonical
+  archive and `NameTableDomain` identity are only its owned slice; consumers
+  recompose independently identified borrowed slices after loading. The derived
+  lookup accepts canonical names and transparent aliases.
 - `NameTransaction` (`src/transaction.rs`) — the speculative interning overlay.
 - `NameResolver` / `NameInterner` (`src/boundary.rs`) — the two codec-boundary
   capabilities, threaded down a codec call tree, never held by a node.
@@ -59,9 +62,9 @@ types in later train slices.
 
 This is structural, not a runtime check. A `Core` value is built from
 `Identifier` indices and holds no names, so no name can enter its content-hash
-pre-image (`content-identity` hashes the stringless bytes). A `NameTable`
-serializes only its ordered names (`to_archive_bytes` over the name vector; the
-lookup index is derived, never archived). The two data shapes have disjoint
+pre-image (`content-identity` hashes the stringless bytes). A NameTable serializes only its owned namespace slice (namespace, ordered
+canonical names, and transparent aliases); borrowed slices keep their own archive
+and identity. The lookup index is derived, never archived. The two data shapes have disjoint
 pre-images, so a rename — a table-only edit — cannot move any `Core` address. The
 `archive` and `transaction` test suites prove the byte-level and identity-level
 stability.
@@ -103,8 +106,9 @@ which the `walkers` tests assert against the exact ported expectations.
 
 - Interning is deterministic: a name interns to the same identifier every time
   within one table lineage.
-- Identifiers are index-stable: an identifier's index never changes once
-  allocated, so `extend_from` is a continuous space.
+- Identifiers are namespace-local and stable: a component allocates only into
+  its home `u16` slice. Borrowed identifiers retain their original enum variant
+  and local value; no flat-table extension or arithmetic conversion exists.
 - A rolled-back or dropped transaction leaves the table byte-identical, down to
   `to_archive_bytes` and `identity` (proven in `tests/transaction.rs`).
 - `field_name`/`screaming` reproduce the two source walkers exactly (proven in
@@ -128,7 +132,9 @@ which the `walkers` tests assert against the exact ported expectations.
 - `src/projection.rs` — `TextualProjection`.
 - `src/error.rs` — `NameTableError`.
 - `tests/interning.rs` — determinism, resolve round-trips, boundary capabilities.
-- `tests/continuity.rs` — `extend_from` index stability.
+- `tests/continuity.rs` — composed borrowed-slice stability without copying.
+- `tests/aliases.rs` — NameTree-only transparent aliases resolve away on decode
+  while remaining available to a textual emitter.
 - `tests/transaction.rs` — rollback/commit and the interning-atomicity law.
 - `tests/walkers.rs` — derived-name outputs vs the ported source expectations.
 - `tests/archive.rs` — portable archive round-trip of a populated table.

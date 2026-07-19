@@ -20,11 +20,10 @@
 //!
 //! [`EncodedConversion`] is the reusable piece the library creates for the psyche's
 //! *real type conversion*: a language layer is converted to the next by moving its
-//! EncodedForm to another EncodedForm, threading the continuous nametree — and NO text
-//! appears anywhere on the path. The schema→logos lowering through the Nomos macros is
-//! the first instance: `CoreSchema` (EncodedForm of schema) plus its `NameTable` go in,
-//! the lowered logos items (EncodedForm of logos) plus the extended `NameTable` come
-//! out, entirely as typed data.
+//! EncodedForm to another EncodedForm, threading composed NameTables — and NO text
+//! appears anywhere on the path. The schema→logos lowering consumes a schema table,
+//! borrows its `Schema(u16)` slice into the Logos table, and returns typed target data
+//! with its own `Logos(u16)` home slice.
 //!
 //! ### On the generic spelling
 //!
@@ -54,21 +53,22 @@ pub trait EncodedForm {
 }
 
 /// The output of an [`EncodedConversion`]: the produced target EncodedForm plus the
-/// extended, continuous nametree that resolves every identifier it carries. The
-/// nametree crosses the layer as ONE table — source indices preserved, target-only
-/// names appended — never two disjoint tables.
+/// composed NameTable that resolves every identifier it carries. Source identifiers
+/// remain in their original borrowed namespace slice while the target owns its own
+/// allocation slice.
 #[derive(Clone, Debug)]
 pub struct Converted<Target> {
     /// The produced target EncodedForm (`EncodedForm<X>`).
     pub target: Target,
-    /// The extended, continuous nametree resolving the target's identifiers.
+    /// The composed NameTable resolving the target's identifiers.
     pub names: NameTable,
 }
 
 /// A typed layer conversion `EncodedForm<T> -> EncodedForm<X>`, expressed entirely as
-/// data with NO text on the path. The continuous nametree crosses the layer: the source
-/// EncodedForm and its names go in, the target EncodedForm and the extended names come
-/// out. The schema→logos lowering through the Nomos macros is the first instance.
+/// data with NO text on the path. The source NameTable is composed as a borrowed
+/// namespace slice in the target component's one table; source identifiers are carried
+/// unchanged and target allocations use their own variant. The schema→logos lowering
+/// through Nomos is the first instance.
 ///
 /// The absence of any `&str` / `String` in this signature is the structural proof of the
 /// psyche's ruling: the conversion is a real type conversion, with no string
@@ -82,10 +82,10 @@ pub trait EncodedConversion {
     /// The conversion's typed failure.
     type Error;
 
-    /// Convert the source EncodedForm into the target, threading the continuous
-    /// nametree: `names` resolves the source identifiers, and the returned
-    /// [`Converted`] carries the extended nametree resolving the target's. No string is
-    /// read or written on this path.
+    /// Convert the source EncodedForm into the target, threading composed NameTables:
+    /// `names` resolves source identifiers and the returned [`Converted`] carries a
+    /// target-owned table that borrows necessary source slices. No string is read or
+    /// written on this path.
     fn convert(
         &self,
         source: &Self::Source,

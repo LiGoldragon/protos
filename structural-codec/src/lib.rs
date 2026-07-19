@@ -19,7 +19,7 @@
 //! - Codecs: [`codec::ConstructorCodec`] (asymmetric: many disjoint decode forms, one
 //!   canonical encode form) gathered per type in [`codec::StructuralEntry`].
 //! - Table: [`table::AddressedStructuralTable`] — the external sidecar keyed by
-//!   `ScopedCoreTypeId`, its content identity stored OUTSIDE the hashed payload and
+//!   `ScopedEncodedTypeId`, its content identity stored OUTSIDE the hashed payload and
 //!   EXCLUDED from Core value identity.
 //! - Disjointness: [`disjoint`] — conservative outer-shape validation; overlap it
 //!   cannot rule out is a hard error.
@@ -57,11 +57,11 @@ pub use form::{
     SequenceForm, SigilPosition, SigilSpec, StructuralForm,
 };
 pub use ids::{
-    CoreConstructorId, CoreUniverseId, FIXTURE_UNIVERSE, PositionalSignature, ScopedCoreTypeId,
+    EncodedConstructorId, EncodedUniverseId, FIXTURE_UNIVERSE, PositionalSignature, ScopedEncodedTypeId,
     StructuralRevision,
 };
 pub use table::{
-    AddressedStructuralTable, CoreLayoutIdentity, LeafCodecContractId, RawProfileIdentity,
+    AddressedStructuralTable, EncodedLayoutIdentity, LeafCodecContractId, RawProfileIdentity,
     StructuralTableDomain, TableIdentityPayload,
 };
 pub use textual_form::{ChunkName, TextChunk, Textual, TextualForm};

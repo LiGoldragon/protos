@@ -3,18 +3,18 @@
 
 use structural_codec::fixture::{FIELD, FixtureBuilder};
 use structural_codec::{
-    AtomForm, CaseExpectation, ConstructorCodec, CoreConstructorId, PositionalSignature,
-    ScopedCoreTypeId, StructuralEntry, StructuralForm,
+    AtomForm, CaseExpectation, ConstructorCodec, EncodedConstructorId, PositionalSignature,
+    ScopedEncodedTypeId, StructuralEntry, StructuralForm,
 };
 
 fn entry_with_forms(forms: Vec<StructuralForm>) -> StructuralEntry {
-    let core_type = ScopedCoreTypeId::fixture(100);
+    let core_type = ScopedEncodedTypeId::fixture(100);
     let constructors = forms
         .into_iter()
         .enumerate()
         .map(|(index, form)| {
             ConstructorCodec::new(
-                CoreConstructorId::new(core_type, index as u32),
+                EncodedConstructorId::new(core_type, index as u32),
                 vec![form.clone()],
                 form,
                 PositionalSignature::default(),
@@ -72,8 +72,8 @@ fn identical_atom_cases_are_rejected() {
 #[test]
 fn delegate_forms_are_conservatively_rejected() {
     let entry = entry_with_forms(vec![
-        StructuralForm::Delegate(ScopedCoreTypeId::fixture(200)),
-        StructuralForm::Delegate(ScopedCoreTypeId::fixture(201)),
+        StructuralForm::Delegate(ScopedEncodedTypeId::fixture(200)),
+        StructuralForm::Delegate(ScopedEncodedTypeId::fixture(201)),
     ]);
     assert!(
         entry.validate_disjoint().is_err(),

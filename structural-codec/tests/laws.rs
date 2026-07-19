@@ -6,7 +6,7 @@ use name_table::{Name, NameTable};
 use raw_discovery::{Block, Delimiter, Recognizer};
 use structural_codec::fixture::{COMMIT_SEQUENCE, DOCUMENTATION, FIELD, FLOAT, FixtureBuilder};
 use structural_codec::{
-    AddressedStructuralTable, CanonicalText, ScopedCoreTypeId, StructuralEvaluator,
+    AddressedStructuralTable, CanonicalText, ScopedEncodedTypeId, StructuralEvaluator,
     StructuralRevision,
 };
 
@@ -27,7 +27,7 @@ fn standard_table() -> AddressedStructuralTable {
 fn law_one_round_trip_core() {
     let table = standard_table();
     let evaluator = StructuralEvaluator::new(&table);
-    let cases: &[(ScopedCoreTypeId, &str)] = &[
+    let cases: &[(ScopedEncodedTypeId, &str)] = &[
         (COMMIT_SEQUENCE, "CommitSequence.{ Integer }"),
         (FIELD, "Integer"),
         (FIELD, "commitSequence.Integer"),
@@ -59,7 +59,7 @@ fn law_one_round_trip_core() {
 fn law_two_round_trip_canonical() {
     let table = standard_table();
     let evaluator = StructuralEvaluator::new(&table);
-    let cases: &[(ScopedCoreTypeId, &str)] = &[
+    let cases: &[(ScopedEncodedTypeId, &str)] = &[
         (COMMIT_SEQUENCE, "CommitSequence.{ Integer }"),
         (FIELD, "commitSequence.Integer"),
         (DOCUMENTATION, "alpha.beta.gamma"),

@@ -10,7 +10,7 @@
 use name_table::Identifier;
 use raw_discovery::{Atom, AtomCase, Delimiter};
 
-use crate::ids::ScopedCoreTypeId;
+use crate::ids::ScopedEncodedTypeId;
 
 /// The seven-case kernel. `macro` is reserved for Nomos; the parser-side data is a
 /// `StructuralForm` (settled terminology, design §4.1).
@@ -44,7 +44,7 @@ pub enum StructuralForm {
     },
     /// Constructs a wrapper level over another Core type. Transparent cycles are
     /// rejected; recursion is permitted only after consuming structure.
-    Delegate(ScopedCoreTypeId),
+    Delegate(ScopedEncodedTypeId),
 }
 
 impl StructuralForm {

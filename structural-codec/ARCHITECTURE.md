@@ -35,7 +35,7 @@ data is a `StructuralForm`. The view family is `Textual*`.
 ## Table identity lives outside the payload (design §4.6)
 
 A table's content identity is computed over `TableIdentityPayload`
-(`CoreUniverseId`, Core-layout identity, raw-profile identity, the exact committed
+(`EncodedUniverseId`, Core-layout identity, raw-profile identity, the exact committed
 lexicon bytes, leaf-codec contract identities, and the entries) and **stored on
 the table, not inside the hashed payload** — this fixes the self-reference bug of
 an earlier rendering. The table identity is **excluded from Core value identity by

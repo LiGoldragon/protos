@@ -5,7 +5,7 @@ use name_table::{Identifier, Name, NameResolver, NameTable, NameTableError, Text
 
 /// A stringless toy Core value: a struct declaration carrying identifier indices
 /// only — no names. Stands in for the real `Core*` types of later crates.
-struct CoreStruct {
+struct EncodedStruct {
     name: Identifier,
     fields: Vec<Identifier>,
 }
@@ -21,11 +21,11 @@ struct TextualStruct {
 struct StructProjection;
 
 impl TextualProjection for StructProjection {
-    type Core = CoreStruct;
+    type Core = EncodedStruct;
     type Textual = TextualStruct;
 
     fn project<Resolver>(
-        core: &CoreStruct,
+        core: &EncodedStruct,
         names: &Resolver,
     ) -> Result<TextualStruct, NameTableError>
     where
@@ -45,7 +45,7 @@ fn projection_derives_the_named_view_from_the_table() {
     let mut table = NameTable::new();
     let name = table.intern(Name::new("CommitSequence"));
     let author = table.intern(Name::new("Author"));
-    let core = CoreStruct {
+    let core = EncodedStruct {
         name,
         fields: vec![author],
     };
@@ -63,7 +63,7 @@ fn projection_derives_the_named_view_from_the_table() {
 #[test]
 fn a_rename_moves_the_projection_but_not_the_core() {
     // One stringless Core value: indices only.
-    let core = CoreStruct {
+    let core = EncodedStruct {
         name: Identifier::new(0),
         fields: vec![Identifier::new(1)],
     };
@@ -89,7 +89,7 @@ fn a_rename_moves_the_projection_but_not_the_core() {
 #[test]
 fn projecting_a_torn_core_names_the_missing_identifier() {
     let table = NameTable::new();
-    let core = CoreStruct {
+    let core = EncodedStruct {
         name: Identifier::new(7),
         fields: vec![],
     };

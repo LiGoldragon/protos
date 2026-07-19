@@ -15,7 +15,7 @@ use raw_discovery::{Atom, Block};
 use crate::codec::StructuralEntry;
 use crate::error::{DecodeError, EncodeError};
 use crate::form::{CarrierLeaf, LeafCodec, ScalarLeaf, SequenceForm, StructuralForm};
-use crate::ids::ScopedCoreTypeId;
+use crate::ids::ScopedEncodedTypeId;
 use crate::table::AddressedStructuralTable;
 use crate::value::{ScalarValue, StructuralValue};
 
@@ -94,7 +94,7 @@ impl<'table> StructuralEvaluator<'table> {
     /// the NameTable is unchanged.
     pub fn decode(
         &self,
-        expected: ScopedCoreTypeId,
+        expected: ScopedEncodedTypeId,
         block: &Block,
         names: &mut NameTable,
     ) -> Result<StructuralValue, DecodeError> {
@@ -108,9 +108,9 @@ impl<'table> StructuralEvaluator<'table> {
     /// forms. `chain` carries the transparent-delegation path for cycle detection.
     fn match_type(
         &self,
-        expected: ScopedCoreTypeId,
+        expected: ScopedEncodedTypeId,
         block: &Block,
-        chain: &[ScopedCoreTypeId],
+        chain: &[ScopedEncodedTypeId],
     ) -> Result<DecodeDraft, DecodeError> {
         if chain.contains(&expected) {
             return Err(DecodeError::DelegationCycle(expected));
@@ -141,7 +141,7 @@ impl<'table> StructuralEvaluator<'table> {
         &self,
         form: &StructuralForm,
         block: &Block,
-        chain: &[ScopedCoreTypeId],
+        chain: &[ScopedEncodedTypeId],
     ) -> Result<DecodeDraft, DecodeError> {
         match form {
             StructuralForm::Atom(atom_form) => {
@@ -311,7 +311,7 @@ impl<'table> StructuralEvaluator<'table> {
     /// canonical encode form, so encoding never echoes a non-canonical decode form.
     pub fn encode<Resolver: NameResolver + ?Sized>(
         &self,
-        expected: ScopedCoreTypeId,
+        expected: ScopedEncodedTypeId,
         value: &StructuralValue,
         resolver: &Resolver,
     ) -> Result<Block, EncodeError> {
@@ -320,7 +320,7 @@ impl<'table> StructuralEvaluator<'table> {
 
     fn encode_type<Resolver: NameResolver + ?Sized>(
         &self,
-        expected: ScopedCoreTypeId,
+        expected: ScopedEncodedTypeId,
         value: &StructuralValue,
         resolver: &Resolver,
     ) -> Result<Block, EncodeError> {

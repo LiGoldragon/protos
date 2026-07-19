@@ -18,9 +18,9 @@
 
 use std::collections::BTreeMap;
 
-use structural_codec::ids::{FIXTURE_UNIVERSE, ScopedCoreTypeId, StructuralRevision};
+use structural_codec::ids::{FIXTURE_UNIVERSE, ScopedEncodedTypeId, StructuralRevision};
 use structural_codec::table::{
-    AddressedStructuralTable, CoreLayoutIdentity, RawProfileIdentity, TableIdentityPayload,
+    AddressedStructuralTable, EncodedLayoutIdentity, RawProfileIdentity, TableIdentityPayload,
 };
 use structural_codec::{StructuralEntry, TableError};
 use structural_codec_derive::structural_form;
@@ -91,7 +91,7 @@ pub struct DatabaseMarker;
 /// runs. Data-bearing (it carries the collected entries), so the assembly verb
 /// lives on the noun that owns the entries.
 pub struct DerivedTable {
-    entries: BTreeMap<ScopedCoreTypeId, StructuralEntry>,
+    entries: BTreeMap<ScopedEncodedTypeId, StructuralEntry>,
 }
 
 impl DerivedTable {
@@ -116,7 +116,7 @@ impl DerivedTable {
     }
 
     /// The collected authoritative entries, keyed by scoped Core-type id.
-    pub fn entries(&self) -> &BTreeMap<ScopedCoreTypeId, StructuralEntry> {
+    pub fn entries(&self) -> &BTreeMap<ScopedEncodedTypeId, StructuralEntry> {
         &self.entries
     }
 
@@ -126,7 +126,7 @@ impl DerivedTable {
     pub fn seal(&self) -> Result<AddressedStructuralTable, TableError> {
         let payload = TableIdentityPayload {
             core_universe: FIXTURE_UNIVERSE,
-            core_layout_identity: CoreLayoutIdentity([0u8; 32]),
+            core_layout_identity: EncodedLayoutIdentity([0u8; 32]),
             raw_profile_identity: RawProfileIdentity([1u8; 32]),
             committed_lexicon: b"derived-fixture-lexicon".to_vec(),
             leaf_codec_contracts: Vec::new(),

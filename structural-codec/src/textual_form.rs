@@ -42,7 +42,7 @@ use raw_discovery::{RecognizeError, Recognizer};
 
 use crate::error::{DecodeError, EncodeError, SingleChunkRequired};
 use crate::evaluator::StructuralEvaluator;
-use crate::ids::ScopedCoreTypeId;
+use crate::ids::ScopedEncodedTypeId;
 use crate::table::AddressedStructuralTable;
 use crate::value::StructuralValue;
 use crate::writer::CanonicalText;
@@ -152,7 +152,7 @@ pub trait Textual {
     /// language's own value shapes are read out of the shared mirror.
     fn reify(
         &self,
-        expected: ScopedCoreTypeId,
+        expected: ScopedEncodedTypeId,
         mirror: &StructuralValue,
         names: &mut NameTable,
     ) -> Result<Self::Encoded, Self::Error>;
@@ -161,7 +161,7 @@ pub trait Textual {
     /// The only place a language's own value shapes are written into the shared mirror.
     fn reflect(
         &self,
-        expected: ScopedCoreTypeId,
+        expected: ScopedEncodedTypeId,
         encoded: &Self::Encoded,
         names: &mut NameTable,
     ) -> Result<StructuralValue, Self::Error>;
@@ -184,7 +184,7 @@ pub trait Textual {
     /// own type.
     fn unview(
         &self,
-        expected: ScopedCoreTypeId,
+        expected: ScopedEncodedTypeId,
         view: &TextualForm<Self::Language>,
         names: &mut NameTable,
     ) -> Result<Self::Encoded, Self::Error> {
@@ -203,7 +203,7 @@ pub trait Textual {
     /// chunk of the view.
     fn view(
         &self,
-        expected: ScopedCoreTypeId,
+        expected: ScopedEncodedTypeId,
         encoded: &Self::Encoded,
         names: &mut NameTable,
     ) -> Result<TextualForm<Self::Language>, Self::Error> {

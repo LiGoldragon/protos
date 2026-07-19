@@ -34,7 +34,7 @@ authored as an `ObjectSymbolPrefixedBlock` and normalizes to
   signature that must equal the constructor's Core field signature. A
   `StructuralEntry` gathers every constructor of one Core type.
 - **Table** — `AddressedStructuralTable` is the external sidecar keyed by
-  `ScopedCoreTypeId`. Its content identity is computed over `TableIdentityPayload`
+  `ScopedEncodedTypeId`. Its content identity is computed over `TableIdentityPayload`
   and stored **outside** that payload, and is **excluded** from Core value identity
   by construction (Core hashing never sees the table).
 - **Disjointness** — a conservative outer-shape checker: a pair of decode forms is
@@ -69,5 +69,5 @@ cargo test
 ## Status
 
 Version 0.1.0, proof-of-concept. The fixture universe in `src/fixture.rs` is the
-worked acceptance gate; `ScopedCoreTypeId` is scoped to an explicit fixture
+worked acceptance gate; `ScopedEncodedTypeId` is scoped to an explicit fixture
 universe while the "unit of one schema" question is parked with the psyche.

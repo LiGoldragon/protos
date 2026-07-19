@@ -16,7 +16,9 @@ use crate::authoring::{AuthoringForm, ObjectSymbolPrefixedBlock};
 use crate::codec::{ConstructorCodec, StructuralEntry};
 use crate::error::TableError;
 use crate::form::{AtomForm, CaseExpectation, LeafForm, ScalarLeaf, SequenceForm, StructuralForm};
-use crate::ids::{EncodedConstructorId, PositionalSignature, ScopedEncodedTypeId, StructuralRevision};
+use crate::ids::{
+    EncodedConstructorId, PositionalSignature, ScopedEncodedTypeId, StructuralRevision,
+};
 use crate::table::{
     AddressedStructuralTable, EncodedLayoutIdentity, RawProfileIdentity, TableIdentityPayload,
 };
@@ -119,7 +121,10 @@ impl FixtureBuilder {
     }
 
     /// A transparent newtype wrapper: one constructor delegating to the inner type.
-    fn delegate_entry(core_type: ScopedEncodedTypeId, inner: ScopedEncodedTypeId) -> StructuralEntry {
+    fn delegate_entry(
+        core_type: ScopedEncodedTypeId,
+        inner: ScopedEncodedTypeId,
+    ) -> StructuralEntry {
         let form = StructuralForm::Delegate(inner);
         StructuralEntry::new(
             core_type,

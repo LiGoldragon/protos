@@ -1,8 +1,8 @@
 # name-table
 
 The stringless encoded-form identifier space: namespace-variant `Identifier`
-values, composed `NameTable` slices with transactional interning, transparent
-aliases, and the one home for derived-name walkers.
+values, composed `NameTable` slices with transactional interning, one canonical
+name per identifier, and the one home for derived-name walkers.
 
 This is crate L2 of the shared-codec language family. The family's rule is that
 dependencies run strictly downward and stringless encoded form never depends on text:
@@ -33,10 +33,6 @@ encoded value made only of identifiers has no name in its bytes, so:
   and borrows completed source slices without copying or renumbering them.
   `intern` writes only the home slice and `resolve` dispatches by identifier
   variant. The old `extend_from` flat table is retired.
-- Transparent aliases — additional NameTree names for one structural identifier.
-  Decode resolves aliases directly to the target identifier; emitters retain the
-  alias relation for a transparent target-language alias without an encoded alias
-  declaration.
 - `NameTransaction` — a speculative interning overlay that merges on commit. A
   failed decode alternative leaves no allocation effect, because the committed
   table is never mutated until commit — a dropped transaction is an effect-free
@@ -75,7 +71,7 @@ cargo test           # inner-loop tests
 
 ## Status
 
-Version 0.2.0 introduces the sliced identifier archive layout. Existing
+Version 0.3.0 removes transparent alias storage and introduces the sliced identifier archive layout. Existing
 flat-table archives are intentionally not decoded as sliced data: consumers must
 advance in the producer-to-consumer train and regenerate their encoded/name-table
 pairs under the new layout.

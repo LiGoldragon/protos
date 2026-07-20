@@ -22,22 +22,20 @@ impl HashDomain for NameTableDomain {
     fn separation() -> DomainSeparation {
         DomainSeparation::Contextual {
             context: "name-table 2026 sliced identifier space",
-            layout: LayoutVersion::new(2),
+            layout: LayoutVersion::new(3),
         }
     }
 }
 
-/// One namespace's owned names and transparent aliases.
+/// One namespace's owned canonical names.
 ///
-/// The primary name at a local is the canonical re-emission name. Additional
-/// names resolve to the same identifier during decode and are retained as
-/// NameTree data so a textual projection can emit a transparent target-language
-/// alias without adding an alias node to the EncodedForm.
+/// Each encoded identifier has exactly one canonical name in its component
+/// projection. Additional source or target-language aliases are not part of
+/// the language surface.
 #[derive(Clone, Debug, Eq, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct NameSlice {
     namespace: IdentifierNamespace,
     names: Vec<Name>,
-    aliases: Vec<Vec<Name>>,
 }
 
 impl NameSlice {
@@ -45,7 +43,6 @@ impl NameSlice {
         Self {
             namespace,
             names: Vec::new(),
-            aliases: Vec::new(),
         }
     }
 
@@ -57,24 +54,11 @@ impl NameSlice {
         self.names.get(usize::from(local))
     }
 
-    fn aliases(&self, local: u16) -> Option<&[Name]> {
-        self.aliases.get(usize::from(local)).map(Vec::as_slice)
-    }
-
     fn identifiers(&self) -> impl Iterator<Item = (Name, Identifier)> + '_ {
-        self.names
-            .iter()
-            .enumerate()
-            .flat_map(move |(position, name)| {
-                let local = u16::try_from(position).expect("name slice local exceeds u16 capacity");
-                let identifier = self.namespace.identifier(local);
-                std::iter::once((name.clone(), identifier)).chain(
-                    self.aliases[position]
-                        .iter()
-                        .cloned()
-                        .map(move |alias| (alias, identifier)),
-                )
-            })
+        self.names.iter().enumerate().map(move |(position, name)| {
+            let local = u16::try_from(position).expect("name slice local exceeds u16 capacity");
+            (name.clone(), self.namespace.identifier(local))
+        })
     }
 
     fn intern(&mut self, name: Name) -> Result<Identifier, NameTableError> {
@@ -82,21 +66,7 @@ impl NameSlice {
             .map_err(|_| NameTableError::NamespaceCapacity(self.namespace))?;
         let identifier = self.namespace.identifier(local);
         self.names.push(name);
-        self.aliases.push(Vec::new());
         Ok(identifier)
-    }
-
-    fn add_alias(&mut self, local: u16, alias: Name) -> Result<(), NameTableError> {
-        let aliases =
-            self.aliases
-                .get_mut(usize::from(local))
-                .ok_or(NameTableError::UnknownIdentifier(
-                    self.namespace.identifier(local),
-                ))?;
-        if !aliases.contains(&alias) {
-            aliases.push(alias);
-        }
-        Ok(())
     }
 }
 
@@ -171,9 +141,8 @@ impl NameTable {
 
     /// Intern a primary name into this component's home slice.
     ///
-    /// A source name or transparent alias already present in any composed slice
-    /// resolves to that existing identifier, so decoding carries literal names
-    /// across component boundaries without reintroducing a string into Nomos.
+    /// A canonical source name already present in any composed slice resolves
+    /// to that existing identifier without reintroducing a string into Nomos.
     pub fn intern(&mut self, name: Name) -> Result<Identifier, NameTableError> {
         if let Some(identifier) = self.index.get(&name).copied() {
             return Ok(identifier);
@@ -187,34 +156,6 @@ impl NameTable {
         Ok(identifier)
     }
 
-    /// Add another decoding name for an owned structural identifier.
-    ///
-    /// The alias is NameTree-only: it resolves to `target` during decode but does
-    /// not create another encoded identifier or alter the EncodedForm graph.
-    /// A textual projection can read [`Self::aliases`] to emit its transparent
-    /// target-language alias declaration.
-    pub fn add_alias(&mut self, target: Identifier, alias: Name) -> Result<(), NameTableError> {
-        if target.namespace() != self.namespace() {
-            return Err(NameTableError::BorrowedNamespace(target));
-        }
-        if let Some(existing) = self.index.get(&alias).copied() {
-            if existing == target {
-                return Ok(());
-            }
-            return Err(NameTableError::NameAlreadyAssigned {
-                name: alias,
-                existing,
-            });
-        }
-
-        let home = Arc::get_mut(&mut self.home).ok_or(NameTableError::HomeSliceBorrowed {
-            operation: "admit a transparent alias",
-        })?;
-        home.add_alias(target.local(), alias.clone())?;
-        self.index.insert(alias, target);
-        Ok(())
-    }
-
     /// Resolve an identifier to its canonical primary name.
     pub fn resolve(&self, identifier: Identifier) -> Result<&Name, NameTableError> {
         self.slice(identifier.namespace())?
@@ -222,14 +163,7 @@ impl NameTable {
             .ok_or(NameTableError::UnknownIdentifier(identifier))
     }
 
-    /// The transparent aliases for an identifier, in declaration order.
-    pub fn aliases(&self, identifier: Identifier) -> Result<&[Name], NameTableError> {
-        self.slice(identifier.namespace())?
-            .aliases(identifier.local())
-            .ok_or(NameTableError::UnknownIdentifier(identifier))
-    }
-
-    /// Look up any canonical or transparent alias name without allocating.
+    /// Look up a canonical name without allocating.
     pub fn lookup(&self, name: &Name) -> Option<Identifier> {
         self.index.get(name).copied()
     }

@@ -3,7 +3,6 @@
 use thiserror::Error;
 
 use crate::identifier::{Identifier, IdentifierNamespace};
-use crate::name::Name;
 
 /// A failure crossing the name-table boundary.
 #[derive(Debug, Clone, Error)]
@@ -29,14 +28,6 @@ pub enum NameTableError {
     /// A namespace-local identifier slice cannot represent another allocation.
     #[error("the {0:?} identifier namespace exhausted its u16 allocation range")]
     NamespaceCapacity(IdentifierNamespace),
-
-    /// An alias must be added by the namespace that owns its target identifier.
-    #[error("cannot add an alias to borrowed identifier {0}")]
-    BorrowedNamespace(Identifier),
-
-    /// An alias spelling already resolves to a different identifier.
-    #[error("name {name:?} already resolves to {existing}")]
-    NameAlreadyAssigned { name: Name, existing: Identifier },
 
     /// Serializing the table's canonical name bytes failed.
     #[error("name-table serialization failed: {0}")]

@@ -51,7 +51,7 @@ types in later train slices.
   append-only home slice and borrowed read-only source slices. Its canonical
   archive and `NameTableDomain` identity are only its owned slice; consumers
   recompose independently identified borrowed slices after loading. The derived
-  lookup accepts canonical names and transparent aliases.
+  lookup accepts exactly one canonical name per identifier.
 - `NameTransaction` (`src/transaction.rs`) — the speculative interning overlay.
 - `NameResolver` / `NameInterner` (`src/boundary.rs`) — the two codec-boundary
   capabilities, threaded down a codec call tree, never held by a node.
@@ -63,8 +63,7 @@ types in later train slices.
 This is structural, not a runtime check. A `Encoded` value is built from
 `Identifier` indices and holds no names, so no name can enter its content-hash
 pre-image (`content-identity` hashes the stringless bytes). A NameTable serializes only its owned namespace slice (namespace, ordered
-canonical names, and transparent aliases); borrowed slices keep their own archive
-and identity. The lookup index is derived, never archived. The two data shapes have disjoint
+canonical names); borrowed slices keep their own archive and identity. The lookup index is derived, never archived. The two data shapes have disjoint
 pre-images, so a rename — a table-only edit — cannot move any `Encoded` address. The
 `archive` and `transaction` test suites prove the byte-level and identity-level
 stability.
@@ -133,8 +132,6 @@ which the `walkers` tests assert against the exact ported expectations.
 - `src/error.rs` — `NameTableError`.
 - `tests/interning.rs` — determinism, resolve round-trips, boundary capabilities.
 - `tests/continuity.rs` — composed borrowed-slice stability without copying.
-- `tests/aliases.rs` — NameTree-only transparent aliases resolve away on decode
-  while remaining available to a textual emitter.
 - `tests/transaction.rs` — rollback/commit and the interning-atomicity law.
 - `tests/walkers.rs` — derived-name outputs vs the ported source expectations.
 - `tests/archive.rs` — portable archive round-trip of a populated table.

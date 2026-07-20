@@ -46,8 +46,8 @@ impl TextualProjection for StructProjection {
 #[test]
 fn projection_derives_the_named_view_from_the_table() {
     let mut table = NameTable::new(IdentifierNamespace::Schema);
-    let name = table.intern(Name::new("CommitSequence"));
-    let author = table.intern(Name::new("Author"));
+    let name = table.intern(Name::new("CommitSequence")).expect("schema allocation");
+    let author = table.intern(Name::new("Author")).expect("schema allocation");
     let encoded = EncodedStruct {
         name,
         fields: vec![author],
@@ -71,13 +71,13 @@ fn a_rename_moves_the_projection_but_not_the_encoded_value() {
     };
 
     let mut original = NameTable::new(IdentifierNamespace::Schema);
-    original.intern(Name::new("CommitSequence"));
-    original.intern(Name::new("Author"));
+    original.intern(Name::new("CommitSequence")).expect("schema allocation");
+    original.intern(Name::new("Author")).expect("schema allocation");
 
     // A rename is a table-only edit: identifier 0 now names a different type.
     let mut renamed = NameTable::new(IdentifierNamespace::Schema);
-    renamed.intern(Name::new("CommitLog"));
-    renamed.intern(Name::new("Author"));
+    renamed.intern(Name::new("CommitLog")).expect("schema allocation");
+    renamed.intern(Name::new("Author")).expect("schema allocation");
 
     let before = StructProjection::project(&encoded, &original).unwrap();
     let after = StructProjection::project(&encoded, &renamed).unwrap();

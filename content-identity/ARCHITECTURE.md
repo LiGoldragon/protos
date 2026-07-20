@@ -13,9 +13,9 @@ that every layer above reinvented independently.
 
 The psyche's settled rulings this crate embodies:
 
-- Content identity is blake3 over stringless Core rkyv bytes, with the NameTable
+- Content identity is blake3 over stringless encoded form rkyv bytes, with the NameTable
   excluded, domain-separated, and layout-version-tagged. Rename is hash-stable.
-- All `Core*` types are stringless; the identity machinery must never require
+- All `Encoded*` types are stringless; the identity machinery must never require
   names. Names live in a separate NameTable that is never part of a hash
   pre-image.
 - The stack's two existing blake3 conventions — schema's typed `new_derive_key`

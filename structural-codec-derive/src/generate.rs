@@ -389,8 +389,8 @@ impl TypeSpec {
                 }
                 // Shape fully validated; only now intern, in the evaluator's DFS
                 // order: the object name first, then the wrapped-type name.
-                let object = interner.intern(::name_table::Name::new(object_atom.text()));
-                let inner = interner.intern(::name_table::Name::new(inner_atom.text()));
+                let object = interner.intern(::name_table::Name::new(object_atom.text()))?;
+                let inner = interner.intern(::name_table::Name::new(inner_atom.text()))?;
                 ::core::result::Result::Ok(Self { object, inner })
             }
         };
@@ -524,7 +524,7 @@ impl TypeSpec {
                         },
                     );
                 }
-                let object = interner.intern(::name_table::Name::new(object_atom.text()));
+                let object = interner.intern(::name_table::Name::new(object_atom.text()))?;
                 let mut fields = ::std::vec::Vec::with_capacity(#arity_lit);
                 for child in children {
                     fields.push(<#field_type>::decode_within(child, interner)?);
@@ -631,7 +631,7 @@ impl TypeSpec {
                 if ::raw_discovery::AtomCase::of(atom) != ::raw_discovery::AtomCase::PascalCase {
                     return ::core::result::Result::Err(::structural_codec::DecodeError::CaseMismatch);
                 }
-                let type_name = interner.intern(::name_table::Name::new(atom.text()));
+                let type_name = interner.intern(::name_table::Name::new(atom.text()))?;
                 ::core::result::Result::Ok(Self { type_name })
             }
         };

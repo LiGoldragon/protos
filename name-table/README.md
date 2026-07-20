@@ -5,7 +5,7 @@ values, composed `NameTable` slices with transactional interning, transparent
 aliases, and the one home for derived-name walkers.
 
 This is crate L2 of the shared-codec language family. The family's rule is that
-dependencies run strictly downward and stringless Core never depends on text:
+dependencies run strictly downward and stringless encoded form never depends on text:
 `content-identity <- name-table <- raw-discovery <- structural-codec`. This crate
 sits just above the leaf and depends only on `content-identity` (for the shared
 `PortableArchive` rkyv discipline) and `rkyv`.
@@ -18,9 +18,9 @@ values, never names. An identifier is its component namespace variant plus a
 encoded value made only of identifiers has no name in its bytes, so:
 
 - **Rename-stability by construction.** Content identity (from `content-identity`,
-  over a `Core` value's stringless bytes) never folds a name. A rename is a
+  over a `Encoded` value's stringless bytes) never folds a name. A rename is a
   `NameTable`-only edit that changes how identifiers resolve, and can never move
-  `Core` identity. Names and `Core` values are structurally incapable of sharing a
+  `Encoded` identity. Names and `Encoded` values are structurally incapable of sharing a
   serialization pre-image — a table's canonical bytes are its ordered names and
   nothing else.
 
@@ -51,7 +51,7 @@ encoded value made only of identifiers has no name in its bytes, so:
   is threaded. A codec never holds the whole table, only the capability its
   direction needs.
 - `TextualProjection` — the surface for deriving a named `Textual*` view from a
-  `Core` value plus a table. The named view is derived on demand, never stored;
+  `Encoded` value plus a table. The named view is derived on demand, never stored;
   concrete `Textual*` types belong to later crates.
 
 ## The transactional contract

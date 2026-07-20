@@ -38,10 +38,10 @@ A table's content identity is computed over `TableIdentityPayload`
 (`EncodedUniverseId`, Core-layout identity, raw-profile identity, the exact committed
 lexicon bytes, leaf-codec contract identities, and the entries) and **stored on
 the table, not inside the hashed payload** — this fixes the self-reference bug of
-an earlier rendering. The table identity is **excluded from Core value identity by
+an earlier rendering. The table identity is **excluded from encoded value identity by
 construction**: Core hashing never sees the table, so text evolution can never
 move Core identity. Old table decodes old text, a new table encodes new text, both
-reach the same Core value.
+reach the same encoded value.
 
 ## The evaluator ships in the runtime (Fork C, settled)
 
@@ -91,7 +91,7 @@ swallow another's inputs.
 - **Grammar readings.** `SigilSpec`/`$` and float-from-dotted-text ride on
   non-rejected grammar readings, gated behind profile revisions until accepted.
 - **Signature-versus-Core validation is deferred**: the proof-of-concept has no
-  Core layout to check `PositionalSignature` against, so the fixture universe
+  encoded layout to check `PositionalSignature` against, so the fixture universe
   de-blocks the parked schema-unit question with an explicit `FIXTURE_UNIVERSE`.
 
 ## Versioning

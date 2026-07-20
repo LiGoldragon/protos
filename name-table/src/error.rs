@@ -21,6 +21,15 @@ pub enum NameTableError {
     #[error("the composed NameTable already represents {0:?}")]
     DuplicateNamespace(IdentifierNamespace),
 
+    /// The home slice is already borrowed by a composed consumer and is sealed
+    /// against later mutation. Callers must complete allocation before composition.
+    #[error("cannot {operation}: this NameTable home slice is already borrowed")]
+    HomeSliceBorrowed { operation: &'static str },
+
+    /// A namespace-local identifier slice cannot represent another allocation.
+    #[error("the {0:?} identifier namespace exhausted its u16 allocation range")]
+    NamespaceCapacity(IdentifierNamespace),
+
     /// An alias must be added by the namespace that owns its target identifier.
     #[error("cannot add an alias to borrowed identifier {0}")]
     BorrowedNamespace(Identifier),

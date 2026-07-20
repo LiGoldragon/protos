@@ -1,6 +1,6 @@
 # content-identity
 
-Portable content identity for stringless Core values: the one rkyv
+Portable content identity for stringless encoded values: the one rkyv
 portable-archive discipline and one domain-separated, layout-versioned blake3
 content hash.
 
@@ -28,7 +28,7 @@ this machinery independently and drifted; this crate is its single home.
 
 ## The identity ruling
 
-Content identity is blake3 over stringless Core rkyv bytes, with the NameTable
+Content identity is blake3 over stringless encoded form rkyv bytes, with the NameTable
 excluded, domain-separated, and layout-version-tagged. Because names are never in
 the pre-image, a rename is hash-stable by construction.
 

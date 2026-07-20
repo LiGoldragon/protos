@@ -3,9 +3,9 @@
 ## Overview
 
 `name-table` is crate L2 of the shared-codec language family. The family's rule
-is that dependencies run strictly downward and stringless Core never depends on
+is that dependencies run strictly downward and stringless encoded form never depends on
 text: `content-identity <- name-table <- raw-discovery <- structural-codec`. This
-crate holds the identifier space every `Core*` type indexes into, and depends
+crate holds the identifier space every `Encoded*` type indexes into, and depends
 only on `content-identity` (for the shared `PortableArchive` rkyv discipline) and
 `rkyv`.
 
@@ -18,18 +18,18 @@ The psyche's settled rulings this crate embodies:
 - One component NameTable is a composed view: it owns one allocation slice and
   borrows completed source slices without copying or renumbering them. The former
   `extend_from` flat-table model is retired.
-- The `NameTable` is excluded from `Core` content hashes by construction —
-  renaming is a `NameTable`-only edit and never moves `Core` identity. Names and
-  `Core` values never serialize together.
+- The `NameTable` is excluded from `Encoded` content hashes by construction —
+  renaming is a `NameTable`-only edit and never moves `Encoded` identity. Names and
+  `Encoded` values never serialize together.
 - Capitalization is semantic: capitalized-leading is an object, lowercase-leading
   is a name; the derived-name rule (field name = `snake_case` of type name) lives
   here as methods on `Name` — one home for the walkers duplicated in `schema` and
   `schema-rust`.
 - Interning is transactional: a failed decode alternative leaves no allocation
   effect. A real staging surface provides this, not a convention.
-- Named views (`Textual*`) are derived from `Core` + `NameTable`, never stored.
+- Named views (`Textual*`) are derived from `Encoded` + `NameTable`, never stored.
 - A `NameTable` may later be stored as a first-class co-versioned sibling of
-  `Core` in daemon stores, so it must be cleanly archivable; where it is stored is
+  `Encoded` in daemon stores, so it must be cleanly archivable; where it is stored is
   not this crate's business.
 
 Consumption and integration will readapt to the forthcoming release-train flow.
@@ -58,14 +58,14 @@ types in later train slices.
 - `TextualProjection` (`src/projection.rs`) — the derive-a-named-view surface.
 - `NameTableError` (`src/error.rs`) — the typed crate-boundary error (thiserror).
 
-## Names never serialize with Core values
+## Names never serialize with encoded values
 
-This is structural, not a runtime check. A `Core` value is built from
+This is structural, not a runtime check. A `Encoded` value is built from
 `Identifier` indices and holds no names, so no name can enter its content-hash
 pre-image (`content-identity` hashes the stringless bytes). A NameTable serializes only its owned namespace slice (namespace, ordered
 canonical names, and transparent aliases); borrowed slices keep their own archive
 and identity. The lookup index is derived, never archived. The two data shapes have disjoint
-pre-images, so a rename — a table-only edit — cannot move any `Core` address. The
+pre-images, so a rename — a table-only edit — cannot move any `Encoded` address. The
 `archive` and `transaction` test suites prove the byte-level and identity-level
 stability.
 

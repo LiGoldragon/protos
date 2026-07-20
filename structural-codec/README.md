@@ -1,6 +1,6 @@
 # structural-codec
 
-The Core-associated, bidirectional, revisioned **structural-form kernel** of the
+The encoded-form-associated, bidirectional, revisioned **structural-form kernel** of the
 next-generation NOTA family — with the trusted evaluator that **ships in the
 runtime**. It is layer four (L4) of the shared-codec family, sitting atop
 `content-identity`, `name-table`, and `raw-discovery`.
@@ -35,8 +35,8 @@ authored as an `ObjectSymbolPrefixedBlock` and normalizes to
   `StructuralEntry` gathers every constructor of one Core type.
 - **Table** — `AddressedStructuralTable` is the external sidecar keyed by
   `ScopedEncodedTypeId`. Its content identity is computed over `TableIdentityPayload`
-  and stored **outside** that payload, and is **excluded** from Core value identity
-  by construction (Core hashing never sees the table).
+  and stored **outside** that payload, and is **excluded** from encoded value identity
+  by construction (encoded-form hashing never sees the table).
 - **Disjointness** — a conservative outer-shape checker: a pair of decode forms is
   accepted only when it can be *proven* that no block matches both. Overlap it
   cannot rule out is a hard error.
@@ -53,7 +53,7 @@ The conformance laws are the acceptance gate (see `tests/laws.rs`):
 1. `decode ∘ encode = core`
 2. `encode ∘ decode = canonical(raw)`
 3. a failed decode leaves the NameTable unchanged (archived bytes and content identity)
-4. old-table decode → new-table encode preserves Core value identity
+4. old-table decode → new-table encode preserves encoded value identity
 5. interpreter and generated codec agree (scaffolding; evaluator is sole implementer)
 
 ## Build

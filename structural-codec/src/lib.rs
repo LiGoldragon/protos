@@ -1,6 +1,6 @@
 //! # structural-codec
 //!
-//! The Core-associated, bidirectional, revisioned structural-form kernel of the
+//! The encoded-form-associated, bidirectional, revisioned structural-form kernel of the
 //! next-generation NOTA family, with the trusted evaluator that SHIPS IN THE
 //! RUNTIME. Dialect tables are data-loadable at runtime and executed directly, both
 //! directions, off the SAME forms — so round-trip coherence holds by construction.
@@ -14,17 +14,17 @@
 //!
 //! ## The pieces
 //!
-//! - Identity keys: [`ids`] — universes, scoped Core-type ids, constructor ids.
+//! - Identity keys: [`ids`] — universes, scoped encoded-type ids, constructor ids.
 //! - Forms: [`form`] (kernel) and [`authoring`] (the normalizing surface).
 //! - Codecs: [`codec::ConstructorCodec`] (asymmetric: many disjoint decode forms, one
 //!   canonical encode form) gathered per type in [`codec::StructuralEntry`].
 //! - Table: [`table::AddressedStructuralTable`] — the external sidecar keyed by
 //!   `ScopedEncodedTypeId`, its content identity stored OUTSIDE the hashed payload and
-//!   EXCLUDED from Core value identity.
+//!   EXCLUDED from encoded value identity.
 //! - Disjointness: [`disjoint`] — conservative outer-shape validation; overlap it
 //!   cannot rule out is a hard error.
 //! - Evaluator: [`evaluator::StructuralEvaluator`] — the one trusted interpreter.
-//! - Mirror: [`value::StructuralValue`] — the Core-agnostic generic currency.
+//! - Mirror: [`value::StructuralValue`] — the encoded-form-agnostic generic currency.
 //! - Conformance: [`conformance`] — the law-5 harness the generated codec will meet.
 //! - Fixtures: [`fixture`] — the proof-of-concept universe and the acceptance gate.
 //! - The Protos pairing: [`encoded_form`] — the TRUTH side ([`EncodedForm`] marker plus

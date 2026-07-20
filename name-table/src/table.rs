@@ -77,12 +77,13 @@ impl NameSlice {
             })
     }
 
-    fn intern(&mut self, name: Name) -> Identifier {
-        let local = u16::try_from(self.names.len()).expect("name slice local exceeds u16 capacity");
+    fn intern(&mut self, name: Name) -> Result<Identifier, NameTableError> {
+        let local = u16::try_from(self.names.len())
+            .map_err(|_| NameTableError::NamespaceCapacity(self.namespace))?;
         let identifier = self.namespace.identifier(local);
         self.names.push(name);
         self.aliases.push(Vec::new());
-        identifier
+        Ok(identifier)
     }
 
     fn add_alias(&mut self, local: u16, alias: Name) -> Result<(), NameTableError> {
@@ -173,17 +174,17 @@ impl NameTable {
     /// A source name or transparent alias already present in any composed slice
     /// resolves to that existing identifier, so decoding carries literal names
     /// across component boundaries without reintroducing a string into Nomos.
-    pub fn intern(&mut self, name: Name) -> Identifier {
+    pub fn intern(&mut self, name: Name) -> Result<Identifier, NameTableError> {
         if let Some(identifier) = self.index.get(&name).copied() {
-            return identifier;
+            return Ok(identifier);
         }
 
-        let home = Arc::get_mut(&mut self.home).expect(
-            "a NameTable home must finish allocation before another component borrows its slice",
-        );
-        let identifier = home.intern(name.clone());
+        let home = Arc::get_mut(&mut self.home).ok_or(NameTableError::HomeSliceBorrowed {
+            operation: "intern a name",
+        })?;
+        let identifier = home.intern(name.clone())?;
         self.index.insert(name, identifier);
-        identifier
+        Ok(identifier)
     }
 
     /// Add another decoding name for an owned structural identifier.
@@ -206,9 +207,9 @@ impl NameTable {
             });
         }
 
-        let home = Arc::get_mut(&mut self.home).expect(
-            "a NameTable home must finish aliases before another component borrows its slice",
-        );
+        let home = Arc::get_mut(&mut self.home).ok_or(NameTableError::HomeSliceBorrowed {
+            operation: "admit a transparent alias",
+        })?;
         home.add_alias(target.local(), alias.clone())?;
         self.index.insert(alias, target);
         Ok(())
@@ -269,11 +270,14 @@ impl NameTable {
     pub fn try_intern<Value, Failure>(
         &mut self,
         attempt: impl FnOnce(&mut NameTransaction<'_>) -> Result<Value, Failure>,
-    ) -> Result<Value, Failure> {
+    ) -> Result<Value, Failure>
+    where
+        Failure: From<NameTableError>,
+    {
         let mut transaction = self.begin();
         match attempt(&mut transaction) {
             Ok(value) => {
-                transaction.commit();
+                transaction.commit().map_err(Failure::from)?;
                 Ok(value)
             }
             Err(failure) => {
@@ -284,10 +288,11 @@ impl NameTable {
     }
 
     /// Merge a transaction's staged names into the home slice.
-    pub(crate) fn commit_staged(&mut self, staged: Vec<Name>) {
+    pub(crate) fn commit_staged(&mut self, staged: Vec<Name>) -> Result<(), NameTableError> {
         for name in staged {
-            self.intern(name);
+            self.intern(name)?;
         }
+        Ok(())
     }
 
     /// The home slice's canonical rkyv bytes. Borrowed slices are deliberately
@@ -323,7 +328,7 @@ impl NameResolver for NameTable {
 }
 
 impl NameInterner for NameTable {
-    fn intern(&mut self, name: Name) -> Identifier {
+    fn intern(&mut self, name: Name) -> Result<Identifier, NameTableError> {
         NameTable::intern(self, name)
     }
 }

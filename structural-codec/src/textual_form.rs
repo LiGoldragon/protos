@@ -5,7 +5,7 @@
 //!
 //! ## The relationship the pair models (ruled)
 //!
-//! An **EncodedForm** — a stringless Core value family — is the truth. A
+//! An **EncodedForm** — a stringless encoded value family — is the truth. A
 //! [`TextualForm<T>`] is one textual VIEW on it: a first-class VALUE (not a bare
 //! string), produced and consumed through a [`Textual`] driving the two organs:
 //!
@@ -139,7 +139,7 @@ impl<Language> TextualForm<Language> {
 /// [`unview`](Self::unview) operation is provided — the same operation for every
 /// language.
 pub trait Textual {
-    /// The EncodedForm this text is a view on — a stringless Core value family.
+    /// The EncodedForm this text is a view on — a stringless encoded value family.
     type Encoded;
 
     /// The language marker `T` shared with the produced [`TextualForm<T>`] value and the

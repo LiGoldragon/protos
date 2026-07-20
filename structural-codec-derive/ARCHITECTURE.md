@@ -9,7 +9,7 @@ the language-family train.
 ## Position in the language family
 
 The next-generation NOTA family is four foundation crates with strictly downward
-dependencies, then `core-schema` as the first real Core layer:
+dependencies, then `core-schema` as the first real encoded layer:
 
 ```
 content-identity <- name-table <- raw-discovery <- structural-codec <- core-schema
@@ -17,7 +17,7 @@ content-identity <- name-table <- raw-discovery <- structural-codec <- core-sche
 
 `structural-codec` shipped the law-5 scaffolding — the `GeneratedCodec` trait and the
 `ConformanceHarness` — with the note that "the evaluator is the sole implementation;
-this trait has no generated implementor yet." `core-schema` made the Core layer real
+this trait has no generated implementor yet." `core-schema` made the encoded layer real
 and closed the signature-vs-Core deviation, but its `TextualSchema` reify/reflect
 pair is a **hand-written** stand-in for the future generated codec.
 
@@ -61,7 +61,7 @@ provably equal rather than merely similar:
   the table byte-unchanged (law 3) and the composed `decode_within` methods thread one
   transaction through the whole tree.
 
-The `ConformanceHarness` then proves agreement on all four outputs — Core value,
+The `ConformanceHarness` then proves agreement on all four outputs — encoded value,
 `NameTable` delta, canonical output, typed error — over every fixture, so any future
 divergence is a test failure.
 

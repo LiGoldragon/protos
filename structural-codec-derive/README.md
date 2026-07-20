@@ -23,7 +23,7 @@ generates (design decision 7, psyche-accepted):
    constructor's decoded content.
 
 `structural-codec`'s `ConformanceHarness` then proves the generated codec and the
-evaluator agree on **all four outputs**: the Core value, the `NameTable` delta, the
+evaluator agree on **all four outputs**: the encoded value, the `NameTable` delta, the
 canonical output, and the typed-error decision — including error agreement on
 malformed inputs.
 

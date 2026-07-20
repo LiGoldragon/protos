@@ -1,7 +1,7 @@
 //! The stringless-Core identifier space and its name interning.
 //!
 //! This is crate L2 of the shared-codec language family: `content-identity <-
-//! name-table <- raw-discovery <- structural-codec`. Every `Core*` type in the
+//! name-table <- raw-discovery <- structural-codec`. Every `Encoded*` type in the
 //! family is stringless — it carries [`Identifier`] indices, never names — and
 //! all names live here, in a [`NameTable`]. That is the substrate on which the
 //! family's identity ruling stands: because a `Core` value holds no names, a
@@ -27,7 +27,7 @@
 //! - [`TextualProjection`] — the surface for deriving a named `Textual*` view from
 //!   `Core` + a table. Concrete `Textual*` types belong to later crates.
 //!
-//! ## Names never serialize with Core values
+//! ## Names never serialize with encoded values
 //!
 //! A table's canonical, archivable state is its ordered name vector alone; the
 //! lookup accelerator is derived and never serialized. Content identity for a

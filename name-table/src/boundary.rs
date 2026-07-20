@@ -28,6 +28,7 @@ pub trait NameResolver {
 pub trait NameInterner {
     /// The identifier for `name`, interning it if it has not been seen. Interning
     /// is deterministic: the same name always yields the same identifier within
-    /// one table lineage.
-    fn intern(&mut self, name: Name) -> Identifier;
+    /// one table lineage. Allocation is typed-fallible: an owned slice cannot be
+    /// mutated after another table borrows it, and namespace capacity is bounded.
+    fn intern(&mut self, name: Name) -> Result<Identifier, NameTableError>;
 }

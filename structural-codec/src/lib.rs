@@ -20,7 +20,7 @@
 //!   canonical encode form) gathered per type in [`codec::StructuralEntry`].
 //! - Table: [`table::AddressedStructuralTable`] — the external sidecar keyed by
 //!   `ScopedCoreTypeId`, its content identity stored OUTSIDE the hashed payload and
-//!   EXCLUDED from Core value identity.
+//!   EXCLUDED from encoded value identity.
 //! - Disjointness: [`disjoint`] — conservative outer-shape validation; overlap it
 //!   cannot rule out is a hard error.
 //! - Evaluator: [`evaluator::StructuralEvaluator`] — the one trusted interpreter.

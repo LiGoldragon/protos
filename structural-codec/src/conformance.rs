@@ -2,7 +2,7 @@
 //! future generated codec (arriving with `nota-derive` in a later slice). The
 //! `GeneratedCodec` trait is the shape the generated side will implement; the
 //! `ConformanceHarness` exercises it against the evaluator and asserts agreement on
-//! the Core value, the NameTable delta, the canonical output, and the typed-error
+//! the encoded value, the NameTable delta, the canonical output, and the typed-error
 //! decision. TODAY the evaluator is the sole implementation — this trait has no
 //! generated implementor yet, so the harness is compiled-but-dormant scaffolding.
 

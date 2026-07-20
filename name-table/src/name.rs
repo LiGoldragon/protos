@@ -18,7 +18,7 @@
 //! behaviors are identical, which is what the ported tests assert.
 
 /// A name, interned into a [`NameTable`]. In the stringless substrate this is the
-/// only place a name's text lives; every `Core*` value holds an [`Identifier`]
+/// only place a name's text lives; every `Encoded*` value holds an [`Identifier`]
 /// into the table instead.
 ///
 /// [`NameTable`]: crate::NameTable

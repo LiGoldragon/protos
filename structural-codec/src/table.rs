@@ -1,8 +1,8 @@
 //! The addressed structural table: the external sidecar keyed by `ScopedCoreTypeId`.
 //! Its content identity is computed over `TableIdentityPayload` and STORED OUTSIDE
-//! that payload (fixing the self-reference bug), and is EXCLUDED from Core value
+//! that payload (fixing the self-reference bug), and is EXCLUDED from encoded value
 //! identity by construction — Core hashing never sees the table. Old table decodes
-//! old text, a new table encodes new text, and both reach the same Core value (§4.6).
+//! old text, a new table encodes new text, and both reach the same encoded value (§4.6).
 
 use std::collections::BTreeMap;
 
@@ -112,7 +112,7 @@ impl AddressedStructuralTable {
     }
 
     /// The table's content identity — co-versioned with the language package,
-    /// EXCLUDED from Core value identity.
+    /// EXCLUDED from encoded value identity.
     pub fn identity(&self) -> ContentHash<StructuralTableDomain> {
         self.identity
     }

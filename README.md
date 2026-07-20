@@ -20,7 +20,7 @@ above it:
 - `raw-discovery` (L3) — the language-agnostic raw structure layer: discovers
   NOTA-family structure and never classifies. Adopts `content-identity`'s shared
   `PortableArchive` bound.
-- `structural-codec` (L4) — the Core-associated, bidirectional, revisioned
+- `structural-codec` (L4) — the encoded-form-associated, bidirectional, revisioned
   structural-form kernel: a trusted runtime evaluator over data-loadable dialect
   tables, governed by conformance laws.
 - `structural-codec-derive` — the generated-codec side of conformance law 5: an

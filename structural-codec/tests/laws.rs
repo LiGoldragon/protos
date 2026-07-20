@@ -81,7 +81,9 @@ fn law_three_interning_atomicity() {
     let table = standard_table();
     let evaluator = StructuralEvaluator::new(&table);
     let mut names = NameTable::new(IdentifierNamespace::Fixture);
-    names.intern(Name::new("PriorName")).expect("fixture allocation");
+    names
+        .intern(Name::new("PriorName"))
+        .expect("fixture allocation");
     let bytes_before = names
         .to_archive_bytes()
         .expect("archive before")

@@ -6,7 +6,9 @@ use name_table::{Identifier, IdentifierNamespace, Name, NameTable, NameTableErro
 
 fn populated() -> NameTable {
     let mut table = NameTable::new(IdentifierNamespace::Schema);
-    table.intern(Name::new("CommitSequence")).expect("schema allocation");
+    table
+        .intern(Name::new("CommitSequence"))
+        .expect("schema allocation");
     table.intern(Name::new("Field")).expect("schema allocation");
     table
 }
@@ -20,8 +22,12 @@ fn a_dropped_transaction_leaves_the_table_byte_identical() {
 
     {
         let mut transaction = table.begin();
-        transaction.intern(Name::new("Speculative")).expect("staged allocation");
-        transaction.intern(Name::new("AnotherOne")).expect("staged allocation");
+        transaction
+            .intern(Name::new("Speculative"))
+            .expect("staged allocation");
+        transaction
+            .intern(Name::new("AnotherOne"))
+            .expect("staged allocation");
         // Dropped without commit: an implicit, effect-free rollback.
     }
 
@@ -39,7 +45,9 @@ fn an_explicit_rollback_leaves_the_table_byte_identical() {
     let before_bytes = table.to_archive_bytes().unwrap();
 
     let mut transaction = table.begin();
-    transaction.intern(Name::new("Speculative")).expect("staged allocation");
+    transaction
+        .intern(Name::new("Speculative"))
+        .expect("staged allocation");
     transaction.rollback();
 
     assert_eq!(
@@ -54,7 +62,9 @@ fn a_commit_merges_staged_names_at_their_staged_identifiers() {
     let before_len = table.len();
 
     let mut transaction = table.begin();
-    let staged = transaction.intern(Name::new("Committed")).expect("staged allocation");
+    let staged = transaction
+        .intern(Name::new("Committed"))
+        .expect("staged allocation");
     // The staged identifier occupies the index above the committed table.
     assert_eq!(
         staged,
@@ -72,7 +82,9 @@ fn a_committed_name_dedups_inside_a_transaction_without_staging() {
     let committed = table.intern(Name::new("Field")).expect("schema allocation");
 
     let mut transaction = table.begin();
-    let again = transaction.intern(Name::new("Field")).expect("staged lookup");
+    let again = transaction
+        .intern(Name::new("Field"))
+        .expect("staged lookup");
     assert_eq!(again, committed);
     assert_eq!(transaction.staged_count(), 0);
 }
@@ -81,7 +93,9 @@ fn a_committed_name_dedups_inside_a_transaction_without_staging() {
 fn a_staged_identifier_resolves_within_the_transaction() {
     let mut table = populated();
     let mut transaction = table.begin();
-    let staged = transaction.intern(Name::new("Speculative")).expect("staged allocation");
+    let staged = transaction
+        .intern(Name::new("Speculative"))
+        .expect("staged allocation");
     assert_eq!(transaction.resolve(staged).unwrap().as_str(), "Speculative");
 }
 

@@ -5,7 +5,9 @@ use name_table::{IdentifierNamespace, Name, NameTable};
 #[test]
 fn a_transparent_alias_decodes_to_its_target_identifier_and_remains_emittable() {
     let mut schema = NameTable::new(IdentifierNamespace::Schema);
-    let commit_log = schema.intern(Name::new("CommitLog")).expect("schema allocation");
+    let commit_log = schema
+        .intern(Name::new("CommitLog"))
+        .expect("schema allocation");
     schema
         .add_alias(commit_log, Name::new("Journal"))
         .expect("the schema owns the target");
@@ -32,7 +34,9 @@ fn a_transparent_alias_decodes_to_its_target_identifier_and_remains_emittable() 
 #[test]
 fn a_composed_consumer_borrows_alias_resolution_without_copying_it() {
     let mut schema = NameTable::new(IdentifierNamespace::Schema);
-    let target = schema.intern(Name::new("CommitLog")).expect("schema allocation");
+    let target = schema
+        .intern(Name::new("CommitLog"))
+        .expect("schema allocation");
     schema
         .add_alias(target, Name::new("Journal"))
         .expect("the schema owns the target");

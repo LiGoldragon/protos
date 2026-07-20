@@ -4,9 +4,13 @@ use name_table::{IdentifierNamespace, Name, NameTable};
 
 fn populated() -> NameTable {
     let mut table = NameTable::new(IdentifierNamespace::Schema);
-    table.intern(Name::new("CommitSequence")).expect("schema allocation");
+    table
+        .intern(Name::new("CommitSequence"))
+        .expect("schema allocation");
     table.intern(Name::new("Field")).expect("schema allocation");
-    table.intern(Name::new("TypeReference")).expect("schema allocation");
+    table
+        .intern(Name::new("TypeReference"))
+        .expect("schema allocation");
     table
 }
 
@@ -45,8 +49,12 @@ fn identity_is_stable_across_a_round_trip() {
 fn tables_with_different_names_have_different_identities() {
     let table = populated();
     let mut other = NameTable::new(IdentifierNamespace::Schema);
-    other.intern(Name::new("CommitSequence")).expect("schema allocation");
+    other
+        .intern(Name::new("CommitSequence"))
+        .expect("schema allocation");
     other.intern(Name::new("Field")).expect("schema allocation");
-    other.intern(Name::new("Renamed")).expect("schema allocation");
+    other
+        .intern(Name::new("Renamed"))
+        .expect("schema allocation");
     assert_ne!(table.identity().unwrap(), other.identity().unwrap());
 }

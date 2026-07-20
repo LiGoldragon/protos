@@ -5,8 +5,12 @@ use name_table::{Identifier, IdentifierNamespace, Name, NameTable, NameTableErro
 #[test]
 fn composition_keeps_borrowed_schema_identifiers_stable() {
     let mut schema = NameTable::new(IdentifierNamespace::Schema);
-    let sequence = schema.intern(Name::new("CommitSequence")).expect("schema allocation");
-    let field = schema.intern(Name::new("Field")).expect("schema allocation");
+    let sequence = schema
+        .intern(Name::new("CommitSequence"))
+        .expect("schema allocation");
+    let field = schema
+        .intern(Name::new("Field"))
+        .expect("schema allocation");
 
     let logos = NameTable::new(IdentifierNamespace::Logos)
         .compose(&schema)
@@ -23,12 +27,16 @@ fn composition_keeps_borrowed_schema_identifiers_stable() {
 #[test]
 fn target_names_allocate_only_in_the_target_home_namespace() {
     let mut schema = NameTable::new(IdentifierNamespace::Schema);
-    schema.intern(Name::new("CommitSequence")).expect("schema allocation");
+    schema
+        .intern(Name::new("CommitSequence"))
+        .expect("schema allocation");
     let mut logos = NameTable::new(IdentifierNamespace::Logos)
         .compose(&schema)
         .expect("compose schema slice");
 
-    let logos_only = logos.intern(Name::new("LogosOnly")).expect("Logos allocation");
+    let logos_only = logos
+        .intern(Name::new("LogosOnly"))
+        .expect("Logos allocation");
 
     assert_eq!(logos_only, Identifier::Logos(0));
     assert_eq!(logos.resolve(logos_only).unwrap().as_str(), "LogosOnly");
@@ -38,12 +46,17 @@ fn target_names_allocate_only_in_the_target_home_namespace() {
 #[test]
 fn a_borrowed_name_resolves_without_copying_or_reinterning() {
     let mut schema = NameTable::new(IdentifierNamespace::Schema);
-    let field = schema.intern(Name::new("Field")).expect("schema allocation");
+    let field = schema
+        .intern(Name::new("Field"))
+        .expect("schema allocation");
     let mut logos = NameTable::new(IdentifierNamespace::Logos)
         .compose(&schema)
         .expect("compose schema slice");
 
-    assert_eq!(logos.intern(Name::new("Field")).expect("borrowed lookup"), field);
+    assert_eq!(
+        logos.intern(Name::new("Field")).expect("borrowed lookup"),
+        field
+    );
     assert_eq!(
         logos.len(),
         0,

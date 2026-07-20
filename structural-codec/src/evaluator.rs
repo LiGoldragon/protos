@@ -51,7 +51,9 @@ impl DecodeDraft {
                 Box::new(head.resolve(interner)?),
                 Box::new(payload.resolve(interner)?),
             ),
-            Self::Delegated(inner) => StructuralValue::Delegated(Box::new(inner.resolve(interner)?)),
+            Self::Delegated(inner) => {
+                StructuralValue::Delegated(Box::new(inner.resolve(interner)?))
+            }
             Self::Chosen {
                 constructor,
                 payload,

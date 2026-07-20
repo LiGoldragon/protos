@@ -53,7 +53,9 @@ impl EncodedConversion for ComposeConversion {
 #[test]
 fn typed_conversion_borrows_source_names_without_text_or_copying() {
     let mut names = NameTable::new(IdentifierNamespace::Schema);
-    let source_name = names.intern(Name::new("Source")).expect("schema allocation");
+    let source_name = names
+        .intern(Name::new("Source"))
+        .expect("schema allocation");
     let source = SourceForm { name: source_name };
 
     let converted = ComposeConversion.convert(&source, &names).expect("convert");

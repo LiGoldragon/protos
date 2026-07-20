@@ -71,7 +71,7 @@ cargo test           # inner-loop tests
 
 ## Status
 
-Version 0.3.0 removes transparent alias storage and introduces the sliced identifier archive layout. Existing
+Version 0.5.0 removes transparent alias storage; the sliced identifier archive layout remains in place. Existing
 flat-table archives are intentionally not decoded as sliced data: consumers must
 advance in the producer-to-consumer train and regenerate their encoded/name-table
 pairs under the new layout.

@@ -11,9 +11,10 @@
 //!
 //! - [`Identifier`] — a closed namespace enum whose variants carry `u16` local
 //!   allocations, so identity is never flat-integer arithmetic.
-//! - [`NameTable`] — one component's composed view: an owned append target plus
-//!   borrowed read-only namespace slices, with [`intern`](NameTable::intern) and
-//!   [`resolve`](NameTable::resolve).
+//! - [`NameTable`] — one component's composed view: a component-owned home
+//!   namespace plus complete borrowed read-only namespace slices, with
+//!   [`intern`](NameTable::intern) and [`resolve`](NameTable::resolve). Composition
+//!   preserves slices without copying, flattening, or renumbering identifiers.
 //! - [`NameTransaction`] — a speculative interning overlay that merges on commit,
 //!   so a failed decode alternative leaves no allocation effect (the accepted
 //!   transactional-interning hardening).

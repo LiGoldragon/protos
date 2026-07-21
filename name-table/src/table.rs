@@ -156,10 +156,12 @@ impl NameSlice {
 /// borrows its slice. That lifecycle keeps the borrowed view immutable and makes
 /// namespace-local identifiers stable.
 ///
-/// `NameTable` implements [`Clone`] because the structural codec's `Converted`
-/// output is cloneable. Cloning copies only the derived lookup accelerator; its home and
-/// every borrowed source slice remain the same `Arc` handles. It never flattens,
-/// renumbers, or copies a borrowed namespace slice, and preserves the source's
+/// `NameTable` implements [`Clone`] because the structural codec's public `Converted`
+/// output is cloneable. A clone copies only the derived lookup accelerator; its home and
+/// every borrowed source slice remain the same `Arc` handles. Sharing the home `Arc`
+/// deliberately seals it in both values instead of using copy-on-write: clones cannot
+/// acquire divergent mutable ownership of one component namespace. Cloning never
+/// flattens, renumbers, or copies a borrowed namespace slice, and preserves the
 /// sealed-home lifecycle.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NameTable {

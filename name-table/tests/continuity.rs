@@ -89,6 +89,30 @@ fn multi_hop_composition_resolves_each_source_namespace() {
 }
 
 #[test]
+fn cloning_an_uncomposed_table_seals_the_shared_home_in_both_values() {
+    let mut original = NameTable::new(IdentifierNamespace::Schema);
+    original
+        .intern(Name::new("Entry"))
+        .expect("schema allocation before cloning");
+    let mut cloned = original.clone();
+
+    // Clone shares the home Arc rather than using copy-on-write, so neither value
+    // can diverge by mutating the component-owned namespace.
+    assert!(matches!(
+        original.intern(Name::new("OriginalOnly")),
+        Err(NameTableError::HomeSliceBorrowed {
+            operation: "intern a name"
+        })
+    ));
+    assert!(matches!(
+        cloned.intern(Name::new("CloneOnly")),
+        Err(NameTableError::HomeSliceBorrowed {
+            operation: "intern a name"
+        })
+    ));
+}
+
+#[test]
 fn cloning_a_composed_table_keeps_borrowed_slices_shared_and_sealed() {
     let mut schema = NameTable::new(IdentifierNamespace::Schema);
     let entry = schema

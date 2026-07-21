@@ -38,13 +38,46 @@ fn round_trip_preserves_every_variant_identifier() {
 }
 
 #[test]
-fn archive_corruption_returns_a_typed_deserialization_error() {
+fn archive_payload_corruption_returns_a_typed_deserialization_error() {
     let bytes = populated().to_archive_bytes().expect("serialize");
     let truncated = &bytes.as_ref()[..bytes.len() - 1];
 
     assert!(matches!(
         NameTable::from_archive_bytes(truncated),
         Err(NameTableError::Deserialize(_))
+    ));
+}
+
+#[test]
+fn corrupt_archive_envelope_returns_a_typed_error() {
+    assert!(matches!(
+        NameTable::from_archive_bytes(b"not a name-table archive"),
+        Err(NameTableError::InvalidArchiveEnvelope)
+    ));
+}
+
+#[test]
+fn unsupported_archive_version_returns_a_typed_error() {
+    let mut bytes = populated().to_archive_bytes().expect("serialize");
+    // The current envelope is `NTABLE\\0\\0` followed by a little-endian u16
+    // version. Keep this witness at the wire boundary rather than adding a
+    // compatibility decoder for the old raw payload.
+    bytes[8..10].copy_from_slice(&2_u16.to_le_bytes());
+
+    assert!(matches!(
+        NameTable::from_archive_bytes(bytes.as_ref()),
+        Err(NameTableError::UnsupportedArchiveVersion { found: 2 })
+    ));
+}
+
+#[test]
+fn legacy_raw_archive_layout_returns_a_typed_envelope_error() {
+    let bytes = populated().to_archive_bytes().expect("serialize");
+    let raw_payload = &bytes.as_ref()[10..];
+
+    assert!(matches!(
+        NameTable::from_archive_bytes(raw_payload),
+        Err(NameTableError::InvalidArchiveEnvelope)
     ));
 }
 

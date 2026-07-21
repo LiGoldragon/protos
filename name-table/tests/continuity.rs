@@ -65,6 +65,50 @@ fn a_borrowed_name_resolves_without_copying_or_reinterning() {
 }
 
 #[test]
+fn multi_hop_composition_resolves_each_source_namespace() {
+    let mut schema = NameTable::new(IdentifierNamespace::Schema);
+    let schema_name = schema
+        .intern(Name::new("SchemaEntry"))
+        .expect("schema allocation");
+
+    let mut nomos = NameTable::new(IdentifierNamespace::Nomos)
+        .compose(&schema)
+        .expect("compose schema into nomos");
+    let nomos_name = nomos
+        .intern(Name::new("NomosEntry"))
+        .expect("nomos allocation");
+
+    let logos = NameTable::new(IdentifierNamespace::Logos)
+        .compose(&nomos)
+        .expect("compose completed nomos closure into logos");
+
+    assert_eq!(logos.resolve(schema_name).unwrap().as_str(), "SchemaEntry");
+    assert_eq!(logos.resolve(nomos_name).unwrap().as_str(), "NomosEntry");
+    assert_eq!(logos.lookup(&Name::new("SchemaEntry")), Some(schema_name));
+    assert_eq!(logos.lookup(&Name::new("NomosEntry")), Some(nomos_name));
+}
+
+#[test]
+fn cloning_a_composed_table_keeps_borrowed_slices_shared_and_sealed() {
+    let mut schema = NameTable::new(IdentifierNamespace::Schema);
+    let entry = schema
+        .intern(Name::new("Entry"))
+        .expect("schema allocation");
+    let logos = NameTable::new(IdentifierNamespace::Logos)
+        .compose(&schema)
+        .expect("compose schema slice");
+
+    let cloned = logos.clone();
+    assert_eq!(cloned.resolve(entry).unwrap().as_str(), "Entry");
+    assert!(matches!(
+        schema.intern(Name::new("TooLate")),
+        Err(NameTableError::HomeSliceBorrowed {
+            operation: "intern a name"
+        })
+    ));
+}
+
+#[test]
 fn a_namespace_can_only_be_composed_once() {
     let schema = NameTable::new(IdentifierNamespace::Schema);
     let logos = NameTable::new(IdentifierNamespace::Logos)
@@ -90,6 +134,47 @@ fn composition_rejects_an_ambiguous_canonical_name_index() {
 
     assert!(matches!(
         logos.compose(&schema),
+        Err(NameTableError::NameIndexCollision {
+            first: Identifier::Logos(0),
+            second: Identifier::Schema(0),
+            ..
+        })
+    ));
+}
+
+#[test]
+fn composition_rejects_a_namespace_imported_through_another_table() {
+    let schema = NameTable::new(IdentifierNamespace::Schema);
+    let nomos = NameTable::new(IdentifierNamespace::Nomos)
+        .compose(&schema)
+        .expect("compose schema into nomos");
+    let logos = NameTable::new(IdentifierNamespace::Logos)
+        .compose(&nomos)
+        .expect("compose nomos closure into logos");
+
+    assert!(matches!(
+        logos.compose(&schema),
+        Err(NameTableError::DuplicateNamespace(
+            IdentifierNamespace::Schema
+        ))
+    ));
+}
+
+#[test]
+fn composition_rejects_a_canonical_name_in_a_transitive_import() {
+    let mut schema = NameTable::new(IdentifierNamespace::Schema);
+    schema
+        .intern(Name::new("Entry"))
+        .expect("schema allocation");
+    let nomos = NameTable::new(IdentifierNamespace::Nomos)
+        .compose(&schema)
+        .expect("compose schema into nomos");
+
+    let mut logos = NameTable::new(IdentifierNamespace::Logos);
+    logos.intern(Name::new("Entry")).expect("logos allocation");
+
+    assert!(matches!(
+        logos.compose(&nomos),
         Err(NameTableError::NameIndexCollision {
             first: Identifier::Logos(0),
             second: Identifier::Schema(0),

@@ -30,6 +30,21 @@ pub enum NameTableError {
     #[error("the {0:?} identifier namespace exhausted its u16 allocation range")]
     NamespaceCapacity(IdentifierNamespace),
 
+    /// An archive's validated name-cardinality metadata exceeds the namespace's
+    /// representable identifier range. This is checked before rkyv allocates a
+    /// `Vec<Name>` during deserialization.
+    #[error("the archived name slice declares {names} names, exceeding its u16 capacity")]
+    ArchivedNamespaceCapacity { names: usize },
+
+    /// The archive does not carry this boundary's magic envelope. Legacy raw
+    /// rkyv payloads are deliberately unsupported.
+    #[error("the name-table archive envelope is missing or corrupt")]
+    InvalidArchiveEnvelope,
+
+    /// The archive envelope names a wire layout this version does not support.
+    #[error("the name-table archive version {found} is unsupported")]
+    UnsupportedArchiveVersion { found: u16 },
+
     /// An archive contains two canonical names in one namespace slice.
     #[error("the archived name slice repeats canonical name {0:?}")]
     DuplicateCanonicalName(Name),

@@ -38,6 +38,60 @@ struct NameSlice {
     names: Vec<Name>,
 }
 
+/// The storage-wire version of one home-slice archive.
+///
+/// This is intentionally separate from [`NameTableDomain`]'s hash layout
+/// version: the former selects a persisted byte decoder, while the latter
+/// separates content identities.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct NameTableArchiveVersion(u16);
+
+impl NameTableArchiveVersion {
+    const CURRENT: Self = Self(1);
+}
+
+/// The typed storage-wire header for one home-slice archive.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct NameTableArchiveEnvelope {
+    version: NameTableArchiveVersion,
+}
+
+impl NameTableArchiveEnvelope {
+    const MAGIC: [u8; 8] = *b"NTABLE\0\0";
+    const HEADER_LEN: usize = Self::MAGIC.len() + std::mem::size_of::<u16>();
+
+    const fn current() -> Self {
+        Self {
+            version: NameTableArchiveVersion::CURRENT,
+        }
+    }
+
+    fn seal(self, payload: &[u8]) -> rkyv::util::AlignedVec {
+        let mut bytes = rkyv::util::AlignedVec::with_capacity(Self::HEADER_LEN + payload.len());
+        bytes.extend_from_slice(&Self::MAGIC);
+        bytes.extend_from_slice(&self.version.0.to_le_bytes());
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    fn open(bytes: &[u8]) -> Result<&[u8], NameTableError> {
+        if bytes.len() < Self::HEADER_LEN || bytes[..Self::MAGIC.len()] != Self::MAGIC {
+            return Err(NameTableError::InvalidArchiveEnvelope);
+        }
+
+        let version_bytes: [u8; std::mem::size_of::<u16>()] = bytes
+            [Self::MAGIC.len()..Self::HEADER_LEN]
+            .try_into()
+            .map_err(|_| NameTableError::InvalidArchiveEnvelope)?;
+        let version = NameTableArchiveVersion(u16::from_le_bytes(version_bytes));
+        if version != NameTableArchiveVersion::CURRENT {
+            return Err(NameTableError::UnsupportedArchiveVersion { found: version.0 });
+        }
+
+        Ok(&bytes[Self::HEADER_LEN..])
+    }
+}
+
 impl NameSlice {
     fn new(namespace: IdentifierNamespace) -> Self {
         Self {
@@ -101,6 +155,12 @@ impl NameSlice {
 /// A source component completes its own allocations before another component
 /// borrows its slice. That lifecycle keeps the borrowed view immutable and makes
 /// namespace-local identifiers stable.
+///
+/// `NameTable` implements [`Clone`] because the structural codec's `Converted`
+/// output is cloneable. Cloning copies only the derived lookup accelerator; its home and
+/// every borrowed source slice remain the same `Arc` handles. It never flattens,
+/// renumbers, or copies a borrowed namespace slice, and preserves the source's
+/// sealed-home lifecycle.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NameTable {
     home: Arc<NameSlice>,
@@ -146,19 +206,24 @@ impl NameTable {
         self.home.names.is_empty()
     }
 
-    /// Borrow a completed slice into this component's one composed table.
+    /// Borrow every completed source slice into this component's composed table.
     ///
-    /// The source's names retain their original identifiers. Borrowing a second
-    /// source with the same namespace is rejected, because an identifier variant
-    /// has one authoritative slice.
+    /// The source's names retain their original identifiers. A composed source
+    /// contributes both its home and every slice it already borrows, each by its
+    /// existing `Arc` handle. Borrowing a namespace already represented here is
+    /// rejected, because an identifier variant has one authoritative slice.
     pub fn compose(&self, source: &NameTable) -> Result<Self, NameTableError> {
-        let namespace = source.namespace();
-        if namespace == self.namespace() || self.borrowed.contains_key(&namespace) {
-            return Err(NameTableError::DuplicateNamespace(namespace));
+        let mut borrowed = self.borrowed.clone();
+        let source_slices =
+            std::iter::once((&source.home.namespace, &source.home)).chain(source.borrowed.iter());
+
+        for (namespace, slice) in source_slices {
+            if *namespace == self.namespace() || borrowed.contains_key(namespace) {
+                return Err(NameTableError::DuplicateNamespace(*namespace));
+            }
+            borrowed.insert(*namespace, Arc::clone(slice));
         }
 
-        let mut borrowed = self.borrowed.clone();
-        borrowed.insert(namespace, Arc::clone(&source.home));
         Self::from_slices(Arc::clone(&self.home), borrowed)
     }
 
@@ -268,20 +333,32 @@ impl NameTable {
         Ok(())
     }
 
-    /// The home slice's canonical rkyv bytes. Borrowed slices are deliberately
-    /// excluded: they remain independently content-identified and are composed
-    /// again by their consumer rather than copied into this component's state.
+    /// The home slice's versioned canonical archive bytes. Borrowed slices are
+    /// deliberately excluded: they remain independently content-identified and
+    /// are composed again by their consumer rather than copied into this
+    /// component's state.
     pub fn to_archive_bytes(&self) -> Result<rkyv::util::AlignedVec, NameTableError> {
-        self.home
+        let payload = self
+            .home
             .as_ref()
             .to_archive_bytes()
-            .map_err(|error| NameTableError::Serialize(error.to_string()))
+            .map_err(|error| NameTableError::Serialize(error.to_string()))?;
+        Ok(NameTableArchiveEnvelope::current().seal(payload.as_ref()))
     }
 
-    /// Reconstruct one uncomposed home slice from canonical archive bytes.
-    /// Consumers compose required borrowed slices explicitly after loading.
+    /// Reconstruct one uncomposed home slice from versioned canonical archive
+    /// bytes. Consumers compose required borrowed slices explicitly after
+    /// loading. Legacy raw rkyv bytes are rejected rather than bridged.
     pub fn from_archive_bytes(bytes: &[u8]) -> Result<Self, NameTableError> {
-        let home = NameSlice::from_archive_bytes(bytes)
+        let payload = NameTableArchiveEnvelope::open(bytes)?;
+        let archived = rkyv::access::<ArchivedNameSlice, rkyv::rancor::Error>(payload)
+            .map_err(|error| NameTableError::Deserialize(error.to_string()))?;
+        let names = archived.names.len();
+        if names > usize::from(u16::MAX) + 1 {
+            return Err(NameTableError::ArchivedNamespaceCapacity { names });
+        }
+
+        let home = NameSlice::from_archive_bytes(payload)
             .map_err(|error| NameTableError::Deserialize(error.to_string()))?;
         home.validate()?;
         Self::from_slices(Arc::new(home), BTreeMap::new())
@@ -311,25 +388,29 @@ impl NameInterner for NameTable {
 mod archive_tests {
     use content_identity::PortableArchive;
 
-    use super::{Name, NameSlice, NameTable};
+    use super::{Name, NameSlice, NameTable, NameTableArchiveEnvelope};
     use crate::error::NameTableError;
     use crate::identifier::IdentifierNamespace;
 
     #[test]
-    fn oversized_archived_slice_returns_a_typed_capacity_error() {
+    fn oversized_validated_metadata_is_rejected_before_name_deserialization() {
+        // This is deliberately only one namespace beyond its u16 range, not a
+        // million-name construction. `from_archive_bytes` reports the archived
+        // cardinality before rkyv can allocate a deserialized `Vec<Name>`.
+        let names = usize::from(u16::MAX) + 2;
         let oversized = NameSlice {
             namespace: IdentifierNamespace::Schema,
-            names: vec![Name::new("Repeated"); usize::from(u16::MAX) + 2],
+            names: vec![Name::new("Repeated"); names],
         };
-        let bytes = oversized
+        let payload = oversized
             .to_archive_bytes()
             .expect("archive oversized slice");
+        let bytes = NameTableArchiveEnvelope::current().seal(payload.as_ref());
 
         assert!(matches!(
             NameTable::from_archive_bytes(bytes.as_ref()),
-            Err(NameTableError::NamespaceCapacity(
-                IdentifierNamespace::Schema
-            ))
+            Err(NameTableError::ArchivedNamespaceCapacity { names: archived_names })
+                if archived_names == names
         ));
     }
 }

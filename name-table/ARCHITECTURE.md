@@ -15,8 +15,9 @@ The psyche's settled rulings this crate embodies:
 
 - All `Core*` types are stringless; every identifier is an index into the
   corresponding `NameTable`, and all names live here.
-- One continuous identifier space extends schema's allocation into logos
-  (`extend_from`): a carried-over identifier keeps its exact index.
+- Each component owns one namespace-local identifier slice; a consumer composes
+  completed source slices by borrowing them, never by copying, flattening, or
+  renumbering their names.
 - The `NameTable` is excluded from `Core` content hashes by construction —
   renaming is a `NameTable`-only edit and never moves `Core` identity. Names and
   `Core` values never serialize together.
@@ -37,17 +38,20 @@ types in later train slices.
 
 ## Components and boundaries
 
-- `Identifier` (`src/identifier.rs`) — a `u32` newtype, rkyv-archivable, the index
-  a `Core` value carries in place of a string.
+- `Identifier` (`src/identifier.rs`) — a closed rkyv-archivable namespace enum;
+  every variant carries its own local `u16`, and a `Core` value carries it in
+  place of a string.
 - `Name` (`src/name.rs`) — the interned name and the one home of the derived-name
   rule. The two source walkers (`schema`'s `field_name`, `schema-rust`'s
   `screaming`) are the same word-boundary walk under two casings; `DerivedCasing`
   names that difference as data so the loop is written once. `pascal_case` is the
   inverse round-trip partner.
-- `NameTable` (`src/table.rs`) — the interned, append-only, index-stable
-  identifier space. Its canonical archivable state is the ordered name vector
-  alone; the name-to-identifier lookup is a derived accelerator, rebuilt on load
-  and never serialized. `NameTableDomain` gives the table its own content
+- `NameTable` (`src/table.rs`) — the interned, composable identifier space. It
+  owns one mutable home `NameSlice` and borrows completed source slices through
+  shared handles; borrowed names are never copied or archived into the home.
+  The home slice's canonical archive includes its namespace and ordered names;
+  the name-to-identifier lookup is a derived accelerator, rebuilt with typed
+  validation on load. `NameTableDomain` gives each owned slice its own content
   identity for co-versioned sibling storage.
 - `NameTransaction` (`src/transaction.rs`) — the speculative interning overlay.
 - `NameResolver` / `NameInterner` (`src/boundary.rs`) — the two codec-boundary
@@ -101,10 +105,10 @@ which the `walkers` tests assert against the exact ported expectations.
 
 ## Invariants
 
-- Interning is deterministic: a name interns to the same identifier every time
-  within one table lineage.
-- Identifiers are index-stable: an identifier's index never changes once
-  allocated, so `extend_from` is a continuous space.
+- Interning is deterministic: a canonical name interns to the same identifier
+  every time within one composed table.
+- Identifiers are namespace-local and index-stable: a completed slice retains
+  each exact variant and local index when another table borrows it.
 - A rolled-back or dropped transaction leaves the table byte-identical, down to
   `to_archive_bytes` and `identity` (proven in `tests/transaction.rs`).
 - `field_name`/`screaming` reproduce the two source walkers exactly (proven in
@@ -128,7 +132,8 @@ which the `walkers` tests assert against the exact ported expectations.
 - `src/projection.rs` — `TextualProjection`.
 - `src/error.rs` — `NameTableError`.
 - `tests/interning.rs` — determinism, resolve round-trips, boundary capabilities.
-- `tests/continuity.rs` — `extend_from` index stability.
+- `tests/continuity.rs` — borrowed-slice composition, duplicate namespace, and
+  sealed-home behavior.
 - `tests/transaction.rs` — rollback/commit and the interning-atomicity law.
 - `tests/walkers.rs` — derived-name outputs vs the ported source expectations.
 - `tests/archive.rs` — portable archive round-trip of a populated table.

@@ -34,29 +34,34 @@ enum DecodeDraft {
 }
 
 impl DecodeDraft {
-    fn resolve(self, interner: &mut impl NameInterner) -> StructuralValue {
-        match self {
-            Self::Atom(text) => StructuralValue::Atom(interner.intern(Name::new(text))),
+    fn resolve(
+        self,
+        interner: &mut impl NameInterner,
+    ) -> Result<StructuralValue, name_table::NameTableError> {
+        Ok(match self {
+            Self::Atom(text) => StructuralValue::Atom(interner.intern(Name::new(text))?),
             Self::Scalar(scalar) => StructuralValue::Scalar(scalar),
             Self::Delimited(children) => StructuralValue::Delimited(
                 children
                     .into_iter()
                     .map(|child| child.resolve(interner))
-                    .collect(),
+                    .collect::<Result<_, _>>()?,
             ),
             Self::Application(head, payload) => StructuralValue::Application(
-                Box::new(head.resolve(interner)),
-                Box::new(payload.resolve(interner)),
+                Box::new(head.resolve(interner)?),
+                Box::new(payload.resolve(interner)?),
             ),
-            Self::Delegated(inner) => StructuralValue::Delegated(Box::new(inner.resolve(interner))),
+            Self::Delegated(inner) => {
+                StructuralValue::Delegated(Box::new(inner.resolve(interner)?))
+            }
             Self::Chosen {
                 constructor,
                 payload,
             } => StructuralValue::Chosen {
                 constructor,
-                payload: Box::new(payload.resolve(interner)),
+                payload: Box::new(payload.resolve(interner)?),
             },
-        }
+        })
     }
 }
 
@@ -100,7 +105,7 @@ impl<'table> StructuralEvaluator<'table> {
     ) -> Result<StructuralValue, DecodeError> {
         names.try_intern(|transaction: &mut NameTransaction<'_>| {
             let draft = self.match_type(expected, block, &[])?;
-            Ok(draft.resolve(transaction))
+            draft.resolve(transaction).map_err(DecodeError::from)
         })
     }
 

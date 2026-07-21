@@ -5,7 +5,7 @@
 //! valid inputs with malformed ones (wrong delimiter, unknown constructor shape,
 //! failed leaf parse) so error agreement is proven alongside value agreement.
 
-use name_table::NameTable;
+use name_table::{IdentifierNamespace, NameTable};
 use raw_discovery::{Block, Recognizer};
 use structural_codec::StructuralEvaluator;
 use structural_codec::conformance::{ConformanceHarness, GeneratedCodec};
@@ -107,13 +107,13 @@ fn law_five_the_generated_codecs_match_the_evaluator() {
 fn rejected_by_both<T: GeneratedCodec>(evaluator: &StructuralEvaluator<'_>, source: &str) {
     let block = &blocks(&[source])[0];
 
-    let mut generated_names = NameTable::new();
+    let mut generated_names = NameTable::new(IdentifierNamespace::Fixture);
     assert!(
         T::decode(block, &mut generated_names).is_err(),
         "generated codec should reject {source}",
     );
 
-    let mut evaluator_names = NameTable::new();
+    let mut evaluator_names = NameTable::new(IdentifierNamespace::Fixture);
     assert!(
         evaluator
             .decode(T::CORE_TYPE, block, &mut evaluator_names)

@@ -25,11 +25,13 @@ identifiers has no name in its bytes, so:
 
 ## What it carries
 
-- `Identifier` — the `u32` index a `Core` value holds in place of a string.
-- `NameTable` — an interned, append-only, index-stable identifier space:
-  `intern`, `resolve`, and `extend_from`. `extend_from` is the one continuous
-  identifier space that carries schema's allocation into logos: the extension
-  begins with every base name at its exact identifier, and new names append above.
+- `Identifier` — a closed namespace variant with a namespace-local `u16` index;
+  a `Core` value holds it in place of a string.
+- `NameTable` — an interned, composable identifier space with exactly one owned
+  home slice. `intern` allocates only in that home namespace; `compose` borrows
+  another completed slice without copying names, flattening state, or renumbering
+  identifiers. An owned slice archives independently and is composed again by its
+  consumer after loading.
 - `NameTransaction` — a speculative interning overlay that merges on commit. A
   failed decode alternative leaves no allocation effect, because the committed
   table is never mutated until commit — a dropped transaction is an effect-free

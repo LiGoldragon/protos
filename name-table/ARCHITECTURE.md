@@ -49,10 +49,11 @@ types in later train slices.
 - `NameTable` (`src/table.rs`) — the interned, composable identifier space. It
   owns one mutable home `NameSlice` and borrows completed source slices through
   shared handles; borrowed names are never copied or archived into the home.
-  The home slice's canonical archive includes its namespace and ordered names;
-  the name-to-identifier lookup is a derived accelerator, rebuilt with typed
-  validation on load. `NameTableDomain` gives each owned slice its own content
-  identity for co-versioned sibling storage.
+  The home slice's canonical archive is an explicitly versioned envelope
+  containing its owned `NameSlice`: the namespace and ordered canonical names.
+  Borrowed slices are excluded. The name-to-identifier lookup is a derived
+  accelerator, rebuilt with typed validation on load. `NameTableDomain` gives
+  each owned slice its own content identity for co-versioned sibling storage.
 - `NameTransaction` (`src/transaction.rs`) — the speculative interning overlay.
 - `NameResolver` / `NameInterner` (`src/boundary.rs`) — the two codec-boundary
   capabilities, threaded down a codec call tree, never held by a node.
@@ -63,12 +64,15 @@ types in later train slices.
 
 This is structural, not a runtime check. A `Core` value is built from
 `Identifier` indices and holds no names, so no name can enter its content-hash
-pre-image (`content-identity` hashes the stringless bytes). A `NameTable`
-serializes only its ordered names (`to_archive_bytes` over the name vector; the
-lookup index is derived, never archived). The two data shapes have disjoint
-pre-images, so a rename — a table-only edit — cannot move any `Core` address. The
-`archive` and `transaction` test suites prove the byte-level and identity-level
-stability.
+pre-image (`content-identity` hashes the stringless bytes). A `NameTable`'s
+archive wire bytes are an explicitly versioned envelope containing its owned
+`NameSlice`: the namespace and ordered canonical names. Its lookup index is
+derived and never archived, and borrowed slices remain excluded. The archive
+version is separate from `NameTableDomain`'s hash-domain layout version, which
+separates content identities rather than selecting an archive decoder. The two
+data shapes have disjoint pre-images, so a rename — a table-only edit — cannot
+move any `Core` address. The `archive` and `transaction` test suites prove the
+byte-level and identity-level stability.
 
 ## The transactional contract
 
@@ -100,8 +104,9 @@ which the `walkers` tests assert against the exact ported expectations.
   not a boolean.
 - Typed errors at the boundary; no `anyhow`/`eyre`.
 - No unsafe code (`unsafe_code = "forbid"`).
-- A `NameTable`'s archived bytes are its names and nothing else; the lookup index
-  is never serialized.
+- A `NameTable`'s archive wire bytes are an explicitly versioned envelope over
+  its owned `NameSlice` (namespace and ordered canonical names); borrowed slices
+  and the lookup index are never serialized.
 
 ## Invariants
 

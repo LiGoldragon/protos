@@ -28,7 +28,8 @@ fn round_trip_preserves_every_variant_identifier() {
     let table = populated();
     let restored =
         NameTable::from_archive_bytes(table.to_archive_bytes().unwrap().as_ref()).unwrap();
-    for local in 0..u16::try_from(table.len()).unwrap() {
+    let final_allocated_local = u16::try_from(table.len() - 1).unwrap();
+    for local in 0..=final_allocated_local {
         let identifier = IdentifierNamespace::Schema.identifier(local);
         assert_eq!(
             table.resolve(identifier).unwrap(),

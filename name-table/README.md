@@ -20,8 +20,10 @@ identifiers has no name in its bytes, so:
   over a `Core` value's stringless bytes) never folds a name. A rename is a
   `NameTable`-only edit that changes how identifiers resolve, and can never move
   `Core` identity. Names and `Core` values are structurally incapable of sharing a
-  serialization pre-image — a table's canonical bytes are its ordered names and
-  nothing else.
+  serialization pre-image — a table's archive wire bytes are an explicitly
+  versioned envelope containing its owned `NameSlice`: the namespace and ordered
+  canonical names. The lookup index and borrowed slices are excluded from that
+  archive.
 
 ## What it carries
 

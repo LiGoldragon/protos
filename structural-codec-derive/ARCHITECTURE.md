@@ -102,7 +102,7 @@ prove three independent things:
 1. **Derived == authored.** Every derived entry equals `core-schema`'s hand-authored
    entry, per type. Drift is a failure.
 2. **Signatures agree with Core.** The derived table passes
-   `CoreUniverse::validate_table` (every codec signature equals the Core field
+   `EncodedUniverse::validate_table` (every codec signature equals the Core field
    signature) and `validate_disjoint` (the `Field` constructors are provably distinct).
 3. **Law 5.** The generated codecs agree with the evaluator on all four outputs across
    the family, including typed-error agreement on the three required malformed
@@ -157,5 +157,5 @@ to the release-train flow when it is ready; until then the git pins in `Cargo.to
 No upstream change was required to build this crate: `structural-codec`'s
 `GeneratedCodec` trait, `ConformanceHarness`, the public `StructuralEntry` /
 `ConstructorCodec` / `StructuralForm` / `authoring` surfaces, and `core-schema`'s
-`FixtureFamily` / `CoreUniverse::validate_table` covered decode, encode, entry
+`FixtureFamily` / `EncodedUniverse::validate_table` covered decode, encode, entry
 construction, and validation with no fork.

@@ -5,7 +5,7 @@
 use content_identity::ArchiveError;
 use name_table::NameTableError;
 
-use crate::ids::ScopedCoreTypeId;
+use crate::ids::ScopedEncodedTypeId;
 
 /// A structural table failed conservative disjointness validation: two accepted
 /// decode forms could not be PROVEN structurally distinct, so one might silently
@@ -16,7 +16,7 @@ pub enum DisjointnessError {
         "core type {core_type:?}: decode forms {first} and {second} are not provably disjoint ({reason})"
     )]
     NotProvablyDisjoint {
-        core_type: ScopedCoreTypeId,
+        core_type: ScopedEncodedTypeId,
         first: usize,
         second: usize,
         reason: &'static str,
@@ -28,7 +28,7 @@ pub enum DisjointnessError {
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum DecodeError {
     #[error("no structural entry for expected type {0:?}")]
-    UnknownType(ScopedCoreTypeId),
+    UnknownType(ScopedEncodedTypeId),
     #[error("expected {expected} block, found {found}")]
     BlockKindMismatch {
         expected: &'static str,
@@ -45,11 +45,11 @@ pub enum DecodeError {
     #[error("scalar leaf failed to parse: {0}")]
     ScalarParse(String),
     #[error("transparent delegation cycle through type {0:?}")]
-    DelegationCycle(ScopedCoreTypeId),
+    DelegationCycle(ScopedEncodedTypeId),
     #[error("product form arity {form} did not match the {blocks} sibling blocks")]
     ProductArity { form: usize, blocks: usize },
     #[error("no accepted decode form matched under expected type {core_type:?}")]
-    NoAlternative { core_type: ScopedCoreTypeId },
+    NoAlternative { core_type: ScopedEncodedTypeId },
     #[error(transparent)]
     Names(#[from] NameTableError),
 }
@@ -58,7 +58,7 @@ pub enum DecodeError {
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum EncodeError {
     #[error("no structural entry for expected type {0:?}")]
-    UnknownType(ScopedCoreTypeId),
+    UnknownType(ScopedEncodedTypeId),
     #[error("value chose constructor {chosen}, but the entry has {available} constructors")]
     ConstructorOutOfRange { chosen: u32, available: usize },
     #[error("value shape did not fit the canonical encode form: {0}")]

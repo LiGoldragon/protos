@@ -11,7 +11,7 @@
 //! - its **TextualForm** — one textual VIEW on that EncodedForm, produced and consumed
 //!   through a [`Textual`](crate::textual_form::Textual).
 //!
-//! [`EncodedForm`] marks the truth side. A concrete Core value type (`CoreSchema`, the
+//! [`EncodedForm`] marks the truth side. A concrete Core value type (`EncodedSchema`, the
 //! lowered logos item set) IS an EncodedForm for its language `T`; the marker ties the
 //! value family to the language identity the paired [`TextualForm`](crate::TextualForm)
 //! and [`Textual`](crate::textual_form::Textual) share.
@@ -22,7 +22,7 @@
 //! *real type conversion*: a language layer is converted to the next by moving its
 //! EncodedForm to another EncodedForm, threading a composed nametree — and NO text
 //! appears anywhere on the path. The schema→logos lowering through the Nomos macros is
-//! the first instance: `CoreSchema` (EncodedForm of schema) plus its `NameTable` go in,
+//! the first instance: `EncodedSchema` (EncodedForm of schema) plus its `NameTable` go in,
 //! and the lowered logos items (EncodedForm of logos) plus a `NameTable` with a
 //! component-owned Logos home namespace and complete borrowed source namespace slices
 //! come out, entirely as typed data.
@@ -43,7 +43,7 @@ use name_table::NameTable;
 /// The truth-side marker of the Protos pairing: a stringless, Core-associated encoded
 /// value family — the thing a [`Textual`](crate::textual_form::Textual) views and an
 /// [`EncodedConversion`] moves. Implemented by a language's own Core value type
-/// (`CoreSchema` and the lowered logos item set are the first instances), it carries no
+/// (`EncodedSchema` and the lowered logos item set are the first instances), it carries no
 /// text: names live in the nametree, shapes in the structuretree.
 ///
 /// [`Language`](Self::Language) is the `T` in `EncodedForm<T>` — the identity the paired

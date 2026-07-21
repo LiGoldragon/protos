@@ -11,7 +11,7 @@ use raw_discovery::Block;
 
 use crate::error::{DecodeError, EncodeError};
 use crate::evaluator::StructuralEvaluator;
-use crate::ids::ScopedCoreTypeId;
+use crate::ids::ScopedEncodedTypeId;
 use crate::table::AddressedStructuralTable;
 use crate::value::StructuralValue;
 use crate::writer::CanonicalText;
@@ -19,7 +19,7 @@ use crate::writer::CanonicalText;
 /// The contract a generated codec implements so it can be proven equivalent to the
 /// evaluator over the same fixtures.
 pub trait GeneratedCodec: Sized {
-    const CORE_TYPE: ScopedCoreTypeId;
+    const CORE_TYPE: ScopedEncodedTypeId;
 
     fn decode(block: &Block, names: &mut NameTable) -> Result<Self, DecodeError>;
     fn encode(&self, resolver: &dyn NameResolver) -> Result<Block, EncodeError>;
@@ -46,11 +46,11 @@ pub enum ConformanceError {
 /// Runs the conformance contract for one expected type over a fixture set.
 pub struct ConformanceHarness<'table> {
     evaluator: StructuralEvaluator<'table>,
-    expected: ScopedCoreTypeId,
+    expected: ScopedEncodedTypeId,
 }
 
 impl<'table> ConformanceHarness<'table> {
-    pub fn new(table: &'table AddressedStructuralTable, expected: ScopedCoreTypeId) -> Self {
+    pub fn new(table: &'table AddressedStructuralTable, expected: ScopedEncodedTypeId) -> Self {
         Self {
             evaluator: StructuralEvaluator::new(table),
             expected,

@@ -8,11 +8,11 @@ use name_table::{IdentifierNamespace, NameTable};
 use raw_discovery::{Block, Recognizer};
 use structural_codec::fixture::{DATABASE_MARKER, DOCUMENTATION, FLOAT, FixtureBuilder};
 use structural_codec::{
-    AddressedStructuralTable, ConstructorCodec, CoreConstructorId, PositionalSignature,
-    ScalarValue, ScopedCoreTypeId, StructuralEntry, StructuralEvaluator, StructuralForm,
+    AddressedStructuralTable, ConstructorCodec, EncodedConstructorId, PositionalSignature,
+    ScalarValue, ScopedEncodedTypeId, StructuralEntry, StructuralEvaluator, StructuralForm,
     StructuralRevision, StructuralValue, TableIdentityPayload,
 };
-use structural_codec::{CoreLayoutIdentity, RawProfileIdentity};
+use structural_codec::{EncodedLayoutIdentity, RawProfileIdentity};
 
 fn recognize_single(source: &str) -> Block {
     let document = Recognizer::standard().recognize(source).expect("recognize");
@@ -118,15 +118,15 @@ fn struct_body_decodes_disjoint_field_alternatives() {
 /// the same block) is rejected by the left-recursion guard.
 #[test]
 fn transparent_delegation_cycle_is_rejected() {
-    let type_a = ScopedCoreTypeId::fixture(300);
-    let type_b = ScopedCoreTypeId::fixture(301);
+    let type_a = ScopedEncodedTypeId::fixture(300);
+    let type_b = ScopedEncodedTypeId::fixture(301);
 
-    let single = |core_type: ScopedCoreTypeId, target: ScopedCoreTypeId| {
+    let single = |core_type: ScopedEncodedTypeId, target: ScopedEncodedTypeId| {
         let form = StructuralForm::Delegate(target);
         StructuralEntry::new(
             core_type,
             vec![ConstructorCodec::new(
-                CoreConstructorId::new(core_type, 0),
+                EncodedConstructorId::new(core_type, 0),
                 vec![form.clone()],
                 form,
                 PositionalSignature::default(),
@@ -134,12 +134,12 @@ fn transparent_delegation_cycle_is_rejected() {
         )
     };
 
-    let mut entries: BTreeMap<ScopedCoreTypeId, StructuralEntry> = BTreeMap::new();
+    let mut entries: BTreeMap<ScopedEncodedTypeId, StructuralEntry> = BTreeMap::new();
     entries.insert(type_a, single(type_a, type_b));
     entries.insert(type_b, single(type_b, type_a));
     let payload = TableIdentityPayload {
         core_universe: structural_codec::FIXTURE_UNIVERSE,
-        core_layout_identity: CoreLayoutIdentity([0u8; 32]),
+        core_layout_identity: EncodedLayoutIdentity([0u8; 32]),
         raw_profile_identity: RawProfileIdentity([1u8; 32]),
         committed_lexicon: b"cycle".to_vec(),
         leaf_codec_contracts: Vec::new(),

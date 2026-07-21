@@ -102,7 +102,7 @@ impl TypeSpec {
     /// The scoped Core-type id expression for this type, in the fixture universe.
     fn core_type(&self) -> TokenStream {
         let id = Literal::u32_unsuffixed(self.id);
-        quote! { ::structural_codec::ids::ScopedCoreTypeId::fixture(#id) }
+        quote! { ::structural_codec::ids::ScopedEncodedTypeId::fixture(#id) }
     }
 
     /// A discovered block's kind name, for a mismatch diagnostic's `found` field.
@@ -147,7 +147,7 @@ impl TypeSpec {
             }
 
             impl ::structural_codec::conformance::GeneratedCodec for #name {
-                const CORE_TYPE: ::structural_codec::ids::ScopedCoreTypeId = #core_type;
+                const CORE_TYPE: ::structural_codec::ids::ScopedEncodedTypeId = #core_type;
 
                 fn decode(
                     block: &::raw_discovery::Block,
@@ -199,7 +199,7 @@ impl TypeSpec {
             ::structural_codec::StructuralEntry::new(
                 core_type,
                 ::std::vec![::structural_codec::ConstructorCodec::new(
-                    ::structural_codec::ids::CoreConstructorId::new(core_type, 0),
+                    ::structural_codec::ids::EncodedConstructorId::new(core_type, 0),
                     ::std::vec![form.clone()],
                     form,
                     ::structural_codec::ids::PositionalSignature::default(),
@@ -259,7 +259,7 @@ impl TypeSpec {
             ::structural_codec::StructuralEntry::new(
                 core_type,
                 ::std::vec![::structural_codec::ConstructorCodec::new(
-                    ::structural_codec::ids::CoreConstructorId::new(core_type, 0),
+                    ::structural_codec::ids::EncodedConstructorId::new(core_type, 0),
                     ::std::vec![form.clone()],
                     form,
                     ::structural_codec::ids::PositionalSignature::new(::std::vec![inner]),
@@ -338,7 +338,7 @@ impl TypeSpec {
             ::structural_codec::StructuralEntry::new(
                 core_type,
                 ::std::vec![::structural_codec::ConstructorCodec::new(
-                    ::structural_codec::ids::CoreConstructorId::new(core_type, 0),
+                    ::structural_codec::ids::EncodedConstructorId::new(core_type, 0),
                     ::std::vec![form.clone()],
                     form,
                     ::structural_codec::ids::PositionalSignature::new(::std::vec![inner]),
@@ -482,7 +482,7 @@ impl TypeSpec {
             ::structural_codec::StructuralEntry::new(
                 core_type,
                 ::std::vec![::structural_codec::ConstructorCodec::new(
-                    ::structural_codec::ids::CoreConstructorId::new(core_type, 0),
+                    ::structural_codec::ids::EncodedConstructorId::new(core_type, 0),
                     ::std::vec![form.clone()],
                     form,
                     signature,
@@ -607,7 +607,7 @@ impl TypeSpec {
             ::structural_codec::StructuralEntry::new(
                 core_type,
                 ::std::vec![::structural_codec::ConstructorCodec::new(
-                    ::structural_codec::ids::CoreConstructorId::new(core_type, 0),
+                    ::structural_codec::ids::EncodedConstructorId::new(core_type, 0),
                     ::std::vec![type_only.clone()],
                     type_only,
                     ::structural_codec::ids::PositionalSignature::default(),

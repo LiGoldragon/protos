@@ -1,7 +1,7 @@
-//! The evaluator's generic currency: a Core-agnostic structural mirror of a decoded
-//! value. The concrete Core type is recovered by a generated codec (§4.5); the
-//! conformance laws prove the two agree. The mirror is content-identifiable, so law
-//! 4 can assert a value's identity never moves across table revisions.
+//! The evaluator's generic structural value type: a Core-agnostic representation of a
+//! decoded value. A generated codec recovers the concrete Core type (§4.5), and the
+//! conformance laws prove the two agree. The value type is content-identifiable, so law 4
+//! can assert that a value's identity never moves across table revisions.
 
 use content_identity::{ContentHash, DomainSeparation, HashDomain, LayoutVersion};
 use name_table::Identifier;
@@ -9,7 +9,7 @@ use raw_discovery::{Atom, Block};
 
 use content_identity::ArchiveError;
 
-/// A structural value — the shape both evaluator directions pivot on.
+/// A generic structural value — the value type both evaluator directions use.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq)]
 #[rkyv(
     serialize_bounds(__S: rkyv::ser::Writer + rkyv::ser::Allocator, __S::Error: rkyv::rancor::Source),

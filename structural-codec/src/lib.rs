@@ -24,13 +24,13 @@
 //! - Disjointness: [`disjoint`] — conservative outer-shape validation; overlap it
 //!   cannot rule out is a hard error.
 //! - Evaluator: [`evaluator::StructuralEvaluator`] — the one trusted interpreter.
-//! - Mirror: [`value::StructuralValue`] — the Core-agnostic generic currency.
+//! - Value type: [`value::StructuralValue`] — the Core-agnostic generic structural value.
 //! - Conformance: [`conformance`] — the law-5 harness the generated codec will meet.
 //! - Fixtures: [`fixture`] — the proof-of-concept universe and the acceptance gate.
-//! - The Protos pairing: [`encoded_form`] — the TRUTH side ([`EncodedForm`] marker plus
-//!   the typed [`EncodedConversion`] layer conversion `EncodedForm<T> -> EncodedForm<X>`,
-//!   text-free) — beside [`textual_form`] — the VIEW side ([`Textual`] producing a
-//!   first-class [`TextualForm<T>`] value through the two organs).
+//! - The Protos pairing: [`encoded_form`] — the encoded-form side ([`EncodedForm`] marker
+//!   plus the typed [`EncodedConversion`] layer conversion `EncodedForm<T> -> EncodedForm<X>`,
+//!   text-free) — beside [`textual_form`] — the textual interface and view ([`Textual`]
+//!   produces a first-class [`TextualForm<T>`] through the nametree and structuretree).
 
 pub mod authoring;
 pub mod codec;

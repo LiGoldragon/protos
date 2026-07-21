@@ -73,7 +73,7 @@ cargo test           # inner-loop tests
 ## Status
 
 Version 0.1.0. This is slice one, crate L2 of the accepted language-family
-design. It depends on `content-identity` (crate L1) pinned by git revision for
-the shared `PortableArchive` bound. Consumption and integration — schema, nomos,
-logos, and the other consumers adopting these types — will readapt to the
-forthcoming release-train flow.
+design. It depends on `content-identity` (crate L1) through the workspace path
+dependency `../content-identity` for the shared `PortableArchive` bound.
+Consumption and integration — schema, nomos, logos, and the other consumers
+adopting these types — will readapt to the forthcoming release-train flow.

@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use name_table::{IdentifierNamespace, Name, NameTable};
-use raw_discovery::Recognizer;
+use raw_discovery::{Delimiter, Recognizer};
 use structural_codec::fixture::{FIELD, FixtureBuilder};
 use structural_codec::{
     AddressedStructuralTable, AtomForm, CaseExpectation, ConstructorCodec, EncodedConstructorId,
@@ -185,4 +185,85 @@ fn literal_and_excluded_name_atom_are_order_independent() {
             .expect("decode builtin literal");
         assert_eq!(chosen_constructor(value), 0, "Integer remains the literal");
     }
+}
+
+/// The table-level seal expands delegates to prove a wrapper form is disjoint from a
+/// delimited alternative, while decoding retains the delegate's constructor wrapper.
+#[test]
+fn seal_proves_disjointness_through_a_delegate() {
+    let reference = ScopedEncodedTypeId::fixture(200);
+    let declaration = ScopedEncodedTypeId::fixture(201);
+    let reference_entry = StructuralEntry::new(
+        reference,
+        vec![ConstructorCodec::new(
+            EncodedConstructorId::new(reference, 7),
+            vec![StructuralForm::pascal_atom()],
+            StructuralForm::pascal_atom(),
+            PositionalSignature::default(),
+        )],
+    );
+    let newtype = StructuralForm::application(
+        StructuralForm::pascal_atom(),
+        StructuralForm::Delegate(reference),
+    );
+    let structure = StructuralForm::application(
+        StructuralForm::pascal_atom(),
+        StructuralForm::Delimited {
+            delimiter: Delimiter::Brace,
+            sequence: structural_codec::SequenceForm::zero_or_more(StructuralForm::pascal_atom()),
+        },
+    );
+    let declaration_entry = StructuralEntry::new(
+        declaration,
+        vec![
+            ConstructorCodec::new(
+                EncodedConstructorId::new(declaration, 0),
+                vec![newtype.clone()],
+                newtype,
+                PositionalSignature::default(),
+            ),
+            ConstructorCodec::new(
+                EncodedConstructorId::new(declaration, 1),
+                vec![structure.clone()],
+                structure,
+                PositionalSignature::default(),
+            ),
+        ],
+    );
+    let table = AddressedStructuralTable::seal(
+        StructuralRevision::new(2),
+        TableIdentityPayload {
+            core_universe: structural_codec::FIXTURE_UNIVERSE,
+            core_layout_identity: EncodedLayoutIdentity([0; 32]),
+            raw_profile_identity: RawProfileIdentity([1; 32]),
+            committed_lexicon: b"delegate-proof".to_vec(),
+            leaf_codec_contracts: Vec::new(),
+            entries: BTreeMap::from([
+                (reference, reference_entry),
+                (declaration, declaration_entry),
+            ]),
+        },
+    )
+    .expect("the delegate expands to a Pascal atom, disjoint from a brace");
+
+    let block = Recognizer::standard()
+        .recognize("Record.Target")
+        .expect("recognize")
+        .root_object_at(0)
+        .expect("root")
+        .clone();
+    let mut names = NameTable::new(IdentifierNamespace::Fixture);
+    let value = StructuralEvaluator::new(&table)
+        .decode(declaration, &block, &mut names)
+        .expect("decode newtype form");
+    let StructuralValue::Chosen { payload, .. } = value else {
+        panic!("declaration is constructor-tagged");
+    };
+    let StructuralValue::Application(_, body) = payload.as_ref() else {
+        panic!("declaration is an application");
+    };
+    assert!(
+        matches!(body.as_ref(), StructuralValue::Delegated(inner) if matches!(inner.as_ref(), StructuralValue::Chosen { constructor: 7, .. })),
+        "the evaluator retains the delegated reference constructor"
+    );
 }

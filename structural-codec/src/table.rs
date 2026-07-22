@@ -100,7 +100,7 @@ impl AddressedStructuralTable {
         payload: TableIdentityPayload,
     ) -> Result<Self, TableError> {
         for entry in payload.entries.values() {
-            entry.validate_disjoint()?;
+            entry.validate_disjoint_with(&payload.entries)?;
         }
         let identity = ContentHash::of_core(&payload)?;
         Ok(Self {
@@ -129,7 +129,7 @@ impl AddressedStructuralTable {
     /// Validate conservative disjointness across every entry.
     pub fn validate_disjoint(&self) -> Result<(), DisjointnessError> {
         for entry in self.payload.entries.values() {
-            entry.validate_disjoint()?;
+            entry.validate_disjoint_with(&self.payload.entries)?;
         }
         Ok(())
     }

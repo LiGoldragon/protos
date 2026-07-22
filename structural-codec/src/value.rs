@@ -21,9 +21,9 @@ pub enum StructuralValue {
     Atom(Identifier),
     /// A flattened scalar leaf.
     Scalar(ScalarValue),
-    /// A delimited run of children. The delimiter itself is NOT stored: it is pure
-    /// syntax fixed by the constructor's form and recovered on encode, so a
-    /// delimiter-only textual revision does not move this value's identity (law 4).
+    /// A delimited run of children. The delimiter itself is NOT stored: delimiter-only
+    /// table revisions preserve the StructuralValue mirror hash; structural
+    /// respellings move it by design (law 4).
     /// This deviates from §4.4's pre-hardening sketch, which carried the delimiter.
     Delimited(#[rkyv(omit_bounds)] Vec<StructuralValue>),
     /// A right-associative application.

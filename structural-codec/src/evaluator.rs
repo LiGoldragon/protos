@@ -157,16 +157,6 @@ impl<'table> StructuralEvaluator<'table> {
                 if !atom_form.accepts_case(atom) {
                     return Err(DecodeError::CaseMismatch);
                 }
-                if !atom_form.excluded_literals().is_empty() {
-                    let lexicon = self
-                        .lexicon
-                        .ok_or(DecodeError::NameAtomExclusionRequiresLexicon)?;
-                    for identifier in atom_form.excluded_literals() {
-                        if lexicon.resolve(*identifier)?.as_str() == atom.text() {
-                            return Err(DecodeError::ExcludedLiteral);
-                        }
-                    }
-                }
                 Ok(DecodeDraft::Atom(atom.text().to_owned()))
             }
 

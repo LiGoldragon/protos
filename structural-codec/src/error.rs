@@ -36,10 +36,6 @@ pub enum DecodeError {
     },
     #[error("atom case did not match the expected form")]
     CaseMismatch,
-    #[error("name-atom exclusion requires the committed lexicon")]
-    NameAtomExclusionRequiresLexicon,
-    #[error("atom matched a literal excluded from this name-atom form")]
-    ExcludedLiteral,
     #[error("literal atom did not match the expected interned keyword")]
     LiteralMismatch,
     #[error("delimited sequence held {found} objects, outside the form's bounds")]

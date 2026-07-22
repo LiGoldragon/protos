@@ -5,8 +5,8 @@
 //! constructors (bare `Type` with elided name versus `name.Type`), the
 //! `Documentation → Summary → Text` string-rejoin delegate chain, and standalone
 //! `Integer`/`Float`/`Text` leaf types. The builder is data-bearing (it carries the
-//! block delimiter and committed lexicon), so law 4 can mint two revisions that
-//! differ only in textual form.
+//! block delimiter), so law 4 can mint two revisions that differ only in textual
+//! form.
 
 use std::collections::BTreeMap;
 
@@ -39,7 +39,6 @@ pub const FIELD: ScopedEncodedTypeId = ScopedEncodedTypeId::fixture(23);
 #[derive(Clone, Debug)]
 pub struct FixtureBuilder {
     newtype_delimiter: Delimiter,
-    committed_lexicon: Vec<u8>,
     revision: StructuralRevision,
 }
 
@@ -47,7 +46,6 @@ impl Default for FixtureBuilder {
     fn default() -> Self {
         Self {
             newtype_delimiter: Delimiter::Brace,
-            committed_lexicon: b"fixture-lexicon-standard".to_vec(),
             revision: StructuralRevision::new(1),
         }
     }
@@ -58,15 +56,10 @@ impl FixtureBuilder {
         Self::default()
     }
 
-    /// The delimiter the newtype bodies use. Varying it (with a matching lexicon and
-    /// revision) yields a table that differs from another only in textual form.
+    /// The delimiter the newtype bodies use. Varying it with the revision yields a
+    /// table that differs from another only in textual form.
     pub fn with_newtype_delimiter(mut self, delimiter: Delimiter) -> Self {
         self.newtype_delimiter = delimiter;
-        self
-    }
-
-    pub fn with_lexicon(mut self, lexicon: Vec<u8>) -> Self {
-        self.committed_lexicon = lexicon;
         self
     }
 
@@ -85,7 +78,6 @@ impl FixtureBuilder {
             core_universe: crate::ids::FIXTURE_UNIVERSE,
             core_layout_identity: EncodedLayoutIdentity([0u8; 32]),
             raw_profile_identity: RawProfileIdentity([1u8; 32]),
-            committed_lexicon: self.committed_lexicon.clone(),
             leaf_codec_contracts: Vec::new(),
             entries,
         };

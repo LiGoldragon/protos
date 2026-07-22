@@ -67,8 +67,6 @@ pub struct TableIdentityPayload {
     pub core_universe: EncodedUniverseId,
     pub core_layout_identity: EncodedLayoutIdentity,
     pub raw_profile_identity: RawProfileIdentity,
-    /// The committed lexicon — the EXACT glyph bytes this table's text uses.
-    pub committed_lexicon: Vec<u8>,
     pub leaf_codec_contracts: Vec<LeafCodecContractId>,
     pub entries: BTreeMap<ScopedEncodedTypeId, StructuralEntry>,
 }
@@ -80,7 +78,7 @@ impl HashDomain for StructuralTableDomain {
     fn separation() -> DomainSeparation {
         DomainSeparation::Contextual {
             context: "structural-codec 2026 addressed structural table",
-            layout: LayoutVersion::new(2),
+            layout: LayoutVersion::new(3),
         }
     }
 }

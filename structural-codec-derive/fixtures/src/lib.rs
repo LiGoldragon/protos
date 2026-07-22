@@ -128,7 +128,6 @@ impl DerivedTable {
             core_universe: FIXTURE_UNIVERSE,
             core_layout_identity: EncodedLayoutIdentity([0u8; 32]),
             raw_profile_identity: RawProfileIdentity([1u8; 32]),
-            committed_lexicon: b"derived-fixture-lexicon".to_vec(),
             leaf_codec_contracts: Vec::new(),
             entries: self.entries.clone(),
         };

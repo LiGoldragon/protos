@@ -22,23 +22,33 @@
           strictDeps = true;
           cargoExtraArgs = "--workspace";
         };
-        cargoArtifacts = craneLib.buildDepsOnly commonArguments;
+        cargoArtifacts = craneLib.buildDepsOnly (commonArguments // {
+          # rustc writes this host-specific probe beside reusable artifacts.
+          postCheck = ''
+            rm -f target/.rustc_info.json
+          '';
+        });
       in
       {
         packages.default = craneLib.buildPackage (commonArguments // { inherit cargoArtifacts; });
         checks = {
-          build = craneLib.cargoBuild (commonArguments // { inherit cargoArtifacts; });
+          build = craneLib.cargoBuild (commonArguments // {
+            inherit cargoArtifacts;
+            doInstallCargoArtifacts = false;
+          });
           test = craneLib.cargoTest (commonArguments // {
             inherit cargoArtifacts;
             doInstallCargoArtifacts = false;
           });
           doc = craneLib.cargoDoc (commonArguments // {
             inherit cargoArtifacts;
+            CARGO_BUILD_JOBS = "1";
             RUSTDOCFLAGS = "-D warnings";
           });
           fmt = craneLib.cargoFmt { inherit src; };
           clippy = craneLib.cargoClippy (commonArguments // {
             inherit cargoArtifacts;
+            doInstallCargoArtifacts = false;
             cargoClippyExtraArgs = "--all-targets -- -D warnings";
           });
         };

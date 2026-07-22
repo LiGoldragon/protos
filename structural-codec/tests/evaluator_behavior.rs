@@ -141,7 +141,6 @@ fn transparent_delegation_cycle_is_rejected() {
         core_universe: structural_codec::FIXTURE_UNIVERSE,
         core_layout_identity: EncodedLayoutIdentity([0u8; 32]),
         raw_profile_identity: RawProfileIdentity([1u8; 32]),
-        committed_lexicon: b"cycle".to_vec(),
         leaf_codec_contracts: Vec::new(),
         entries,
     };

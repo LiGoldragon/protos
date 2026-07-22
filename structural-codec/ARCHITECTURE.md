@@ -35,9 +35,9 @@ data is a `StructuralForm`. The view family is `Textual*`.
 ## Table identity lives outside the payload (design §4.6)
 
 A table's content identity is computed over `TableIdentityPayload`
-(`EncodedUniverseId`, Core-layout identity, raw-profile identity, the exact committed
-lexicon bytes, leaf-codec contract identities, and the entries) and **stored on
-the table, not inside the hashed payload** — this fixes the self-reference bug of
+(`EncodedUniverseId`, Core-layout identity, raw-profile identity, leaf-codec contract
+identities, and the entries) and **stored on the table, not inside the hashed
+payload** — this fixes the self-reference bug of
 an earlier rendering. The table identity is **excluded from Core value identity by
 construction**: Core hashing never sees the table, so text evolution can never
 move Core identity. Old table decodes old text, a new table encodes new text, both
@@ -77,11 +77,10 @@ swallow another's inputs.
 
 ## Deviations and flagged placements
 
-- **`StructuralValue::Delimited` does not store the delimiter.** The delimiter is
-  pure syntax fixed by the constructor's form and recovered on encode, so a
-  delimiter-only textual revision does not move a value's identity (required for
-  law 4). This deviates from §4.4's pre-hardening sketch, which carried the
-  delimiter in the mirror.
+- **`StructuralValue::Delimited` does not store the delimiter.** Delimiter-only
+  table revisions preserve the StructuralValue mirror hash; structural respellings
+  move it by design (law 4). This deviates from §4.4's pre-hardening sketch, which
+  carried the delimiter in the mirror.
 - **The canonical Block→text writer lives here** (`writer::CanonicalText`) for now.
   Its eventual home may be `raw-discovery` (as the inverse of
   `Recognizer::recognize`); raw-discovery is not edited for it in this slice.

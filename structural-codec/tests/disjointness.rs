@@ -39,7 +39,6 @@ fn sealed_table(entry: StructuralEntry) -> Result<AddressedStructuralTable, Tabl
             core_universe: structural_codec::FIXTURE_UNIVERSE,
             core_layout_identity: EncodedLayoutIdentity([0; 32]),
             raw_profile_identity: RawProfileIdentity([1; 32]),
-            committed_lexicon: b"disjointness-test".to_vec(),
             leaf_codec_contracts: Vec::new(),
             entries,
         },
@@ -137,22 +136,35 @@ fn seal_rejects_unprovable_decode_forms() {
     );
 }
 
-/// A committed literal and a name atom that excludes it are provably disjoint. The
-/// same decoded constructor is selected after the codecs are authored in reverse
-/// order, because constructor identifiers—not vector positions—carry the result.
+/// Literal and unconstrained name-atom alternatives overlap. Sealing fails rather
+/// than trying to preserve a keyword category with lexical exclusions.
 #[test]
-fn literal_and_excluded_name_atom_are_order_independent() {
+fn literal_and_unconstrained_name_atom_are_rejected() {
     let mut lexicon = NameTable::new(IdentifierNamespace::Fixture);
     let integer = lexicon
         .intern(Name::new("Integer"))
         .expect("intern Integer");
-    let declared = StructuralForm::Atom(AtomForm::excluding_literals(
-        CaseExpectation::PascalCase,
-        vec![integer],
-    ));
-    let literal = StructuralForm::Literal(integer);
-    let core_type = ScopedEncodedTypeId::fixture(101);
+    let entry = entry_with_forms(vec![
+        StructuralForm::Literal(integer),
+        StructuralForm::Atom(AtomForm {
+            case: None,
+            sigil: None,
+        }),
+    ]);
 
+    assert!(
+        sealed_table(entry).is_err(),
+        "sealing rejects literal/name-atom overlap"
+    );
+}
+
+/// Construction order cannot change an already-proven disjoint decode result.
+#[test]
+fn disjoint_constructor_order_does_not_change_the_chosen_identifier() {
+    let core_type = ScopedEncodedTypeId::fixture(101);
+    let atom = StructuralForm::pascal_atom();
+    let application =
+        StructuralForm::application(StructuralForm::pascal_atom(), StructuralForm::pascal_atom());
     let table_with_order = |forms: Vec<(u32, StructuralForm)>| {
         let constructors = forms
             .into_iter()
@@ -167,9 +179,8 @@ fn literal_and_excluded_name_atom_are_order_independent() {
             .collect();
         sealed_table(StructuralEntry::new(core_type, constructors)).expect("seal")
     };
-
-    let literal_first = table_with_order(vec![(0, literal.clone()), (1, declared.clone())]);
-    let declared_first = table_with_order(vec![(1, declared), (0, literal)]);
+    let first = table_with_order(vec![(7, atom.clone()), (9, application.clone())]);
+    let second = table_with_order(vec![(9, application), (7, atom)]);
     let block = Recognizer::standard()
         .recognize("Integer")
         .expect("recognize")
@@ -177,13 +188,12 @@ fn literal_and_excluded_name_atom_are_order_independent() {
         .expect("root")
         .clone();
 
-    for table in [&literal_first, &declared_first] {
-        let evaluator = StructuralEvaluator::with_lexicon(table, &lexicon);
+    for table in [&first, &second] {
         let mut names = NameTable::new(IdentifierNamespace::Fixture);
-        let value = evaluator
+        let value = StructuralEvaluator::new(table)
             .decode(core_type, &block, &mut names)
-            .expect("decode builtin literal");
-        assert_eq!(chosen_constructor(value), 0, "Integer remains the literal");
+            .expect("decode bare name");
+        assert_eq!(chosen_constructor(value), 7);
     }
 }
 
@@ -236,7 +246,6 @@ fn seal_proves_disjointness_through_a_delegate() {
             core_universe: structural_codec::FIXTURE_UNIVERSE,
             core_layout_identity: EncodedLayoutIdentity([0; 32]),
             raw_profile_identity: RawProfileIdentity([1; 32]),
-            committed_lexicon: b"delegate-proof".to_vec(),
             leaf_codec_contracts: Vec::new(),
             entries: BTreeMap::from([
                 (reference, reference_entry),

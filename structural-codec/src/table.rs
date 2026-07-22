@@ -80,7 +80,7 @@ impl HashDomain for StructuralTableDomain {
     fn separation() -> DomainSeparation {
         DomainSeparation::Contextual {
             context: "structural-codec 2026 addressed structural table",
-            layout: LayoutVersion::new(1),
+            layout: LayoutVersion::new(2),
         }
     }
 }
@@ -99,6 +99,9 @@ impl AddressedStructuralTable {
         revision: StructuralRevision,
         payload: TableIdentityPayload,
     ) -> Result<Self, TableError> {
+        for entry in payload.entries.values() {
+            entry.validate_disjoint()?;
+        }
         let identity = ContentHash::of_core(&payload)?;
         Ok(Self {
             revision,

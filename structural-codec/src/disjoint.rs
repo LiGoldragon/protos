@@ -13,8 +13,12 @@ use crate::form::StructuralForm;
 /// whose matchable kind cannot be pinned (delegates, leaves, products) are `Opaque`
 /// and never prove disjoint against anything.
 enum OuterShape<'form> {
-    /// Matches a `Block::Atom` constrained by case (`None` = any case).
-    NameAtom(Option<crate::form::CaseExpectation>),
+    /// Matches a `Block::Atom` constrained by case (`None` = any case), except
+    /// exact literal identifiers from the committed lexicon.
+    NameAtom {
+        case: Option<crate::form::CaseExpectation>,
+        excluded_literals: &'form [name_table::Identifier],
+    },
     /// Matches a specific interned atom.
     Literal(name_table::Identifier),
     /// Matches a `Block::Application`.
@@ -28,7 +32,10 @@ enum OuterShape<'form> {
 impl StructuralForm {
     fn outer_shape(&self) -> OuterShape<'_> {
         match self {
-            Self::Atom(atom) => OuterShape::NameAtom(atom.case),
+            Self::Atom(atom) => OuterShape::NameAtom {
+                case: atom.case,
+                excluded_literals: atom.excluded_literals(),
+            },
             Self::Literal(identifier) => OuterShape::Literal(*identifier),
             Self::Application { head, payload } => OuterShape::Application(head, payload),
             Self::Delimited { delimiter, .. } => OuterShape::Delimited(*delimiter),
@@ -46,12 +53,16 @@ impl StructuralForm {
 
             // Different block kinds are mutually exclusive: a block is exactly one of
             // atom / application / delimited.
-            (OuterShape::NameAtom(_) | OuterShape::Literal(_), OuterShape::Application(_, _))
-            | (OuterShape::Application(_, _), OuterShape::NameAtom(_) | OuterShape::Literal(_)) => {
-                Ok(())
-            }
-            (OuterShape::NameAtom(_) | OuterShape::Literal(_), OuterShape::Delimited(_))
-            | (OuterShape::Delimited(_), OuterShape::NameAtom(_) | OuterShape::Literal(_)) => {
+            (
+                OuterShape::NameAtom { .. } | OuterShape::Literal(_),
+                OuterShape::Application(_, _),
+            )
+            | (
+                OuterShape::Application(_, _),
+                OuterShape::NameAtom { .. } | OuterShape::Literal(_),
+            ) => Ok(()),
+            (OuterShape::NameAtom { .. } | OuterShape::Literal(_), OuterShape::Delimited(_))
+            | (OuterShape::Delimited(_), OuterShape::NameAtom { .. } | OuterShape::Literal(_)) => {
                 Ok(())
             }
             (OuterShape::Application(_, _), OuterShape::Delimited(_))
@@ -59,7 +70,14 @@ impl StructuralForm {
 
             // Two case-constrained name atoms are disjoint only when both cases are
             // concrete and different; a `None` case accepts every atom.
-            (OuterShape::NameAtom(left), OuterShape::NameAtom(right)) => match (left, right) {
+            (
+                OuterShape::NameAtom {
+                    case: left_case, ..
+                },
+                OuterShape::NameAtom {
+                    case: right_case, ..
+                },
+            ) => match (left_case, right_case) {
                 (Some(left_case), Some(right_case)) if left_case != right_case => Ok(()),
                 _ => Err("both forms accept an overlapping atom case"),
             },
@@ -73,11 +91,25 @@ impl StructuralForm {
                 }
             }
 
-            // A literal atom's text may satisfy a name atom's case; without the
-            // resolver we cannot rule it out, so this stays conservatively unprovable.
-            (OuterShape::NameAtom(_), OuterShape::Literal(_))
-            | (OuterShape::Literal(_), OuterShape::NameAtom(_)) => {
-                Err("a literal atom might satisfy the name atom's case constraint")
+            // A literal is disjoint from a name atom only when the atom form excludes
+            // that exact committed-lexicon identifier. Case alone cannot establish it.
+            (
+                OuterShape::NameAtom {
+                    excluded_literals, ..
+                },
+                OuterShape::Literal(literal),
+            )
+            | (
+                OuterShape::Literal(literal),
+                OuterShape::NameAtom {
+                    excluded_literals, ..
+                },
+            ) => {
+                if excluded_literals.contains(&literal) {
+                    Ok(())
+                } else {
+                    Err("a literal atom is not excluded from the name atom")
+                }
             }
 
             // Applications are disjoint if EITHER position is provably disjoint.

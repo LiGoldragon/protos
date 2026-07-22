@@ -1,10 +1,16 @@
 //! The conservative disjointness checker: accepts a pair of decode forms only when
 //! it can PROVE no block matches both; unprovable overlap is a hard error.
 
+use std::collections::BTreeMap;
+
+use name_table::{IdentifierNamespace, Name, NameTable};
+use raw_discovery::Recognizer;
 use structural_codec::fixture::{FIELD, FixtureBuilder};
 use structural_codec::{
-    AtomForm, CaseExpectation, ConstructorCodec, EncodedConstructorId, PositionalSignature,
-    ScopedEncodedTypeId, StructuralEntry, StructuralForm,
+    AddressedStructuralTable, AtomForm, CaseExpectation, ConstructorCodec, EncodedConstructorId,
+    EncodedLayoutIdentity, PositionalSignature, RawProfileIdentity, ScopedEncodedTypeId,
+    StructuralEntry, StructuralEvaluator, StructuralForm, StructuralRevision, StructuralValue,
+    TableError, TableIdentityPayload,
 };
 
 fn entry_with_forms(forms: Vec<StructuralForm>) -> StructuralEntry {
@@ -22,6 +28,29 @@ fn entry_with_forms(forms: Vec<StructuralForm>) -> StructuralEntry {
         })
         .collect();
     StructuralEntry::new(core_type, constructors)
+}
+
+fn sealed_table(entry: StructuralEntry) -> Result<AddressedStructuralTable, TableError> {
+    let mut entries = BTreeMap::new();
+    entries.insert(entry.core_type, entry);
+    AddressedStructuralTable::seal(
+        StructuralRevision::new(2),
+        TableIdentityPayload {
+            core_universe: structural_codec::FIXTURE_UNIVERSE,
+            core_layout_identity: EncodedLayoutIdentity([0; 32]),
+            raw_profile_identity: RawProfileIdentity([1; 32]),
+            committed_lexicon: b"disjointness-test".to_vec(),
+            leaf_codec_contracts: Vec::new(),
+            entries,
+        },
+    )
+}
+
+fn chosen_constructor(value: StructuralValue) -> u32 {
+    let StructuralValue::Chosen { constructor, .. } = value else {
+        panic!("expected a constructor-tagged value");
+    };
+    constructor
 }
 
 /// The `Field` alternatives (bare `Type` atom versus `name.Type` application) are
@@ -91,4 +120,69 @@ fn atom_versus_application_is_disjoint() {
     entry
         .validate_disjoint()
         .expect("atom and application are disjoint");
+}
+
+/// Sealing is the mandatory proof boundary: no addressed table can contain an
+/// unprovable overlap.
+#[test]
+fn seal_rejects_unprovable_decode_forms() {
+    let error = sealed_table(entry_with_forms(vec![
+        StructuralForm::pascal_atom(),
+        StructuralForm::pascal_atom(),
+    ]))
+    .expect_err("two PascalCase alternatives overlap");
+    assert!(
+        matches!(error, TableError::Disjointness(_)),
+        "seal reports the typed disjointness failure"
+    );
+}
+
+/// A committed literal and a name atom that excludes it are provably disjoint. The
+/// same decoded constructor is selected after the codecs are authored in reverse
+/// order, because constructor identifiers—not vector positions—carry the result.
+#[test]
+fn literal_and_excluded_name_atom_are_order_independent() {
+    let mut lexicon = NameTable::new(IdentifierNamespace::Fixture);
+    let integer = lexicon
+        .intern(Name::new("Integer"))
+        .expect("intern Integer");
+    let declared = StructuralForm::Atom(AtomForm::excluding_literals(
+        CaseExpectation::PascalCase,
+        vec![integer],
+    ));
+    let literal = StructuralForm::Literal(integer);
+    let core_type = ScopedEncodedTypeId::fixture(101);
+
+    let table_with_order = |forms: Vec<(u32, StructuralForm)>| {
+        let constructors = forms
+            .into_iter()
+            .map(|(constructor, form)| {
+                ConstructorCodec::new(
+                    EncodedConstructorId::new(core_type, constructor),
+                    vec![form.clone()],
+                    form,
+                    PositionalSignature::default(),
+                )
+            })
+            .collect();
+        sealed_table(StructuralEntry::new(core_type, constructors)).expect("seal")
+    };
+
+    let literal_first = table_with_order(vec![(0, literal.clone()), (1, declared.clone())]);
+    let declared_first = table_with_order(vec![(1, declared), (0, literal)]);
+    let block = Recognizer::standard()
+        .recognize("Integer")
+        .expect("recognize")
+        .root_object_at(0)
+        .expect("root")
+        .clone();
+
+    for table in [&literal_first, &declared_first] {
+        let evaluator = StructuralEvaluator::with_lexicon(table, &lexicon);
+        let mut names = NameTable::new(IdentifierNamespace::Fixture);
+        let value = evaluator
+            .decode(core_type, &block, &mut names)
+            .expect("decode builtin literal");
+        assert_eq!(chosen_constructor(value), 0, "Integer remains the literal");
+    }
 }

@@ -127,11 +127,11 @@ impl<'table> StructuralEvaluator<'table> {
         let mut child_chain = chain.to_vec();
         child_chain.push(expected);
 
-        for (index, codec) in entry.constructors.iter().enumerate() {
+        for codec in &entry.constructors {
             for form in &codec.decode_forms {
                 if let Ok(draft) = self.match_form(form, block, &child_chain) {
                     return Ok(DecodeDraft::Chosen {
-                        constructor: index as u32,
+                        constructor: codec.constructor.constructor,
                         payload: Box::new(draft),
                     });
                 }
@@ -154,11 +154,20 @@ impl<'table> StructuralEvaluator<'table> {
                     expected: "atom",
                     found: Self::block_kind(block),
                 })?;
-                if atom_form.accepts(atom) {
-                    Ok(DecodeDraft::Atom(atom.text().to_owned()))
-                } else {
-                    Err(DecodeError::CaseMismatch)
+                if !atom_form.accepts_case(atom) {
+                    return Err(DecodeError::CaseMismatch);
                 }
+                if !atom_form.excluded_literals().is_empty() {
+                    let lexicon = self
+                        .lexicon
+                        .ok_or(DecodeError::NameAtomExclusionRequiresLexicon)?;
+                    for identifier in atom_form.excluded_literals() {
+                        if lexicon.resolve(*identifier)?.as_str() == atom.text() {
+                            return Err(DecodeError::ExcludedLiteral);
+                        }
+                    }
+                }
+                Ok(DecodeDraft::Atom(atom.text().to_owned()))
             }
 
             StructuralForm::Literal(identifier) => {
@@ -344,12 +353,14 @@ impl<'table> StructuralEvaluator<'table> {
                 ));
             }
         };
-        let codec = entry.constructor_at(constructor as usize).ok_or(
-            EncodeError::ConstructorOutOfRange {
+        let codec = entry
+            .constructors
+            .iter()
+            .find(|codec| codec.constructor.constructor == constructor)
+            .ok_or(EncodeError::ConstructorOutOfRange {
                 chosen: constructor,
                 available: entry.constructors.len(),
-            },
-        )?;
+            })?;
         self.encode_form_walk(&codec.encode_form, payload, resolver)
     }
 

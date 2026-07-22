@@ -113,21 +113,42 @@ impl SequenceForm {
 pub struct AtomForm {
     /// `None` accepts any case.
     pub case: Option<CaseExpectation>,
+    /// Identifiers in the committed lexicon that this form must not decode. This
+    /// keeps declared names disjoint from literal keyword forms.
+    excluded_literals: Vec<Identifier>,
     /// The `$` escape rides here as a sigil; `None` requires no sigil.
     pub sigil: Option<SigilSpec>,
 }
 
 impl AtomForm {
     pub fn with_case(case: CaseExpectation) -> Self {
+        Self::excluding_literals(case, Vec::new())
+    }
+
+    /// A case-constrained atom excluding exact literal identifiers from the committed
+    /// lexicon. The list is normalized so equivalent exclusions have one canonical archive.
+    pub fn excluding_literals(
+        case: CaseExpectation,
+        mut excluded_literals: Vec<Identifier>,
+    ) -> Self {
+        excluded_literals.sort_unstable();
+        excluded_literals.dedup();
         Self {
             case: Some(case),
+            excluded_literals,
             sigil: None,
         }
     }
 
-    /// Whether a discovered atom satisfies this form's case constraint. (Sigil
-    /// matching is reserved for the not-yet-accepted `$` profile.)
-    pub fn accepts(&self, atom: &Atom) -> bool {
+    /// Literal identifiers excluded from this form, ordered and duplicate-free for
+    /// a canonical archive.
+    pub fn excluded_literals(&self) -> &[Identifier] {
+        &self.excluded_literals
+    }
+
+    /// Whether a discovered atom satisfies this form's case constraint. The evaluator
+    /// resolves `excluded_literals` through its committed lexicon before accepting it.
+    pub fn accepts_case(&self, atom: &Atom) -> bool {
         match self.case {
             None => true,
             Some(expected) => expected.matches(atom),

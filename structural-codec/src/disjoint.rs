@@ -141,7 +141,9 @@ impl StructuralForm {
                 OuterShape::Application(right_head, right_payload),
             ) => {
                 if left_head.prove_disjoint_from(right_head, entries).is_ok()
-                    || left_payload.prove_disjoint_from(right_payload, entries).is_ok()
+                    || left_payload
+                        .prove_disjoint_from(right_payload, entries)
+                        .is_ok()
                 {
                     Ok(())
                 } else {

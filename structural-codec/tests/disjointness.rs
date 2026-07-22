@@ -31,8 +31,12 @@ fn entry_with_forms(forms: Vec<StructuralForm>) -> StructuralEntry {
 }
 
 fn sealed_table(entry: StructuralEntry) -> Result<AddressedStructuralTable, TableError> {
-    let mut entries = BTreeMap::new();
-    entries.insert(entry.core_type, entry);
+    sealed_entries(BTreeMap::from([(entry.core_type, entry)]))
+}
+
+fn sealed_entries(
+    entries: BTreeMap<ScopedEncodedTypeId, StructuralEntry>,
+) -> Result<AddressedStructuralTable, TableError> {
     AddressedStructuralTable::seal(
         StructuralRevision::new(2),
         TableIdentityPayload {
@@ -107,6 +111,154 @@ fn delegate_forms_are_conservatively_rejected() {
         entry.validate_disjoint().is_err(),
         "opaque delegate forms must be conservatively rejected"
     );
+}
+
+/// An unguarded self-delegate cycle is rejected at seal time as a typed structural
+/// failure rather than recursing until the process aborts.
+#[test]
+fn seal_rejects_self_delegate_cycle_with_typed_failure() {
+    let recursive = ScopedEncodedTypeId::fixture(210);
+    let delegate = StructuralForm::Delegate(recursive);
+    let delimited = StructuralForm::Delimited {
+        delimiter: Delimiter::Brace,
+        sequence: structural_codec::SequenceForm::zero_or_more(StructuralForm::pascal_atom()),
+    };
+    let entry = StructuralEntry::new(
+        recursive,
+        vec![
+            ConstructorCodec::new(
+                EncodedConstructorId::new(recursive, 0),
+                vec![delegate.clone()],
+                delegate,
+                PositionalSignature::default(),
+            ),
+            ConstructorCodec::new(
+                EncodedConstructorId::new(recursive, 1),
+                vec![delimited.clone()],
+                delimited,
+                PositionalSignature::default(),
+            ),
+        ],
+    );
+
+    let Err(TableError::Disjointness(error)) = sealed_table(entry) else {
+        panic!("an unguarded self-delegate cycle must fail sealing");
+    };
+    assert!(matches!(
+        error,
+        structural_codec::DisjointnessError::DelegateExpansionCycle {
+            core_type,
+            first: 0,
+            second: 1,
+            reentered,
+        } if core_type == recursive && reentered == recursive
+    ));
+
+    let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&error).expect("archive typed failure");
+    let restored =
+        rkyv::from_bytes::<structural_codec::DisjointnessError, rkyv::rancor::Error>(&bytes)
+            .expect("restore typed failure");
+    assert!(matches!(
+        restored,
+        structural_codec::DisjointnessError::DelegateExpansionCycle {
+            core_type,
+            first: 0,
+            second: 1,
+            reentered,
+        } if core_type == recursive && reentered == recursive
+    ));
+}
+
+/// A mutual unguarded delegate cycle also returns the exact typed seal failure.
+#[test]
+fn seal_rejects_mutual_delegate_cycle_with_typed_failure() {
+    let outer = ScopedEncodedTypeId::fixture(220);
+    let left = ScopedEncodedTypeId::fixture(221);
+    let right = ScopedEncodedTypeId::fixture(222);
+    let single_delegate = |core_type, target| {
+        let delegate = StructuralForm::Delegate(target);
+        StructuralEntry::new(
+            core_type,
+            vec![ConstructorCodec::new(
+                EncodedConstructorId::new(core_type, 0),
+                vec![delegate.clone()],
+                delegate,
+                PositionalSignature::default(),
+            )],
+        )
+    };
+    let outer_delegate = StructuralForm::Delegate(left);
+    let outer_delimited = StructuralForm::Delimited {
+        delimiter: Delimiter::Brace,
+        sequence: structural_codec::SequenceForm::zero_or_more(StructuralForm::pascal_atom()),
+    };
+    let outer_entry = StructuralEntry::new(
+        outer,
+        vec![
+            ConstructorCodec::new(
+                EncodedConstructorId::new(outer, 0),
+                vec![outer_delegate.clone()],
+                outer_delegate,
+                PositionalSignature::default(),
+            ),
+            ConstructorCodec::new(
+                EncodedConstructorId::new(outer, 1),
+                vec![outer_delimited.clone()],
+                outer_delimited,
+                PositionalSignature::default(),
+            ),
+        ],
+    );
+
+    assert!(matches!(
+        sealed_entries(BTreeMap::from([
+            (outer, outer_entry),
+            (left, single_delegate(left, right)),
+            (right, single_delegate(right, left)),
+        ])),
+        Err(TableError::Disjointness(
+            structural_codec::DisjointnessError::DelegateExpansionCycle {
+                core_type,
+                first: 0,
+                second: 1,
+                reentered,
+            }
+        )) if core_type == outer && reentered == left
+    ));
+}
+
+/// Guarded recursion remains valid: the distinct application heads prove separation
+/// before either recursive payload needs expansion.
+#[test]
+fn seal_preserves_guarded_recursive_alternatives() {
+    let recursive = ScopedEncodedTypeId::fixture(230);
+    let pascal = StructuralForm::application(
+        StructuralForm::pascal_atom(),
+        StructuralForm::Delegate(recursive),
+    );
+    let camel = StructuralForm::application(
+        StructuralForm::camel_atom(),
+        StructuralForm::Delegate(recursive),
+    );
+    let entry = StructuralEntry::new(
+        recursive,
+        vec![
+            ConstructorCodec::new(
+                EncodedConstructorId::new(recursive, 0),
+                vec![pascal.clone()],
+                pascal,
+                PositionalSignature::default(),
+            ),
+            ConstructorCodec::new(
+                EncodedConstructorId::new(recursive, 1),
+                vec![camel.clone()],
+                camel,
+                PositionalSignature::default(),
+            ),
+        ],
+    );
+
+    sealed_table(entry).expect("guarded recursion seals through its distinct heads");
 }
 
 /// An atom versus an application of a distinguishing head is disjoint by block kind.

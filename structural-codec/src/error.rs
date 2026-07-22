@@ -10,7 +10,9 @@ use crate::ids::ScopedEncodedTypeId;
 /// A structural table failed conservative disjointness validation: two accepted
 /// decode forms could not be PROVEN structurally distinct, so one might silently
 /// shadow the other. Conservative-safe: unprovable disjointness is an error.
-#[derive(Debug, Clone, thiserror::Error)]
+///
+/// This error is archiveable so callers can retain a typed seal refusal.
+#[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, Clone, Debug, thiserror::Error)]
 pub enum DisjointnessError {
     #[error(
         "core type {core_type:?}: decode forms {first} and {second} are not provably disjoint ({reason})"
@@ -19,8 +21,36 @@ pub enum DisjointnessError {
         core_type: ScopedEncodedTypeId,
         first: usize,
         second: usize,
-        reason: &'static str,
+        reason: DisjointnessReason,
     },
+    #[error(
+        "core type {core_type:?}: decode forms {first} and {second} contain an unresolved delegate expansion cycle through {reentered:?}"
+    )]
+    DelegateExpansionCycle {
+        core_type: ScopedEncodedTypeId,
+        first: usize,
+        second: usize,
+        reentered: ScopedEncodedTypeId,
+    },
+}
+
+/// The typed reason a pair of forms could not be proven disjoint.
+#[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, Clone, Debug, thiserror::Error)]
+pub enum DisjointnessReason {
+    #[error("delegate target {target:?} has no table entry available for proof")]
+    MissingDelegateTarget { target: ScopedEncodedTypeId },
+    #[error("a leaf or product form has no pinned block kind")]
+    OpaqueForm,
+    #[error("both forms accept an overlapping atom case")]
+    OverlappingAtomCase,
+    #[error("both forms require the same interned literal")]
+    SameLiteral,
+    #[error("a literal atom might satisfy the name atom's case constraint")]
+    LiteralMayMatchNameAtom,
+    #[error("neither the application head nor payload is provably disjoint")]
+    ApplicationPositionsNotDisjoint,
+    #[error("both forms use the same delimiter")]
+    SharedDelimiter,
 }
 
 /// Decoding a raw block under an expected type failed. A failed decode leaves the

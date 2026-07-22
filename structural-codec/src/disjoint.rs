@@ -5,10 +5,10 @@
 //! raw block could match both. Overlap the checker cannot rule out is a validation
 //! ERROR, so a constructor can never silently swallow another's inputs.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::codec::StructuralEntry;
-use crate::error::DisjointnessError;
+use crate::error::{DisjointnessError, DisjointnessReason};
 use crate::form::StructuralForm;
 use crate::ids::ScopedEncodedTypeId;
 
@@ -26,6 +26,14 @@ enum OuterShape<'form> {
     Delimited(raw_discovery::Delimiter),
     /// Matchable kind cannot be pinned — conservatively overlaps everything.
     Opaque,
+}
+
+/// The active direct-delegate expansions for one proof obligation. This is a
+/// structural state (the delegated type identities), not a depth counter: re-entering
+/// an active expansion means the proof remains unresolved at the same raw block.
+#[derive(Default)]
+struct DelegateProofState {
+    active_expansions: BTreeSet<ScopedEncodedTypeId>,
 }
 
 impl StructuralForm {
@@ -47,24 +55,30 @@ impl StructuralForm {
         &self,
         other: &StructuralForm,
         entries: Option<&BTreeMap<ScopedEncodedTypeId, StructuralEntry>>,
-    ) -> Result<(), &'static str> {
+        state: &mut DelegateProofState,
+    ) -> Result<(), ProofFailure> {
         if let StructuralForm::Delegate(target) = self {
             let entry = entries
                 .and_then(|entries| entries.get(target))
-                .ok_or("a delegate has no table entry available for proof")?;
-            return entry
+                .ok_or(DisjointnessReason::MissingDelegateTarget { target: *target })?;
+            if !state.active_expansions.insert(*target) {
+                return Err(ProofFailure::DelegateExpansionCycle { reentered: *target });
+            }
+            let proof = entry
                 .constructors
                 .iter()
                 .flat_map(|codec| &codec.decode_forms)
-                .try_for_each(|form| form.prove_disjoint_from(other, entries));
+                .try_for_each(|form| form.prove_disjoint_from(other, entries, state));
+            state.active_expansions.remove(target);
+            return proof;
         }
         if let StructuralForm::Delegate(_) = other {
-            return other.prove_disjoint_from(self, entries);
+            return other.prove_disjoint_from(self, entries, state);
         }
 
         match (self.outer_shape(), other.outer_shape()) {
             (OuterShape::Opaque, _) | (_, OuterShape::Opaque) => {
-                Err("a leaf or product form has no pinned block kind")
+                Err(DisjointnessReason::OpaqueForm.into())
             }
 
             // Different block kinds are mutually exclusive: a block is exactly one of
@@ -85,14 +99,14 @@ impl StructuralForm {
             (OuterShape::NameAtom(left_case), OuterShape::NameAtom(right_case)) => {
                 match (left_case, right_case) {
                     (Some(left_case), Some(right_case)) if left_case != right_case => Ok(()),
-                    _ => Err("both forms accept an overlapping atom case"),
+                    _ => Err(DisjointnessReason::OverlappingAtomCase.into()),
                 }
             }
 
             // Two literals are disjoint only when they name different keywords.
             (OuterShape::Literal(left), OuterShape::Literal(right)) => {
                 if left == right {
-                    Err("both forms require the same interned literal")
+                    Err(DisjointnessReason::SameLiteral.into())
                 } else {
                     Ok(())
                 }
@@ -102,22 +116,28 @@ impl StructuralForm {
             // must not mix the two categories; no lexical exclusion can repair that.
             (OuterShape::NameAtom(_), OuterShape::Literal(_))
             | (OuterShape::Literal(_), OuterShape::NameAtom(_)) => {
-                Err("a literal atom might satisfy the name atom's case constraint")
+                Err(DisjointnessReason::LiteralMayMatchNameAtom.into())
             }
 
-            // Applications are disjoint if EITHER position is provably disjoint.
+            // Applications are disjoint if EITHER position is provably disjoint. A
+            // guarded recursive payload is never expanded when the heads already
+            // separate the alternatives.
             (
                 OuterShape::Application(left_head, left_payload),
                 OuterShape::Application(right_head, right_payload),
             ) => {
-                if left_head.prove_disjoint_from(right_head, entries).is_ok()
-                    || left_payload
-                        .prove_disjoint_from(right_payload, entries)
-                        .is_ok()
-                {
-                    Ok(())
-                } else {
-                    Err("neither the application head nor payload is provably disjoint")
+                let head_proof = left_head.prove_disjoint_from(right_head, entries, state);
+                if head_proof.is_ok() {
+                    return Ok(());
+                }
+                let payload_proof = left_payload.prove_disjoint_from(right_payload, entries, state);
+                if payload_proof.is_ok() {
+                    return Ok(());
+                }
+                match (head_proof, payload_proof) {
+                    (Err(cycle @ ProofFailure::DelegateExpansionCycle { .. }), _)
+                    | (_, Err(cycle @ ProofFailure::DelegateExpansionCycle { .. })) => Err(cycle),
+                    _ => Err(DisjointnessReason::ApplicationPositionsNotDisjoint.into()),
                 }
             }
 
@@ -126,12 +146,25 @@ impl StructuralForm {
             // attempt (conservatively an overlap).
             (OuterShape::Delimited(left), OuterShape::Delimited(right)) => {
                 if left == right {
-                    Err("both forms use the same delimiter")
+                    Err(DisjointnessReason::SharedDelimiter.into())
                 } else {
                     Ok(())
                 }
             }
         }
+    }
+}
+
+/// A proof failure is either an ordinary conservative refusal or a direct-delegate
+/// cycle, which must be surfaced separately at the public seal boundary.
+enum ProofFailure {
+    Disjointness(DisjointnessReason),
+    DelegateExpansionCycle { reentered: ScopedEncodedTypeId },
+}
+
+impl From<DisjointnessReason> for ProofFailure {
+    fn from(reason: DisjointnessReason) -> Self {
+        Self::Disjointness(reason)
     }
 }
 
@@ -164,12 +197,25 @@ impl StructuralEntry {
 
         for (first, left) in forms.iter().enumerate() {
             for (second, right) in forms.iter().enumerate().skip(first + 1) {
-                if let Err(reason) = left.prove_disjoint_from(right, entries) {
-                    return Err(DisjointnessError::NotProvablyDisjoint {
-                        core_type: self.core_type,
-                        first,
-                        second,
-                        reason,
+                let mut state = DelegateProofState::default();
+                if let Err(failure) = left.prove_disjoint_from(right, entries, &mut state) {
+                    return Err(match failure {
+                        ProofFailure::Disjointness(reason) => {
+                            DisjointnessError::NotProvablyDisjoint {
+                                core_type: self.core_type,
+                                first,
+                                second,
+                                reason,
+                            }
+                        }
+                        ProofFailure::DelegateExpansionCycle { reentered } => {
+                            DisjointnessError::DelegateExpansionCycle {
+                                core_type: self.core_type,
+                                first,
+                                second,
+                                reentered,
+                            }
+                        }
                     });
                 }
             }

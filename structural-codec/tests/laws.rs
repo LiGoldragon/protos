@@ -7,7 +7,6 @@ use raw_discovery::{Block, Delimiter, Recognizer};
 use structural_codec::fixture::{COMMIT_SEQUENCE, DOCUMENTATION, FIELD, FLOAT, FixtureBuilder};
 use structural_codec::{
     AddressedStructuralTable, CanonicalText, ScopedEncodedTypeId, StructuralEvaluator,
-    StructuralRevision,
 };
 
 fn recognize_single(source: &str) -> Block {
@@ -110,12 +109,10 @@ fn law_three_interning_atomicity() {
 fn law_four_identity_preserving_across_revisions() {
     let table_old = FixtureBuilder::new()
         .with_newtype_delimiter(Delimiter::Brace)
-        .with_revision(StructuralRevision::new(1))
         .build()
         .expect("seal old table");
     let table_new = FixtureBuilder::new()
         .with_newtype_delimiter(Delimiter::Parenthesis)
-        .with_revision(StructuralRevision::new(2))
         .build()
         .expect("seal new table");
     assert_ne!(

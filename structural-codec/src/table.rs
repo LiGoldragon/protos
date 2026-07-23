@@ -10,7 +10,7 @@ use content_identity::{ContentHash, DomainSeparation, HashDomain, LayoutVersion}
 
 use crate::codec::StructuralEntry;
 use crate::error::{DisjointnessError, TableError};
-use crate::ids::{EncodedUniverseId, ScopedEncodedTypeId, StructuralRevision};
+use crate::ids::{EncodedUniverseId, ScopedEncodedTypeId};
 
 /// The identity of a Core layout the forms target (supplied by the Core side).
 #[derive(
@@ -86,33 +86,22 @@ impl HashDomain for StructuralTableDomain {
     }
 }
 
-/// A revisioned structural table with its identity stored outside the hashed payload.
+/// A sealed structural table with its identity stored outside the hashed payload.
 #[derive(Clone, Debug)]
 pub struct AddressedStructuralTable {
-    revision: StructuralRevision,
     payload: TableIdentityPayload,
     identity: ContentHash<StructuralTableDomain>,
 }
 
 impl AddressedStructuralTable {
-    /// Compute the table's content identity over the payload and store it outside.
-    pub fn seal(
-        revision: StructuralRevision,
-        payload: TableIdentityPayload,
-    ) -> Result<Self, TableError> {
+    /// Prove every decode form disjoint, then compute the table identity over its
+    /// complete payload and store that identity outside its pre-image.
+    pub fn seal(payload: TableIdentityPayload) -> Result<Self, TableError> {
         for entry in payload.entries.values() {
             entry.validate_disjoint_with(&payload.entries)?;
         }
         let identity = ContentHash::of_core(&payload)?;
-        Ok(Self {
-            revision,
-            payload,
-            identity,
-        })
-    }
-
-    pub fn revision(&self) -> StructuralRevision {
-        self.revision
+        Ok(Self { payload, identity })
     }
 
     /// The table's content identity — co-versioned with the language package,

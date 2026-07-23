@@ -58,7 +58,7 @@ pub use form::{
 };
 pub use ids::{
     EncodedConstructorId, EncodedUniverseId, FIXTURE_UNIVERSE, PositionalSignature,
-    ScopedEncodedTypeId, StructuralRevision,
+    ScopedEncodedTypeId,
 };
 pub use raw_discovery::AtomCase;
 pub use table::{

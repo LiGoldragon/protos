@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use structural_codec::ids::{FIXTURE_UNIVERSE, ScopedEncodedTypeId, StructuralRevision};
+use structural_codec::ids::{FIXTURE_UNIVERSE, ScopedEncodedTypeId};
 use structural_codec::table::{
     AddressedStructuralTable, EncodedLayoutIdentity, RawProfileIdentity, TableIdentityPayload,
 };
@@ -131,6 +131,6 @@ impl DerivedTable {
             leaf_codec_contracts: Vec::new(),
             entries: self.entries.clone(),
         };
-        AddressedStructuralTable::seal(StructuralRevision::new(1), payload)
+        AddressedStructuralTable::seal(payload)
     }
 }

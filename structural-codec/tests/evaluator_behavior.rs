@@ -10,7 +10,7 @@ use structural_codec::fixture::{DATABASE_MARKER, DOCUMENTATION, FLOAT, FixtureBu
 use structural_codec::{
     AddressedStructuralTable, ConstructorCodec, EncodedConstructorId, PositionalSignature,
     ScalarValue, ScopedEncodedTypeId, StructuralEntry, StructuralEvaluator, StructuralForm,
-    StructuralRevision, StructuralValue, TableIdentityPayload,
+    StructuralValue, TableIdentityPayload,
 };
 use structural_codec::{EncodedLayoutIdentity, RawProfileIdentity};
 
@@ -145,7 +145,7 @@ fn transparent_delegation_cycle_is_rejected() {
         entries,
     };
     let table: AddressedStructuralTable =
-        AddressedStructuralTable::seal(StructuralRevision::new(1), payload).expect("seal");
+        AddressedStructuralTable::seal(payload).expect("seal");
     let evaluator = StructuralEvaluator::new(&table);
 
     let block = recognize_single("Whatever");

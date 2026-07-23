@@ -17,9 +17,7 @@ use crate::codec::{ConstructorCodec, StructuralEntry};
 use crate::error::TableError;
 use crate::form::{AtomForm, LeafForm, ScalarLeaf, SequenceForm, StructuralForm};
 use raw_discovery::AtomCase;
-use crate::ids::{
-    EncodedConstructorId, PositionalSignature, ScopedEncodedTypeId, StructuralRevision,
-};
+use crate::ids::{EncodedConstructorId, PositionalSignature, ScopedEncodedTypeId};
 use crate::table::{
     AddressedStructuralTable, EncodedLayoutIdentity, RawProfileIdentity, TableIdentityPayload,
 };
@@ -35,19 +33,17 @@ pub const STATE_DIGEST: ScopedEncodedTypeId = ScopedEncodedTypeId::fixture(2);
 pub const DATABASE_MARKER: ScopedEncodedTypeId = ScopedEncodedTypeId::fixture(3);
 pub const FIELD: ScopedEncodedTypeId = ScopedEncodedTypeId::fixture(23);
 
-/// Builds the fixture table. Carries the varying textual surface so two revisions
+/// Builds the fixture table. Carries the varying textual surface so two tables
 /// can differ only in form.
 #[derive(Clone, Debug)]
 pub struct FixtureBuilder {
     newtype_delimiter: Delimiter,
-    revision: StructuralRevision,
 }
 
 impl Default for FixtureBuilder {
     fn default() -> Self {
         Self {
             newtype_delimiter: Delimiter::Brace,
-            revision: StructuralRevision::new(1),
         }
     }
 }
@@ -57,15 +53,10 @@ impl FixtureBuilder {
         Self::default()
     }
 
-    /// The delimiter the newtype bodies use. Varying it with the revision yields a
-    /// table that differs from another only in textual form.
+    /// The delimiter the newtype bodies use. Varying it yields a table that differs
+    /// from another only in textual form.
     pub fn with_newtype_delimiter(mut self, delimiter: Delimiter) -> Self {
         self.newtype_delimiter = delimiter;
-        self
-    }
-
-    pub fn with_revision(mut self, revision: StructuralRevision) -> Self {
-        self.revision = revision;
         self
     }
 
@@ -82,7 +73,7 @@ impl FixtureBuilder {
             leaf_codec_contracts: Vec::new(),
             entries,
         };
-        AddressedStructuralTable::seal(self.revision, payload)
+        AddressedStructuralTable::seal(payload)
     }
 
     fn entries(&self) -> Vec<StructuralEntry> {

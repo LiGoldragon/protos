@@ -9,8 +9,8 @@ use structural_codec::fixture::{FIELD, FixtureBuilder};
 use structural_codec::{
     AddressedStructuralTable, AtomCase, AtomForm, ConstructorCodec, DelegationPayload,
     EncodedConstructorId, EncodedLayoutIdentity, PositionalSignature, RawProfileIdentity,
-    ScopedEncodedTypeId, StructuralEntry, StructuralEvaluator, StructuralForm, StructuralRevision,
-    StructuralValue, TableError, TableIdentityPayload,
+    ScopedEncodedTypeId, StructuralEntry, StructuralEvaluator, StructuralForm, StructuralValue,
+    TableError, TableIdentityPayload,
 };
 
 fn entry_with_forms(forms: Vec<StructuralForm>) -> StructuralEntry {
@@ -37,16 +37,13 @@ fn sealed_table(entry: StructuralEntry) -> Result<AddressedStructuralTable, Tabl
 fn sealed_entries(
     entries: BTreeMap<ScopedEncodedTypeId, StructuralEntry>,
 ) -> Result<AddressedStructuralTable, TableError> {
-    AddressedStructuralTable::seal(
-        StructuralRevision::new(2),
-        TableIdentityPayload {
-            core_universe: structural_codec::FIXTURE_UNIVERSE,
-            core_layout_identity: EncodedLayoutIdentity([0; 32]),
-            raw_profile_identity: RawProfileIdentity([1; 32]),
-            leaf_codec_contracts: Vec::new(),
-            entries,
-        },
-    )
+    AddressedStructuralTable::seal(TableIdentityPayload {
+        core_universe: structural_codec::FIXTURE_UNIVERSE,
+        core_layout_identity: EncodedLayoutIdentity([0; 32]),
+        raw_profile_identity: RawProfileIdentity([1; 32]),
+        leaf_codec_contracts: Vec::new(),
+        entries,
+    })
 }
 
 fn chosen_constructor(value: StructuralValue) -> u32 {
@@ -389,19 +386,16 @@ fn seal_proves_disjointness_through_a_delegate() {
             ),
         ],
     );
-    let table = AddressedStructuralTable::seal(
-        StructuralRevision::new(2),
-        TableIdentityPayload {
-            core_universe: structural_codec::FIXTURE_UNIVERSE,
-            core_layout_identity: EncodedLayoutIdentity([0; 32]),
-            raw_profile_identity: RawProfileIdentity([1; 32]),
-            leaf_codec_contracts: Vec::new(),
-            entries: BTreeMap::from([
-                (reference, reference_entry),
-                (declaration, declaration_entry),
-            ]),
-        },
-    )
+    let table = AddressedStructuralTable::seal(TableIdentityPayload {
+        core_universe: structural_codec::FIXTURE_UNIVERSE,
+        core_layout_identity: EncodedLayoutIdentity([0; 32]),
+        raw_profile_identity: RawProfileIdentity([1; 32]),
+        leaf_codec_contracts: Vec::new(),
+        entries: BTreeMap::from([
+            (reference, reference_entry),
+            (declaration, declaration_entry),
+        ]),
+    })
     .expect("the delegate expands to a Pascal atom, disjoint from a brace");
 
     let block = Recognizer::standard()

@@ -116,30 +116,3 @@ impl PositionalSignature {
         self.0.len()
     }
 }
-
-/// A monotone revision number for a structural table. Bumped whenever the
-/// textual surface changes; the Core side never observes it.
-#[derive(
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-)]
-pub struct StructuralRevision(u32);
-
-impl StructuralRevision {
-    pub const fn new(value: u32) -> Self {
-        Self(value)
-    }
-
-    pub const fn value(self) -> u32 {
-        self.0
-    }
-}

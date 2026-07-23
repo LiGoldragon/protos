@@ -53,23 +53,26 @@ fn chosen_constructor(value: StructuralValue) -> u32 {
     constructor
 }
 
-/// The `Field` alternatives (bare `Type` atom versus `name.Type` application) are
-/// provably disjoint — different block kinds.
+/// The `Field` entry has exactly one bare-type constructor; the banned named
+/// alternative cannot reappear as a second accepted decode form.
 #[test]
-fn field_alternatives_are_provably_disjoint() {
+fn field_entry_is_the_sole_elided_constructor() {
     let table = FixtureBuilder::new().build().expect("seal");
     table
         .validate_disjoint()
         .expect("the whole fixture table validates");
 
-    // and specifically the Field entry.
-    let field = FixtureBuilder::new()
-        .build()
-        .expect("seal")
-        .entry(FIELD)
-        .expect("field entry")
-        .clone();
-    field.validate_disjoint().expect("field entry validates");
+    let field = table.entry(FIELD).expect("field entry");
+    assert_eq!(
+        field.constructors.len(),
+        1,
+        "only the elided field form remains"
+    );
+    assert_eq!(field.constructors[0].decode_forms.len(), 1);
+    assert_eq!(
+        field.constructors[0].encode_form,
+        StructuralForm::pascal_atom()
+    );
 }
 
 /// Two atoms of DIFFERENT concrete case are provably disjoint.

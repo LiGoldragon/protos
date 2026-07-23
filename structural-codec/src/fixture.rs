@@ -1,9 +1,8 @@
 //! The proof-of-concept fixture universe — the acceptance gate of slice one. Builds
 //! a concrete `AddressedStructuralTable` in the explicit `FIXTURE_UNIVERSE` covering:
 //! the `CommitSequence`/`StateDigest` newtypes, a `DatabaseMarker` struct whose body
-//! is a repeat of `Field`, the `Field` type with its TWO structurally-disjoint
-//! constructors (bare `Type` with elided name versus `name.Type`), the
-//! `Documentation → Summary → Text` string-rejoin delegate chain, and standalone
+//! is a repeat of `Field`, whose sole constructor is the bare elided-name `Type`,
+//! the `Documentation → Summary → Text` string-rejoin delegate chain, and standalone
 //! `Integer`/`Float`/`Text` leaf types. The builder is data-bearing (it carries the
 //! block delimiter), so law 4 can mint two revisions that differ only in textual
 //! form.
@@ -16,11 +15,11 @@ use crate::authoring::{AuthoringForm, ObjectSymbolPrefixedBlock};
 use crate::codec::{ConstructorCodec, StructuralEntry};
 use crate::error::TableError;
 use crate::form::{AtomForm, LeafForm, ScalarLeaf, SequenceForm, StructuralForm};
-use raw_discovery::AtomCase;
 use crate::ids::{EncodedConstructorId, PositionalSignature, ScopedEncodedTypeId};
 use crate::table::{
     AddressedStructuralTable, EncodedLayoutIdentity, RawProfileIdentity, TableIdentityPayload,
 };
+use raw_discovery::AtomCase;
 
 // Fixture type ids (local numbers echo the design's worked examples).
 pub const INTEGER: ScopedEncodedTypeId = ScopedEncodedTypeId::fixture(10);
@@ -161,30 +160,18 @@ impl FixtureBuilder {
         )
     }
 
-    /// The `Field` type with its two structurally-disjoint constructors: a bare
-    /// `Type` (name elided, derived via name-table) versus `name.Type`.
+    /// The `Field` type's sole constructor: a bare `Type` with its name elided.
+    /// Field names are derived at the boundary and never authored in the form.
     fn field_entry() -> StructuralEntry {
         let type_only = StructuralForm::pascal_atom();
-        let named = StructuralForm::application(
-            StructuralForm::camel_atom(),
-            StructuralForm::pascal_atom(),
-        );
         StructuralEntry::new(
             FIELD,
-            vec![
-                ConstructorCodec::new(
-                    EncodedConstructorId::new(FIELD, 0),
-                    vec![type_only.clone()],
-                    type_only,
-                    PositionalSignature::default(),
-                ),
-                ConstructorCodec::new(
-                    EncodedConstructorId::new(FIELD, 1),
-                    vec![named.clone()],
-                    named,
-                    PositionalSignature::default(),
-                ),
-            ],
+            vec![ConstructorCodec::new(
+                EncodedConstructorId::new(FIELD, 0),
+                vec![type_only.clone()],
+                type_only,
+                PositionalSignature::default(),
+            )],
         )
     }
 }

@@ -1,6 +1,6 @@
 //! Evaluator behaviours: delegation constructs every wrapper level, transparent
 //! delegation cycles are rejected, the string-rejoin and float leaves share one
-//! control path, and a struct body decodes its disjoint Field alternatives.
+//! control path, and a struct body decodes positional elided-name Fields.
 
 use std::collections::BTreeMap;
 
@@ -76,14 +76,13 @@ fn float_leaf_flattens_and_parses() {
     }
 }
 
-/// A struct body decodes its two Field alternatives to their distinct constructors:
-/// the bare `Integer` chooses `Field::TypeOnly` (0), and `commitSequence.Integer`
-/// chooses `Field::Named` (1).
+/// A struct body decodes each bare type as the one elided-name Field constructor,
+/// preserving same-typed fields by position rather than stored field names.
 #[test]
-fn struct_body_decodes_disjoint_field_alternatives() {
+fn struct_body_decodes_positional_elided_fields() {
     let table = FixtureBuilder::new().build().expect("seal");
     let evaluator = StructuralEvaluator::new(&table);
-    let block = recognize_single("DatabaseMarker.{ Integer commitSequence.Integer }");
+    let block = recognize_single("DatabaseMarker.{ Integer Integer }");
     let mut names = NameTable::new(IdentifierNamespace::Fixture);
     let value = evaluator
         .decode(DATABASE_MARKER, &block, &mut names)
@@ -99,19 +98,42 @@ fn struct_body_decodes_disjoint_field_alternatives() {
     let StructuralValue::Delimited(fields) = *body else {
         panic!("expected the delimited field body");
     };
-    assert_eq!(fields.len(), 2, "two fields");
+    assert_eq!(fields.len(), 2, "two positional fields");
 
-    let chosen_constructor = |field: &StructuralValue| -> u32 {
+    for field in &fields {
         let StructuralValue::Delegated(inner) = field else {
             panic!("each field is a delegate wrapper");
         };
         let StructuralValue::Chosen { constructor, .. } = inner.as_ref() else {
             panic!("the delegate resolves to a chosen Field constructor");
         };
-        *constructor
-    };
-    assert_eq!(chosen_constructor(&fields[0]), 0, "bare type → TypeOnly");
-    assert_eq!(chosen_constructor(&fields[1]), 1, "name.Type → Named");
+        assert_eq!(*constructor, 0, "each bare field uses the sole constructor");
+    }
+}
+
+/// The fixture Field entry admits one elided-name constructor and rejects the banned
+/// `name.Type` surface through the evaluator's ordinary typed no-alternative path.
+#[test]
+fn field_entry_rejects_the_banned_named_surface() {
+    let table = FixtureBuilder::new().build().expect("seal");
+    let evaluator = StructuralEvaluator::new(&table);
+    let field = table
+        .entry(structural_codec::fixture::FIELD)
+        .expect("field entry");
+    assert_eq!(
+        field.constructors.len(),
+        1,
+        "only the elided constructor remains"
+    );
+
+    let named = recognize_single("stateDigest.Integer");
+    let mut names = NameTable::new(IdentifierNamespace::Fixture);
+    assert!(
+        evaluator
+            .decode(structural_codec::fixture::FIELD, &named, &mut names)
+            .is_err(),
+        "the banned named-field spelling has no accepted constructor"
+    );
 }
 
 /// A transparent delegation cycle (A delegates to B, B delegates back to A, both on
@@ -144,8 +166,7 @@ fn transparent_delegation_cycle_is_rejected() {
         leaf_codec_contracts: Vec::new(),
         entries,
     };
-    let table: AddressedStructuralTable =
-        AddressedStructuralTable::seal(payload).expect("seal");
+    let table: AddressedStructuralTable = AddressedStructuralTable::seal(payload).expect("seal");
     let evaluator = StructuralEvaluator::new(&table);
 
     let block = recognize_single("Whatever");

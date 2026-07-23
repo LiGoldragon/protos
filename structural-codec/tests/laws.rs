@@ -27,7 +27,6 @@ fn law_one_round_trip_core() {
     let cases: &[(ScopedEncodedTypeId, &str)] = &[
         (COMMIT_SEQUENCE, "CommitSequence.{ Integer }"),
         (FIELD, "Integer"),
-        (FIELD, "commitSequence.Integer"),
         (DOCUMENTATION, "alpha.beta.gamma"),
         (FLOAT, "-122.3"),
     ];
@@ -54,7 +53,7 @@ fn law_two_round_trip_canonical() {
     let evaluator = StructuralEvaluator::new(&table);
     let cases: &[(ScopedEncodedTypeId, &str)] = &[
         (COMMIT_SEQUENCE, "CommitSequence.{ Integer }"),
-        (FIELD, "commitSequence.Integer"),
+        (FIELD, "Integer"),
         (DOCUMENTATION, "alpha.beta.gamma"),
         (FLOAT, "-122.3"),
     ];

@@ -40,7 +40,7 @@ pub enum DisjointnessError {
 pub enum DisjointnessReason {
     #[error("delegate target {target:?} has no table entry available for proof")]
     MissingDelegateTarget { target: ScopedEncodedTypeId },
-    #[error("a leaf or product form has no pinned block kind")]
+    #[error("a leaf form has no pinned block kind")]
     OpaqueForm,
     #[error("both forms accept an overlapping atom case")]
     OverlappingAtomCase,

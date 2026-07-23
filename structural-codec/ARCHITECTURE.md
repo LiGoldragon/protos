@@ -25,7 +25,7 @@ published revisions. It edits none of them.
 
 ## The kernel / authoring split (design ruling 1)
 
-The kernel `StructuralForm` is deliberately seven cases. The psyche's named
+The kernel `StructuralForm` is deliberately six cases. The psyche's named
 authoring structs are preserved as a distinct **authoring vocabulary**
 (`AuthoringForm`) that `normalize()`s to kernel forms before hashing or
 evaluation. This keeps the substrate minimal and content-identity stable while the
@@ -71,9 +71,9 @@ nota's `validate_no_silent_conflicts` permits by default and rejects only
 demonstrable shadows. This crate **inverts** that: a pair of decode forms is
 accepted only when it can be *proven* that no block matches both (different block
 kinds, distinct concrete atom cases, distinct literals, distinct delimiters, or a
-provably-disjoint application position). Anything opaque (a delegate, leaf, or
-product form) or unprovable is a hard error — a constructor can never silently
-swallow another's inputs.
+provably-disjoint application position). Anything opaque (a delegate or leaf) or
+unprovable is a hard error — a constructor can never silently swallow another's
+inputs.
 
 ## Deviations and flagged placements
 

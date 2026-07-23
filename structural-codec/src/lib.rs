@@ -7,7 +7,7 @@
 //!
 //! ## The kernel / authoring split
 //!
-//! [`StructuralForm`] is a minimal seven-case kernel. The psyche's named authoring
+//! [`StructuralForm`] is a minimal six-case kernel. The psyche's named authoring
 //! structs ([`authoring::ObjectSymbolPrefixedBlock`], [`authoring::DottedForm`]) live
 //! in the AUTHORING vocabulary and [`authoring::AuthoringForm::normalize`] to kernel
 //! forms before a form is ever hashed or evaluated, so the kernel stays small.

@@ -27,11 +27,9 @@ fn object_prefixed_block_normalizes_to_application() {
 #[test]
 fn dotted_form_normalizes_to_right_associative_chain() {
     let authored = AuthoringForm::Dotted(DottedForm {
-        segments: vec![
-            StructuralForm::pascal_atom(),
-            StructuralForm::pascal_atom(),
-            StructuralForm::camel_atom(),
-        ],
+        head: StructuralForm::pascal_atom(),
+        payload: StructuralForm::pascal_atom(),
+        continuation: vec![StructuralForm::camel_atom()],
     });
 
     let expected = StructuralForm::application(

@@ -206,17 +206,6 @@ impl<'table> StructuralEvaluator<'table> {
                 ))
             }
 
-            StructuralForm::Product(forms) => {
-                if forms.len() == 1 {
-                    self.match_form(&forms[0], block, chain)
-                } else {
-                    Err(DecodeError::ProductArity {
-                        form: forms.len(),
-                        blocks: 1,
-                    })
-                }
-            }
-
             StructuralForm::Delegate { target, payload } => {
                 if let Some(payload) = payload {
                     let atom = block
@@ -395,9 +384,6 @@ impl<'table> StructuralEvaluator<'table> {
             }),
             (StructuralForm::Delegate { target, .. }, StructuralValue::Delegated(inner)) => {
                 self.encode_type(*target, inner, resolver)
-            }
-            (StructuralForm::Product(forms), value) if forms.len() == 1 => {
-                self.encode_form_walk(&forms[0], value, resolver)
             }
             _ => Err(EncodeError::ShapeMismatch(
                 "value did not fit the canonical encode form",

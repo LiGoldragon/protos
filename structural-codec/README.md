@@ -13,7 +13,7 @@ new textual dialects can be added without regenerating codecs.
 
 ## The kernel / authoring split
 
-`StructuralForm` is a minimal seven-case kernel:
+`StructuralForm` is a minimal six-case kernel:
 
 ```
 Product · Atom · Leaf · Literal · Application{head,payload} · Delimited{delimiter,sequence} · Delegate

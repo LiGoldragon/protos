@@ -1,7 +1,7 @@
 //! The kernel `StructuralForm`: the minimal, revisioned, bidirectional vocabulary
 //! the trusted evaluator reads in both directions. A form is DATA — it carries no
 //! parsing code. The authoring vocabulary (`crate::authoring`) normalizes to these
-//! seven cases before a form is ever hashed or evaluated, so the kernel stays small.
+//! six cases before a form is ever hashed or evaluated, so the kernel stays small.
 //!
 //! The recursive cases (`Product`, `Application`, `Delimited`) carry the same rkyv
 //! bound attributes raw-discovery proved on its `Block`, so an entire form tree is
@@ -12,7 +12,7 @@ use raw_discovery::{Atom, AtomCase, Delimiter};
 
 use crate::ids::ScopedEncodedTypeId;
 
-/// The seven-case kernel. `macro` is reserved for Nomos; the parser-side data is a
+/// The six-case kernel. `macro` is reserved for Nomos; the parser-side data is a
 /// `StructuralForm` (settled terminology, design §4.1).
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[rkyv(
@@ -21,8 +21,6 @@ use crate::ids::ScopedEncodedTypeId;
     bytecheck(bounds(__C: rkyv::validation::ArchiveContext, __C::Error: rkyv::rancor::Source)),
 )]
 pub enum StructuralForm {
-    /// Heterogeneous positional tuple over a run of sibling blocks.
-    Product(#[rkyv(omit_bounds)] Vec<StructuralForm>),
     /// A single bare atom, case-constrained; always resolves to a name.
     Atom(AtomForm),
     /// A scalar leaf (flatten-then-parse) or an explicit carrier.

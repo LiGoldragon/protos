@@ -43,7 +43,7 @@ impl StructuralForm {
             Self::Literal(identifier) => OuterShape::Literal(*identifier),
             Self::Application { head, payload } => OuterShape::Application(head, payload),
             Self::Delimited { delimiter, .. } => OuterShape::Delimited(*delimiter),
-            Self::Leaf(_) | Self::Delegate { .. } | Self::Product(_) => OuterShape::Opaque,
+            Self::Leaf(_) | Self::Delegate { .. } => OuterShape::Opaque,
         }
     }
 

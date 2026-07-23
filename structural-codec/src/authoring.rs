@@ -1,7 +1,7 @@
 //! The AUTHORING vocabulary — the psyche's named structs, kept in the surface but
 //! kept OUT of the kernel. Each authoring form `normalize`s to a plain kernel
 //! `StructuralForm` before the form is ever hashed or evaluated, so the kernel stays
-//! seven cases while the authoring surface stays expressive (design ruling 1, §4.1).
+//! six cases while the authoring surface stays expressive (design ruling 1, §4.1).
 
 use raw_discovery::Delimiter;
 
@@ -51,23 +51,27 @@ impl ObjectSymbolPrefixedBlock {
     }
 }
 
-/// A qualified-path run `a.b.c`, at least two segments long.
+/// A qualified-path run `a.b.c`, structurally requiring at least two segments.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DottedForm {
-    pub segments: Vec<StructuralForm>,
+    pub head: StructuralForm,
+    pub payload: StructuralForm,
+    pub continuation: Vec<StructuralForm>,
 }
 
 impl DottedForm {
-    /// Normalizes to a right-associative `Application` chain. An empty or single
-    /// segment normalizes to that lone segment (a dotted run of one is just it).
+    /// Normalizes to a right-associative `Application` chain.
     pub fn normalize(&self) -> StructuralForm {
-        let mut segments = self.segments.iter().rev().cloned();
-        let Some(mut chain) = segments.next() else {
-            return StructuralForm::Product(Vec::new());
-        };
-        for segment in segments {
-            chain = StructuralForm::application(segment, chain);
-        }
-        chain
+        let payload_chain = self
+            .continuation
+            .iter()
+            .rev()
+            .cloned()
+            .reduce(|chain, segment| StructuralForm::application(segment, chain))
+            .map_or_else(
+                || self.payload.clone(),
+                |continuation| StructuralForm::application(self.payload.clone(), continuation),
+            );
+        StructuralForm::application(self.head.clone(), payload_chain)
     }
 }

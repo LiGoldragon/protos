@@ -15,7 +15,10 @@ impl CanonicalText for Block {
     fn canonical_text(&self) -> String {
         match self {
             Block::Atom(atom) => atom.text().to_owned(),
-            Block::PipeText(pipe) => format!("(|{}|)", pipe.text()),
+            Block::PipeText(pipe) => {
+                let escaped = pipe.text().replace('\\', "\\\\").replace("|)", "\\|)");
+                format!("(|{escaped}|)")
+            }
             Block::Application { head, payload } => {
                 format!("{}.{}", head.canonical_text(), payload.canonical_text())
             }

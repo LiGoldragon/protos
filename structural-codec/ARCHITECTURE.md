@@ -87,8 +87,10 @@ swallow another's inputs.
 - **`Literal` decode needs a table-scoped lexicon resolver** (`StructuralEvaluator::
   with_lexicon`). The fixture universe avoids `Literal` on decode paths; encode
   always has the caller's resolver.
-- **Grammar readings.** `SigilSpec`/`$` and float-from-dotted-text ride on
-  non-rejected grammar readings, gated behind profile revisions until accepted.
+- **Directed delegation.** Expected-type positions may carry an optional closed
+  `DelegationPayload`; the first payload kind directs atom case. It is sealed into
+  table identity and participates in disjointness proof. The unused `SigilSpec`/`$`
+  surface was retired rather than kept as speculative grammar.
 - **Signature-versus-Core validation is deferred**: the proof-of-concept has no
   Core layout to check `PositionalSignature` against, so the fixture universe
   de-blocks the parked schema-unit question with an explicit `FIXTURE_UNIVERSE`.

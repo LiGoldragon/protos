@@ -122,7 +122,7 @@ fn transparent_delegation_cycle_is_rejected() {
     let type_b = ScopedEncodedTypeId::fixture(301);
 
     let single = |core_type: ScopedEncodedTypeId, target: ScopedEncodedTypeId| {
-        let form = StructuralForm::Delegate(target);
+        let form = StructuralForm::delegate(target);
         StructuralEntry::new(
             core_type,
             vec![ConstructorCodec::new(

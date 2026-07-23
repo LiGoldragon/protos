@@ -255,7 +255,7 @@ impl TypeSpec {
         let entry_body = quote! {
             let core_type = #core_type;
             let inner = <#inner as ::structural_codec::conformance::GeneratedCodec>::CORE_TYPE;
-            let form = ::structural_codec::StructuralForm::Delegate(inner);
+            let form = ::structural_codec::StructuralForm::delegate(inner);
             ::structural_codec::StructuralEntry::new(
                 core_type,
                 ::std::vec![::structural_codec::ConstructorCodec::new(
@@ -472,7 +472,7 @@ impl TypeSpec {
                 ::structural_codec::StructuralForm::Delimited {
                     delimiter: #delimiter_tokens,
                     sequence: ::structural_codec::SequenceForm::Product(::std::vec![
-                        ::structural_codec::StructuralForm::Delegate(field_type); #arity_lit
+                        ::structural_codec::StructuralForm::delegate(field_type); #arity_lit
                     ]),
                 },
             );

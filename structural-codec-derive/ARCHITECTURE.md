@@ -74,7 +74,8 @@ variant set lives in the `Kind` enum, never a string flag consulted at codegen.
   scalar (`i64`/`f64`/`String`/`bool`). Decode flattens with `Block::dotted_text` then
   parses; encode is `ScalarValue::render_block` — the same rejoin the evaluator uses,
   so float and string share one control path.
-- **`delegate(inner = T)`** → form `Delegate(T::CORE_TYPE)`, signature `[T::CORE_TYPE]`.
+- **`delegate(inner = T)`** → form `Delegate { target: T::CORE_TYPE, payload: None }`,
+  signature `[T::CORE_TYPE]`.
   Capture: a transparent wrapper over `T`. Decode/encode/`to_structural` recurse into
   `T`; `to_structural` adds the `Chosen{0, Delegated(..)}` layer the evaluator's
   `match_type ∘ Delegate` produces.
@@ -83,7 +84,8 @@ variant set lives in the `Kind` enum, never a string flag consulted at codegen.
   wrapped-type identifiers. This decodes a schema DECLARATION (`CommitSequence.{
   Integer }`), the self-hosting shape `core-schema` authors.
 - **`struct_declaration(field_type, delimiter, fields)`** → `Application(pascal,
-  Delimited{D, Product([Delegate(field_type); n])})`, signature = the fields'
+  Delimited{D, Product([Delegate { target: field_type, payload: None }; n])})`,
+  signature = the fields'
   referenced types. Capture: object identifier + `Vec<field_type>`. Each field is
   decoded through the meta-type and wrapped in a `Delegated` layer.
 - **`field_meta`** → ONE constructor: a bare `PascalCase` atom (elided name).

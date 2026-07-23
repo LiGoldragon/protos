@@ -78,7 +78,10 @@ impl HashDomain for StructuralTableDomain {
     fn separation() -> DomainSeparation {
         DomainSeparation::Contextual {
             context: "structural-codec 2026 addressed structural table",
-            layout: LayoutVersion::new(3),
+            // Layout 4 admits typed delegation payloads and removes the unused
+            // sigil representation from every archived form. The table identity
+            // must move truthfully with that durable shape.
+            layout: LayoutVersion::new(4),
         }
     }
 }

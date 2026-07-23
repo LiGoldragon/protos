@@ -43,7 +43,7 @@ impl StructuralForm {
             Self::Literal(identifier) => OuterShape::Literal(*identifier),
             Self::Application { head, payload } => OuterShape::Application(head, payload),
             Self::Delimited { delimiter, .. } => OuterShape::Delimited(*delimiter),
-            Self::Leaf(_) | Self::Delegate(_) | Self::Product(_) => OuterShape::Opaque,
+            Self::Leaf(_) | Self::Delegate { .. } | Self::Product(_) => OuterShape::Opaque,
         }
     }
 
@@ -57,7 +57,31 @@ impl StructuralForm {
         entries: Option<&BTreeMap<ScopedEncodedTypeId, StructuralEntry>>,
         state: &mut DelegateProofState,
     ) -> Result<(), ProofFailure> {
-        if let StructuralForm::Delegate(target) = self {
+        // Two directed positions can prove disjoint from their sealed payloads
+        // alone, before either transparent target needs expansion. This keeps a
+        // useful direction from being mistaken for an unguarded delegate cycle.
+        if let (
+            StructuralForm::Delegate {
+                payload: Some(left_payload),
+                ..
+            },
+            StructuralForm::Delegate {
+                payload: Some(right_payload),
+                ..
+            },
+        ) = (self, other)
+        {
+            let left_constraint = left_payload.constraint_form();
+            let right_constraint = right_payload.constraint_form();
+            if left_constraint
+                .prove_disjoint_from(&right_constraint, entries, state)
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+
+        if let StructuralForm::Delegate { target, payload } = self {
             let entry = entries
                 .and_then(|entries| entries.get(target))
                 .ok_or(DisjointnessReason::MissingDelegateTarget { target: *target })?;
@@ -68,11 +92,15 @@ impl StructuralForm {
                 .constructors
                 .iter()
                 .flat_map(|codec| &codec.decode_forms)
-                .try_for_each(|form| form.prove_disjoint_from(other, entries, state));
+                .try_for_each(|form| {
+                    Self::prove_directed_delegate_form_disjoint(
+                        *payload, form, other, entries, state,
+                    )
+                });
             state.active_expansions.remove(target);
             return proof;
         }
-        if let StructuralForm::Delegate(_) = other {
+        if matches!(other, StructuralForm::Delegate { .. }) {
             return other.prove_disjoint_from(self, entries, state);
         }
 
@@ -151,6 +179,46 @@ impl StructuralForm {
                     Ok(())
                 }
             }
+        }
+    }
+
+    /// A directed delegation accepts the intersection of its target form and the
+    /// payload constraint. That intersection is disjoint from `other` when either
+    /// operand is disjoint from `other`, or when the payload itself excludes the
+    /// target form. Every branch is structural; no decode order participates.
+    fn prove_directed_delegate_form_disjoint(
+        payload: Option<crate::form::DelegationPayload>,
+        target_form: &StructuralForm,
+        other: &StructuralForm,
+        entries: Option<&BTreeMap<ScopedEncodedTypeId, StructuralEntry>>,
+        state: &mut DelegateProofState,
+    ) -> Result<(), ProofFailure> {
+        let Some(payload) = payload else {
+            return target_form.prove_disjoint_from(other, entries, state);
+        };
+        let constraint = payload.constraint_form();
+        let payload_target_proof = constraint.prove_disjoint_from(target_form, entries, state);
+        if payload_target_proof.is_ok() {
+            return Ok(());
+        }
+        let payload_other_proof = constraint.prove_disjoint_from(other, entries, state);
+        if payload_other_proof.is_ok() {
+            return Ok(());
+        }
+        let target_other_proof = target_form.prove_disjoint_from(other, entries, state);
+        if target_other_proof.is_ok() {
+            return Ok(());
+        }
+        match (
+            payload_target_proof,
+            payload_other_proof,
+            target_other_proof,
+        ) {
+            (Ok(()), _, _) | (_, Ok(()), _) | (_, _, Ok(())) => Ok(()),
+            (Err(cycle @ ProofFailure::DelegateExpansionCycle { .. }), _, _)
+            | (_, Err(cycle @ ProofFailure::DelegateExpansionCycle { .. }), _)
+            | (_, _, Err(cycle @ ProofFailure::DelegateExpansionCycle { .. })) => Err(cycle),
+            (_, _, Err(failure)) => Err(failure),
         }
     }
 }

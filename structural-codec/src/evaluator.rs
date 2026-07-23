@@ -217,9 +217,19 @@ impl<'table> StructuralEvaluator<'table> {
                 }
             }
 
-            StructuralForm::Delegate(target) => Ok(DecodeDraft::Delegated(Box::new(
-                self.match_type(*target, block, chain)?,
-            ))),
+            StructuralForm::Delegate { target, payload } => {
+                if let Some(payload) = payload {
+                    let atom = block
+                        .atom()
+                        .ok_or(DecodeError::DelegationPayloadMismatch { payload: *payload })?;
+                    if !payload.accepts_atom(atom) {
+                        return Err(DecodeError::DelegationPayloadMismatch { payload: *payload });
+                    }
+                }
+                Ok(DecodeDraft::Delegated(Box::new(
+                    self.match_type(*target, block, chain)?,
+                )))
+            }
         }
     }
 
@@ -383,7 +393,7 @@ impl<'table> StructuralEvaluator<'table> {
                 delimiter: *delimiter,
                 root_objects: self.encode_sequence(sequence, children, resolver)?,
             }),
-            (StructuralForm::Delegate(target), StructuralValue::Delegated(inner)) => {
+            (StructuralForm::Delegate { target, .. }, StructuralValue::Delegated(inner)) => {
                 self.encode_type(*target, inner, resolver)
             }
             (StructuralForm::Product(forms), value) if forms.len() == 1 => {

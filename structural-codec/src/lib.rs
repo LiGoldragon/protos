@@ -53,8 +53,8 @@ pub use encoded_form::{Converted, EncodedConversion, EncodedForm};
 pub use error::{DecodeError, DisjointnessError, EncodeError, TableError};
 pub use evaluator::StructuralEvaluator;
 pub use form::{
-    AtomForm, CarrierLeaf, CaseExpectation, ForeignLeafId, LeafCodec, LeafForm, ScalarLeaf,
-    SequenceForm, SigilPosition, SigilSpec, StructuralForm,
+    AtomForm, CarrierLeaf, CaseExpectation, DelegationPayload, ForeignLeafId, LeafCodec, LeafForm,
+    ScalarLeaf, SequenceForm, StructuralForm,
 };
 pub use ids::{
     EncodedConstructorId, EncodedUniverseId, FIXTURE_UNIVERSE, PositionalSignature,

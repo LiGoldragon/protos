@@ -7,10 +7,10 @@ use name_table::{IdentifierNamespace, Name, NameTable};
 use raw_discovery::{Delimiter, Recognizer};
 use structural_codec::fixture::{FIELD, FixtureBuilder};
 use structural_codec::{
-    AddressedStructuralTable, AtomForm, CaseExpectation, ConstructorCodec, EncodedConstructorId,
-    EncodedLayoutIdentity, PositionalSignature, RawProfileIdentity, ScopedEncodedTypeId,
-    StructuralEntry, StructuralEvaluator, StructuralForm, StructuralRevision, StructuralValue,
-    TableError, TableIdentityPayload,
+    AddressedStructuralTable, AtomForm, CaseExpectation, ConstructorCodec, DelegationPayload,
+    EncodedConstructorId, EncodedLayoutIdentity, PositionalSignature, RawProfileIdentity,
+    ScopedEncodedTypeId, StructuralEntry, StructuralEvaluator, StructuralForm, StructuralRevision,
+    StructuralValue, TableError, TableIdentityPayload,
 };
 
 fn entry_with_forms(forms: Vec<StructuralForm>) -> StructuralEntry {
@@ -104,8 +104,8 @@ fn identical_atom_cases_are_rejected() {
 #[test]
 fn delegate_forms_are_conservatively_rejected() {
     let entry = entry_with_forms(vec![
-        StructuralForm::Delegate(ScopedEncodedTypeId::fixture(200)),
-        StructuralForm::Delegate(ScopedEncodedTypeId::fixture(201)),
+        StructuralForm::delegate(ScopedEncodedTypeId::fixture(200)),
+        StructuralForm::delegate(ScopedEncodedTypeId::fixture(201)),
     ]);
     assert!(
         entry.validate_disjoint().is_err(),
@@ -118,7 +118,7 @@ fn delegate_forms_are_conservatively_rejected() {
 #[test]
 fn seal_rejects_self_delegate_cycle_with_typed_failure() {
     let recursive = ScopedEncodedTypeId::fixture(210);
-    let delegate = StructuralForm::Delegate(recursive);
+    let delegate = StructuralForm::delegate(recursive);
     let delimited = StructuralForm::Delimited {
         delimiter: Delimiter::Brace,
         sequence: structural_codec::SequenceForm::zero_or_more(StructuralForm::pascal_atom()),
@@ -176,7 +176,7 @@ fn seal_rejects_mutual_delegate_cycle_with_typed_failure() {
     let left = ScopedEncodedTypeId::fixture(221);
     let right = ScopedEncodedTypeId::fixture(222);
     let single_delegate = |core_type, target| {
-        let delegate = StructuralForm::Delegate(target);
+        let delegate = StructuralForm::delegate(target);
         StructuralEntry::new(
             core_type,
             vec![ConstructorCodec::new(
@@ -187,7 +187,7 @@ fn seal_rejects_mutual_delegate_cycle_with_typed_failure() {
             )],
         )
     };
-    let outer_delegate = StructuralForm::Delegate(left);
+    let outer_delegate = StructuralForm::delegate(left);
     let outer_delimited = StructuralForm::Delimited {
         delimiter: Delimiter::Brace,
         sequence: structural_codec::SequenceForm::zero_or_more(StructuralForm::pascal_atom()),
@@ -234,11 +234,11 @@ fn seal_preserves_guarded_recursive_alternatives() {
     let recursive = ScopedEncodedTypeId::fixture(230);
     let pascal = StructuralForm::application(
         StructuralForm::pascal_atom(),
-        StructuralForm::Delegate(recursive),
+        StructuralForm::delegate(recursive),
     );
     let camel = StructuralForm::application(
         StructuralForm::camel_atom(),
-        StructuralForm::Delegate(recursive),
+        StructuralForm::delegate(recursive),
     );
     let entry = StructuralEntry::new(
         recursive,
@@ -298,10 +298,7 @@ fn literal_and_unconstrained_name_atom_are_rejected() {
         .expect("intern Integer");
     let entry = entry_with_forms(vec![
         StructuralForm::Literal(integer),
-        StructuralForm::Atom(AtomForm {
-            case: None,
-            sigil: None,
-        }),
+        StructuralForm::Atom(AtomForm::any_case()),
     ]);
 
     assert!(
@@ -366,7 +363,7 @@ fn seal_proves_disjointness_through_a_delegate() {
     );
     let newtype = StructuralForm::application(
         StructuralForm::pascal_atom(),
-        StructuralForm::Delegate(reference),
+        StructuralForm::delegate(reference),
     );
     let structure = StructuralForm::application(
         StructuralForm::pascal_atom(),
@@ -426,5 +423,163 @@ fn seal_proves_disjointness_through_a_delegate() {
     assert!(
         matches!(body.as_ref(), StructuralValue::Delegated(inner) if matches!(inner.as_ref(), StructuralValue::Chosen { constructor: 7, .. })),
         "the evaluator retains the delegated reference constructor"
+    );
+}
+
+fn unconstrained_atom_target(target: ScopedEncodedTypeId) -> StructuralEntry {
+    let form = StructuralForm::Atom(AtomForm::any_case());
+    StructuralEntry::new(
+        target,
+        vec![ConstructorCodec::new(
+            EncodedConstructorId::new(target, 0),
+            vec![form.clone()],
+            form,
+            PositionalSignature::default(),
+        )],
+    )
+}
+
+fn directed_delegate_entry(
+    outer: ScopedEncodedTypeId,
+    target: ScopedEncodedTypeId,
+    payloads: &[DelegationPayload],
+) -> StructuralEntry {
+    StructuralEntry::new(
+        outer,
+        payloads
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(constructor, payload)| {
+                let form = StructuralForm::delegate_with_payload(target, payload);
+                ConstructorCodec::new(
+                    EncodedConstructorId::new(outer, constructor as u32),
+                    vec![form.clone()],
+                    form,
+                    PositionalSignature::new(vec![target]),
+                )
+            })
+            .collect(),
+    )
+}
+
+/// Typed payloads direct the expected-type position before the target entry is
+/// evaluated, so a case-specific delegation chooses the matching constructor.
+#[test]
+fn payload_directed_position_decodes_as_directed() {
+    let target = ScopedEncodedTypeId::fixture(250);
+    let outer = ScopedEncodedTypeId::fixture(251);
+    let table = sealed_entries(BTreeMap::from([
+        (target, unconstrained_atom_target(target)),
+        (
+            outer,
+            directed_delegate_entry(
+                outer,
+                target,
+                &[
+                    DelegationPayload::AtomCase(CaseExpectation::PascalCase),
+                    DelegationPayload::AtomCase(CaseExpectation::CamelCase),
+                ],
+            ),
+        ),
+    ]))
+    .expect("seal case-directed delegates");
+    let evaluator = StructuralEvaluator::new(&table);
+
+    let pascal = Recognizer::standard()
+        .recognize("Entry")
+        .expect("recognize Pascal atom")
+        .root_object_at(0)
+        .expect("Pascal root")
+        .clone();
+    let camel = Recognizer::standard()
+        .recognize("entry")
+        .expect("recognize camel atom")
+        .root_object_at(0)
+        .expect("camel root")
+        .clone();
+    let mut names = NameTable::new(IdentifierNamespace::Fixture);
+    assert_eq!(
+        chosen_constructor(
+            evaluator
+                .decode(outer, &pascal, &mut names)
+                .expect("Pascal decode")
+        ),
+        0
+    );
+    assert_eq!(
+        chosen_constructor(
+            evaluator
+                .decode(outer, &camel, &mut names)
+                .expect("camel decode")
+        ),
+        1
+    );
+}
+
+/// Payload bytes belong to the sealed table pre-image. A changed direction cannot
+/// retain a table identity by accident.
+#[test]
+fn changing_delegation_payload_moves_table_identity() {
+    let target = ScopedEncodedTypeId::fixture(260);
+    let outer = ScopedEncodedTypeId::fixture(261);
+    let table_for = |payload| {
+        sealed_entries(BTreeMap::from([
+            (target, unconstrained_atom_target(target)),
+            (outer, directed_delegate_entry(outer, target, &[payload])),
+        ]))
+        .expect("seal payload table")
+    };
+
+    let pascal = table_for(DelegationPayload::AtomCase(CaseExpectation::PascalCase));
+    let camel = table_for(DelegationPayload::AtomCase(CaseExpectation::CamelCase));
+    assert_ne!(pascal.identity(), camel.identity());
+}
+
+/// The seal proof consumes a delegate payload: without the two distinct payload
+/// constraints, these two delegates expand to the same unconstrained target and
+/// overlap; with them, the atom cases prove disjoint.
+#[test]
+fn disjointness_prover_consumes_delegation_payloads() {
+    let target = ScopedEncodedTypeId::fixture(270);
+    let outer = ScopedEncodedTypeId::fixture(271);
+    let directed = directed_delegate_entry(
+        outer,
+        target,
+        &[
+            DelegationPayload::AtomCase(CaseExpectation::PascalCase),
+            DelegationPayload::AtomCase(CaseExpectation::CamelCase),
+        ],
+    );
+    sealed_entries(BTreeMap::from([
+        (target, unconstrained_atom_target(target)),
+        (outer, directed),
+    ]))
+    .expect("payload cases prove the delegates disjoint");
+
+    let plain = StructuralEntry::new(
+        outer,
+        vec![
+            ConstructorCodec::new(
+                EncodedConstructorId::new(outer, 0),
+                vec![StructuralForm::delegate(target)],
+                StructuralForm::delegate(target),
+                PositionalSignature::new(vec![target]),
+            ),
+            ConstructorCodec::new(
+                EncodedConstructorId::new(outer, 1),
+                vec![StructuralForm::delegate(target)],
+                StructuralForm::delegate(target),
+                PositionalSignature::new(vec![target]),
+            ),
+        ],
+    );
+    assert!(
+        sealed_entries(BTreeMap::from([
+            (target, unconstrained_atom_target(target)),
+            (outer, plain),
+        ]))
+        .is_err(),
+        "without payload direction, the same target forms overlap"
     );
 }

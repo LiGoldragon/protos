@@ -49,7 +49,7 @@ the whole fixture family:
 | kind | form | typed capture |
 | --- | --- | --- |
 | `leaf(Integer\|Float\|Text\|Boolean)` | `Leaf(Scalar(..))` | the native scalar |
-| `delegate(inner = T)` | `Delegate(T::CORE_TYPE)` | a transparent wrapper over `T` |
+| `delegate(inner = T)` | `Delegate { target: T::CORE_TYPE, payload: None }` | a transparent wrapper over `T` |
 | `newtype_declaration(inner = T, delimiter = D)` | `Object.{ Type }` | object + wrapped-type identifiers |
 | `struct_declaration(field_type = F, delimiter = D, fields = [..])` | `Object.{ Field* }` | object identifier + `Vec<F>` |
 | `field_meta` | a bare `Type` (the elided name) | a single-field struct `{ type_name }` |

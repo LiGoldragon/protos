@@ -5,6 +5,7 @@
 use content_identity::ArchiveError;
 use name_table::NameTableError;
 
+use crate::form::DelegationPayload;
 use crate::ids::ScopedEncodedTypeId;
 
 /// A structural table failed conservative disjointness validation: two accepted
@@ -68,6 +69,8 @@ pub enum DecodeError {
     CaseMismatch,
     #[error("literal atom did not match the expected interned keyword")]
     LiteralMismatch,
+    #[error("the delegated position did not satisfy its typed direction {payload:?}")]
+    DelegationPayloadMismatch { payload: DelegationPayload },
     #[error("delimited sequence held {found} objects, outside the form's bounds")]
     SequenceCardinality { found: u64 },
     #[error("could not flatten the block to a scalar leaf")]

@@ -117,7 +117,7 @@ impl FixtureBuilder {
         core_type: ScopedEncodedTypeId,
         inner: ScopedEncodedTypeId,
     ) -> StructuralEntry {
-        let form = StructuralForm::Delegate(inner);
+        let form = StructuralForm::delegate(inner);
         StructuralEntry::new(
             core_type,
             vec![ConstructorCodec::new(
@@ -155,7 +155,7 @@ impl FixtureBuilder {
             StructuralForm::pascal_atom(),
             StructuralForm::Delimited {
                 delimiter: Delimiter::Brace,
-                sequence: SequenceForm::zero_or_more(StructuralForm::Delegate(FIELD)),
+                sequence: SequenceForm::zero_or_more(StructuralForm::delegate(FIELD)),
             },
         );
         StructuralEntry::new(

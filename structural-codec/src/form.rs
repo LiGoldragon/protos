@@ -23,7 +23,7 @@ use crate::ids::ScopedEncodedTypeId;
 pub enum StructuralForm {
     /// Heterogeneous positional tuple over a run of sibling blocks.
     Product(#[rkyv(omit_bounds)] Vec<StructuralForm>),
-    /// A single bare atom, case- and sigil-constrained; always resolves to a name.
+    /// A single bare atom, case-constrained; always resolves to a name.
     Atom(AtomForm),
     /// A scalar leaf (flatten-then-parse) or an explicit carrier.
     Leaf(LeafForm),
@@ -42,9 +42,14 @@ pub enum StructuralForm {
         #[rkyv(omit_bounds)]
         sequence: SequenceForm,
     },
-    /// Constructs a wrapper level over another Core type. Transparent cycles are
-    /// rejected; recursion is permitted only after consuming structure.
-    Delegate(ScopedEncodedTypeId),
+    /// Constructs a wrapper level over another Core type. An optional typed
+    /// payload constrains how that expected-type position reads input.
+    /// Transparent cycles are rejected; recursion is permitted only after
+    /// consuming structure.
+    Delegate {
+        target: ScopedEncodedTypeId,
+        payload: Option<DelegationPayload>,
+    },
 }
 
 impl StructuralForm {
@@ -63,6 +68,23 @@ impl StructuralForm {
         Self::Application {
             head: Box::new(head),
             payload: Box::new(payload),
+        }
+    }
+
+    /// A transparent delegation with no position-specific direction.
+    pub fn delegate(target: ScopedEncodedTypeId) -> Self {
+        Self::Delegate {
+            target,
+            payload: None,
+        }
+    }
+
+    /// A delegation whose expected-type position is directed by sealed typed
+    /// payload data.
+    pub fn delegate_with_payload(target: ScopedEncodedTypeId, payload: DelegationPayload) -> Self {
+        Self::Delegate {
+            target,
+            payload: Some(payload),
         }
     }
 }
@@ -108,21 +130,21 @@ impl SequenceForm {
     }
 }
 
-/// A single bare atom, case- and sigil-constrained.
+/// A single bare atom, constrained only by its raw capitalization class.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct AtomForm {
     /// `None` accepts any case.
     pub case: Option<CaseExpectation>,
-    /// The `$` escape rides here as a sigil; `None` requires no sigil.
-    pub sigil: Option<SigilSpec>,
 }
 
 impl AtomForm {
+    /// An atom that accepts every raw capitalization class.
+    pub fn any_case() -> Self {
+        Self { case: None }
+    }
+
     pub fn with_case(case: CaseExpectation) -> Self {
-        Self {
-            case: Some(case),
-            sigil: None,
-        }
+        Self { case: Some(case) }
     }
 
     /// Whether a discovered atom satisfies this form's case constraint.
@@ -159,17 +181,34 @@ impl CaseExpectation {
     }
 }
 
-/// The `$`-style sigil specification. Reserved for the Nomos-extended profile.
-#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct SigilSpec {
-    pub character: String,
-    pub position: SigilPosition,
+/// Closed, typed data that directs one expected-type delegation position.
+///
+/// The atom case is the deliberately small first payload kind: it generalizes the
+/// existing case expectation without reviving the unused sigil surface. Future
+/// direction must add a new enum variant, which makes table identity and the
+/// disjointness proof change deliberately.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DelegationPayload {
+    /// Require the delegated position to receive an atom of this case before its
+    /// target entry is evaluated.
+    AtomCase(CaseExpectation),
 }
 
-#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SigilPosition {
-    Prefix,
-    Suffix,
+impl DelegationPayload {
+    /// Whether this payload accepts a discovered atom at the delegated position.
+    pub fn accepts_atom(self, atom: &Atom) -> bool {
+        match self {
+            Self::AtomCase(case) => case.matches(atom),
+        }
+    }
+
+    /// The structural constraint that the disjointness prover combines with the
+    /// delegated target's decode forms.
+    pub(crate) fn constraint_form(self) -> StructuralForm {
+        match self {
+            Self::AtomCase(case) => StructuralForm::Atom(AtomForm::with_case(case)),
+        }
+    }
 }
 
 /// The leaf/carrier model. A leaf either flattens-and-parses a scalar (the rejoin

@@ -57,6 +57,17 @@ pub enum NameTableError {
         second: Identifier,
     },
 
+    /// A slice descriptor's declared namespace disagrees with its archive.
+    #[error("the snapshot declared {expected:?} but archives {actual:?}")]
+    SnapshotNamespaceMismatch {
+        expected: IdentifierNamespace,
+        actual: IdentifierNamespace,
+    },
+
+    /// A slice descriptor's existing pin does not verify its unchanged archive.
+    #[error("the {namespace:?} snapshot does not match its pinned slice identity")]
+    SnapshotIdentityMismatch { namespace: IdentifierNamespace },
+
     /// Serializing the table's canonical name bytes failed.
     #[error("name-table serialization failed: {0}")]
     Serialize(String),

@@ -5,6 +5,7 @@ members = [
     "name-table",
     "raw-discovery",
     "short-identifier",
+    "capsule",
     "structural-codec",
     "structural-codec-derive",
     "structural-codec-derive/fixtures",

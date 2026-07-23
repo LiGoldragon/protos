@@ -50,5 +50,5 @@ pub use error::NameTableError;
 pub use identifier::{Identifier, IdentifierNamespace};
 pub use name::Name;
 pub use projection::TextualProjection;
-pub use table::{NameTable, NameTableDomain};
+pub use table::{NameTable, NameTableDomain, NameTableSliceSnapshot};
 pub use transaction::NameTransaction;

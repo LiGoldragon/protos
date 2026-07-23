@@ -144,6 +144,68 @@ impl NameSlice {
     }
 }
 
+/// One independently archived, namespace-tagged slice in a composed nametree.
+///
+/// The bytes are exactly the existing versioned home-slice archive for this
+/// namespace. A Capsule carries these descriptors separately instead of
+/// flattening borrowed slices into its home archive.
+#[derive(Clone, Debug, Eq, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct NameTableSliceSnapshot {
+    namespace: IdentifierNamespace,
+    archive_bytes: Vec<u8>,
+    identity: ContentHash<NameTableDomain>,
+}
+
+impl NameTableSliceSnapshot {
+    fn from_slice(slice: &NameSlice) -> Result<Self, NameTableError> {
+        let payload = slice
+            .to_archive_bytes()
+            .map_err(|error| NameTableError::Serialize(error.to_string()))?;
+        let archive_bytes = NameTableArchiveEnvelope::current()
+            .seal(payload.as_ref())
+            .to_vec();
+        let identity = ContentHash::<NameTableDomain>::of_core(slice)
+            .map_err(|error| NameTableError::Serialize(error.to_string()))?;
+        Ok(Self {
+            namespace: slice.namespace,
+            archive_bytes,
+            identity,
+        })
+    }
+
+    /// The namespace this independently pinned slice owns.
+    pub fn namespace(&self) -> IdentifierNamespace {
+        self.namespace
+    }
+
+    /// The slice's unchanged, versioned home-archive bytes.
+    pub fn archive_bytes(&self) -> &[u8] {
+        &self.archive_bytes
+    }
+
+    /// The existing identity of this one namespace slice.
+    pub fn identity(&self) -> ContentHash<NameTableDomain> {
+        self.identity
+    }
+
+    fn restore(&self) -> Result<NameTable, NameTableError> {
+        let table = NameTable::from_archive_bytes(&self.archive_bytes)?;
+        if table.namespace() != self.namespace {
+            return Err(NameTableError::SnapshotNamespaceMismatch {
+                expected: self.namespace,
+                actual: table.namespace(),
+            });
+        }
+        let actual = table.identity()?;
+        if actual != self.identity {
+            return Err(NameTableError::SnapshotIdentityMismatch {
+                namespace: self.namespace,
+            });
+        }
+        Ok(table)
+    }
+}
+
 /// An interned, composable map from [`Identifier`] to [`Name`].
 ///
 /// A component owns exactly one home namespace and may borrow complete,
@@ -371,6 +433,43 @@ impl NameTable {
     pub fn identity(&self) -> Result<ContentHash<NameTableDomain>, NameTableError> {
         ContentHash::<NameTableDomain>::of_core(self.home.as_ref())
             .map_err(|error| NameTableError::Serialize(error.to_string()))
+    }
+
+    /// Export the complete composed nametree as independently archived slices.
+    ///
+    /// The first value is the one owned home slice. The remaining values are
+    /// borrowed source slices in deterministic namespace order. Each archive is
+    /// the existing per-slice archive unchanged; this boundary never flattens,
+    /// copies, renumbers, or restamps names.
+    pub fn slice_snapshots(
+        &self,
+    ) -> Result<(NameTableSliceSnapshot, Vec<NameTableSliceSnapshot>), NameTableError> {
+        let home = NameTableSliceSnapshot::from_slice(self.home.as_ref())?;
+        let borrowed = self
+            .borrowed
+            .values()
+            .map(|slice| NameTableSliceSnapshot::from_slice(slice.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((home, borrowed))
+    }
+
+    /// Restore a complete composed nametree from independently pinned slice
+    /// snapshots. The home remains owned and every other slice is borrowed by
+    /// composition; no snapshot is flattened into or reallocated by another.
+    pub fn from_slice_snapshots(
+        home: &NameTableSliceSnapshot,
+        borrowed: &[NameTableSliceSnapshot],
+    ) -> Result<Self, NameTableError> {
+        let mut restored = home.restore()?;
+        let mut namespaces = HashSet::new();
+        namespaces.insert(restored.namespace());
+        for snapshot in borrowed {
+            if !namespaces.insert(snapshot.namespace()) {
+                return Err(NameTableError::DuplicateNamespace(snapshot.namespace()));
+            }
+            restored = restored.compose(&snapshot.restore()?)?;
+        }
+        Ok(restored)
     }
 }
 

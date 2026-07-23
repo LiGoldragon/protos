@@ -6,10 +6,10 @@
 //! the layout-version tag, so "which layout" lives in the type rather than a
 //! hand-remembered `&'static [u8]` suffix.
 //!
-//! rkyv storage support is deliberately elided here (the authoritative design
-//! marks it "rkyv derive elided"): the leaf crate ships the identity machinery,
-//! and a consumer that stores `ContentHash` in an archived record adds the rkyv
-//! surface when it migrates in a later release-train slice.
+//! `ContentHash` carries the family rkyv archive surface so an archived value
+//! such as a Capsule can pin it without introducing a duplicate bare digest
+//! type. Its phantom domain remains zero-sized and is handled by the derived
+//! archive representation rather than becoming runtime data.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -31,6 +31,7 @@ use crate::portable::PortableArchive;
 /// A domain-separated, layout-versioned blake3 content address over canonical
 /// bytes. The domain is a compile-time marker (zero bytes at runtime), so two
 /// digests derived under different domains cannot be compared or confused.
+#[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)]
 pub struct ContentHash<Domain: HashDomain> {
     bytes: [u8; 32],
     domain: PhantomData<Domain>,

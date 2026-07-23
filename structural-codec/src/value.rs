@@ -1,7 +1,7 @@
 //! The evaluator's generic structural value type: a Core-agnostic representation of a
 //! decoded value. A generated codec recovers the concrete Core type (§4.5), and the
-//! conformance laws prove the two agree. The value type is content-identifiable, so law 4
-//! can assert that a value's identity never moves across table revisions.
+//! conformance laws prove the two agree. The value type is content-identifiable; the
+//! delimiter-only law witnesses that changing delimiters leaves its identity unmoved.
 
 use content_identity::{ContentHash, DomainSeparation, HashDomain, LayoutVersion};
 use name_table::Identifier;
@@ -52,8 +52,8 @@ impl StructuralValue {
         }
     }
 
-    /// The content identity of this value, under its own hash domain. Text
-    /// evolution across table revisions must never move this hash (law 4).
+    /// The content identity of this value, under its own hash domain. Delimiter-only
+    /// table revisions preserve this hash; other structural respellings may move it.
     pub fn content_identity(&self) -> Result<ContentHash<StructuralValueDomain>, ArchiveError> {
         ContentHash::of_core(self)
     }

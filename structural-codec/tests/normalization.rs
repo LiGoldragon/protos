@@ -2,19 +2,19 @@
 
 use raw_discovery::Delimiter;
 use structural_codec::authoring::{AuthoringForm, DottedForm, ObjectSymbolPrefixedBlock};
-use structural_codec::{AtomForm, CaseExpectation, SequenceForm, StructuralForm};
+use structural_codec::{AtomCase, AtomForm, SequenceForm, StructuralForm};
 
 /// `Object.{ Type }` authoring sugar normalizes to `Application(Atom, Delimited)`.
 #[test]
 fn object_prefixed_block_normalizes_to_application() {
     let authored = AuthoringForm::ObjectPrefixed(ObjectSymbolPrefixedBlock {
-        object: AtomForm::with_case(CaseExpectation::PascalCase),
+        object: AtomForm::with_case(AtomCase::PascalCase),
         delimiter: Delimiter::Brace,
         sequence: SequenceForm::Product(vec![StructuralForm::pascal_atom()]),
     });
 
     let expected = StructuralForm::application(
-        StructuralForm::Atom(AtomForm::with_case(CaseExpectation::PascalCase)),
+        StructuralForm::Atom(AtomForm::with_case(AtomCase::PascalCase)),
         StructuralForm::Delimited {
             delimiter: Delimiter::Brace,
             sequence: SequenceForm::Product(vec![StructuralForm::pascal_atom()]),

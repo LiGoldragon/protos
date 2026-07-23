@@ -15,7 +15,8 @@ use raw_discovery::Delimiter;
 use crate::authoring::{AuthoringForm, ObjectSymbolPrefixedBlock};
 use crate::codec::{ConstructorCodec, StructuralEntry};
 use crate::error::TableError;
-use crate::form::{AtomForm, CaseExpectation, LeafForm, ScalarLeaf, SequenceForm, StructuralForm};
+use crate::form::{AtomForm, LeafForm, ScalarLeaf, SequenceForm, StructuralForm};
+use raw_discovery::AtomCase;
 use crate::ids::{
     EncodedConstructorId, PositionalSignature, ScopedEncodedTypeId, StructuralRevision,
 };
@@ -133,7 +134,7 @@ impl FixtureBuilder {
     /// normalized to the kernel `Application` form before it enters the table.
     fn newtype_entry(&self, core_type: ScopedEncodedTypeId) -> StructuralEntry {
         let authoring = AuthoringForm::ObjectPrefixed(ObjectSymbolPrefixedBlock {
-            object: AtomForm::with_case(CaseExpectation::PascalCase),
+            object: AtomForm::with_case(AtomCase::PascalCase),
             delimiter: self.newtype_delimiter,
             sequence: SequenceForm::Product(vec![StructuralForm::pascal_atom()]),
         });

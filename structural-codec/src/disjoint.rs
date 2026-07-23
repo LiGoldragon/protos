@@ -17,7 +17,7 @@ use crate::ids::ScopedEncodedTypeId;
 /// and never prove disjoint against anything.
 enum OuterShape<'form> {
     /// Matches a `Block::Atom` constrained by case (`None` = any case).
-    NameAtom(Option<crate::form::CaseExpectation>),
+    NameAtom(Option<raw_discovery::AtomCase>),
     /// Matches a specific interned atom.
     Literal(name_table::Identifier),
     /// Matches a `Block::Application`.

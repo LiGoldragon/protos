@@ -55,12 +55,12 @@ pub enum StructuralForm {
 impl StructuralForm {
     /// A bare PascalCase name atom — the dominant declaration head.
     pub fn pascal_atom() -> Self {
-        Self::Atom(AtomForm::with_case(CaseExpectation::PascalCase))
+        Self::Atom(AtomForm::with_case(AtomCase::PascalCase))
     }
 
     /// A bare camelCase name atom.
     pub fn camel_atom() -> Self {
-        Self::Atom(AtomForm::with_case(CaseExpectation::CamelCase))
+        Self::Atom(AtomForm::with_case(AtomCase::CamelCase))
     }
 
     /// A right-associative `head.payload` application.
@@ -134,7 +134,7 @@ impl SequenceForm {
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct AtomForm {
     /// `None` accepts any case.
-    pub case: Option<CaseExpectation>,
+    pub case: Option<AtomCase>,
 }
 
 impl AtomForm {
@@ -143,7 +143,8 @@ impl AtomForm {
         Self { case: None }
     }
 
-    pub fn with_case(case: CaseExpectation) -> Self {
+    /// Constrain this atom with raw-discovery's public, partitioned predicate.
+    pub fn with_case(case: AtomCase) -> Self {
         Self { case: Some(case) }
     }
 
@@ -153,31 +154,6 @@ impl AtomForm {
             None => true,
             Some(expected) => expected.matches(atom),
         }
-    }
-}
-
-/// The capitalization expectation — mirrors raw-discovery's `AtomCase`.
-#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CaseExpectation {
-    Symbol,
-    PascalCase,
-    CamelCase,
-    KebabCase,
-}
-
-impl CaseExpectation {
-    /// The raw-discovery case this expectation corresponds to.
-    pub fn raw_case(self) -> AtomCase {
-        match self {
-            Self::Symbol => AtomCase::Symbol,
-            Self::PascalCase => AtomCase::PascalCase,
-            Self::CamelCase => AtomCase::CamelCase,
-            Self::KebabCase => AtomCase::KebabCase,
-        }
-    }
-
-    pub fn matches(self, atom: &Atom) -> bool {
-        AtomCase::of(atom) == self.raw_case()
     }
 }
 
@@ -191,7 +167,7 @@ impl CaseExpectation {
 pub enum DelegationPayload {
     /// Require the delegated position to receive an atom of this case before its
     /// target entry is evaluated.
-    AtomCase(CaseExpectation),
+    AtomCase(AtomCase),
 }
 
 impl DelegationPayload {

@@ -462,14 +462,10 @@ impl AtomCase {
         }
     }
 
-    /// Whether the atom reads as this case.
+    /// Whether this is the atom's one classified case. This predicate has
+    /// partition semantics: exactly one `AtomCase` matches every atom.
     pub fn matches(self, atom: &Atom) -> bool {
-        match self {
-            Self::Symbol => atom.qualifies_as_symbol(),
-            Self::PascalCase => atom.qualifies_as_pascal_case_symbol(),
-            Self::CamelCase => atom.qualifies_as_camel_case_symbol(),
-            Self::KebabCase => atom.qualifies_as_kebab_case_symbol(),
-        }
+        self == Self::of(atom)
     }
 }
 

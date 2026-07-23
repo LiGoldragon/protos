@@ -53,13 +53,14 @@ pub use encoded_form::{Converted, EncodedConversion, EncodedForm};
 pub use error::{DecodeError, DisjointnessError, EncodeError, TableError};
 pub use evaluator::StructuralEvaluator;
 pub use form::{
-    AtomForm, CarrierLeaf, CaseExpectation, DelegationPayload, ForeignLeafId, LeafCodec, LeafForm,
-    ScalarLeaf, SequenceForm, StructuralForm,
+    AtomForm, CarrierLeaf, DelegationPayload, ForeignLeafId, LeafCodec, LeafForm, ScalarLeaf,
+    SequenceForm, StructuralForm,
 };
 pub use ids::{
     EncodedConstructorId, EncodedUniverseId, FIXTURE_UNIVERSE, PositionalSignature,
     ScopedEncodedTypeId, StructuralRevision,
 };
+pub use raw_discovery::AtomCase;
 pub use table::{
     AddressedStructuralTable, EncodedLayoutIdentity, LeafCodecContractId, RawProfileIdentity,
     StructuralTableDomain, TableIdentityPayload,

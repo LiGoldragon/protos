@@ -326,7 +326,7 @@ impl TypeSpec {
             let form = ::structural_codec::authoring::AuthoringForm::ObjectPrefixed(
                 ::structural_codec::authoring::ObjectSymbolPrefixedBlock {
                     object: ::structural_codec::AtomForm::with_case(
-                        ::structural_codec::CaseExpectation::PascalCase,
+                        ::structural_codec::AtomCase::PascalCase,
                     ),
                     delimiter: #delimiter_tokens,
                     sequence: ::structural_codec::SequenceForm::Product(::std::vec![

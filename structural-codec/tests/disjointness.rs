@@ -7,7 +7,7 @@ use name_table::{IdentifierNamespace, Name, NameTable};
 use raw_discovery::{Delimiter, Recognizer};
 use structural_codec::fixture::{FIELD, FixtureBuilder};
 use structural_codec::{
-    AddressedStructuralTable, AtomForm, CaseExpectation, ConstructorCodec, DelegationPayload,
+    AddressedStructuralTable, AtomCase, AtomForm, ConstructorCodec, DelegationPayload,
     EncodedConstructorId, EncodedLayoutIdentity, PositionalSignature, RawProfileIdentity,
     ScopedEncodedTypeId, StructuralEntry, StructuralEvaluator, StructuralForm, StructuralRevision,
     StructuralValue, TableError, TableIdentityPayload,
@@ -79,8 +79,8 @@ fn field_alternatives_are_provably_disjoint() {
 #[test]
 fn distinct_atom_cases_are_disjoint() {
     let entry = entry_with_forms(vec![
-        StructuralForm::Atom(AtomForm::with_case(CaseExpectation::PascalCase)),
-        StructuralForm::Atom(AtomForm::with_case(CaseExpectation::CamelCase)),
+        StructuralForm::Atom(AtomForm::with_case(AtomCase::PascalCase)),
+        StructuralForm::Atom(AtomForm::with_case(AtomCase::CamelCase)),
     ]);
     entry.validate_disjoint().expect("distinct cases disjoint");
 }
@@ -90,8 +90,8 @@ fn distinct_atom_cases_are_disjoint() {
 #[test]
 fn identical_atom_cases_are_rejected() {
     let entry = entry_with_forms(vec![
-        StructuralForm::Atom(AtomForm::with_case(CaseExpectation::PascalCase)),
-        StructuralForm::Atom(AtomForm::with_case(CaseExpectation::PascalCase)),
+        StructuralForm::Atom(AtomForm::with_case(AtomCase::PascalCase)),
+        StructuralForm::Atom(AtomForm::with_case(AtomCase::PascalCase)),
     ]);
     assert!(
         entry.validate_disjoint().is_err(),
@@ -477,8 +477,8 @@ fn payload_directed_position_decodes_as_directed() {
                 outer,
                 target,
                 &[
-                    DelegationPayload::AtomCase(CaseExpectation::PascalCase),
-                    DelegationPayload::AtomCase(CaseExpectation::CamelCase),
+                    DelegationPayload::AtomCase(AtomCase::PascalCase),
+                    DelegationPayload::AtomCase(AtomCase::CamelCase),
                 ],
             ),
         ),
@@ -531,8 +531,8 @@ fn changing_delegation_payload_moves_table_identity() {
         .expect("seal payload table")
     };
 
-    let pascal = table_for(DelegationPayload::AtomCase(CaseExpectation::PascalCase));
-    let camel = table_for(DelegationPayload::AtomCase(CaseExpectation::CamelCase));
+    let pascal = table_for(DelegationPayload::AtomCase(AtomCase::PascalCase));
+    let camel = table_for(DelegationPayload::AtomCase(AtomCase::CamelCase));
     assert_ne!(pascal.identity(), camel.identity());
 }
 
@@ -547,8 +547,8 @@ fn disjointness_prover_consumes_delegation_payloads() {
         outer,
         target,
         &[
-            DelegationPayload::AtomCase(CaseExpectation::PascalCase),
-            DelegationPayload::AtomCase(CaseExpectation::CamelCase),
+            DelegationPayload::AtomCase(AtomCase::PascalCase),
+            DelegationPayload::AtomCase(AtomCase::CamelCase),
         ],
     );
     sealed_entries(BTreeMap::from([

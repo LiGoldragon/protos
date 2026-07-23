@@ -4,9 +4,12 @@
 
 use name_table::{IdentifierNamespace, Name, NameTable};
 use raw_discovery::{Block, Delimiter, Recognizer};
-use structural_codec::fixture::{COMMIT_SEQUENCE, DOCUMENTATION, FIELD, FLOAT, FixtureBuilder};
+use structural_codec::fixture::{
+    COMMIT_SEQUENCE, DOCUMENTATION, FIELD, FLOAT, FixtureBuilder, TEXT,
+};
 use structural_codec::{
-    AddressedStructuralTable, CanonicalText, ScopedEncodedTypeId, StructuralEvaluator,
+    AddressedStructuralTable, CanonicalText, ScalarValue, ScopedEncodedTypeId, StructuralEvaluator,
+    StructuralValue,
 };
 
 fn recognize_single(source: &str) -> Block {
@@ -72,6 +75,37 @@ fn law_two_round_trip_canonical() {
             "law 2 for {source}"
         );
     }
+}
+
+/// A scalar text leaf carries ordinary multiword content through the canonical
+/// parenthesized string form and returns to the same encoded value.
+#[test]
+fn scalar_text_leaf_round_trips_multiword_parenthesized_string() {
+    let table = standard_table();
+    let evaluator = StructuralEvaluator::new(&table);
+    let source = "(alpha beta)";
+    let block = recognize_single(source);
+    let mut names = NameTable::new(IdentifierNamespace::Fixture);
+    let value = evaluator
+        .decode(TEXT, &block, &mut names)
+        .expect("decode multiword text");
+    let StructuralValue::Chosen { payload, .. } = &value else {
+        panic!("text value is constructor-tagged");
+    };
+    assert!(matches!(
+        payload.as_ref(),
+        StructuralValue::Scalar(ScalarValue::Text(text)) if text == "alpha beta"
+    ));
+
+    let encoded = evaluator
+        .encode(TEXT, &value, &names)
+        .expect("encode multiword text");
+    assert_eq!(encoded.canonical_text(), source);
+    let mut names_again = NameTable::new(IdentifierNamespace::Fixture);
+    let decoded_again = evaluator
+        .decode(TEXT, &encoded, &mut names_again)
+        .expect("re-decode canonical multiword text");
+    assert_eq!(decoded_again, value);
 }
 
 #[test]

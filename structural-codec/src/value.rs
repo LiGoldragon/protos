@@ -69,21 +69,52 @@ pub enum ScalarValue {
 }
 
 impl ScalarValue {
-    /// Render this scalar back to a raw block, inverting the flatten-then-parse
-    /// rejoin: dotted text rebuilds a right-associative `Application` chain (so
-    /// `-122.3` becomes `Application(-122, 3)` and `a.b.c` a three-atom chain),
-    /// and dot-free text is a bare atom.
+    /// Render this scalar back to a raw block. Numeric and boolean scalars use the
+    /// dotted rejoin; text follows the canonical string law: bare dotted text when
+    /// possible, parenthesized words when spaces require it, and pipe text otherwise.
     pub fn render_block(&self) -> Block {
-        let text = match self {
-            Self::Integer(value) => value.to_string(),
-            Self::Float(value) => value.to_string(),
-            Self::Text(value) => value.clone(),
-            Self::Boolean(value) => value.to_string(),
-        };
+        match self {
+            Self::Integer(value) => Self::render_dotted(&value.to_string()),
+            Self::Float(value) => Self::render_dotted(&value.to_string()),
+            Self::Boolean(value) => Self::render_dotted(&value.to_string()),
+            Self::Text(value) => Self::render_text(value),
+        }
+    }
+
+    fn render_text(value: &str) -> Block {
+        if Self::qualifies_as_bare_dotted_text(value) {
+            return Self::render_dotted(value);
+        }
+        if Self::qualifies_as_parenthesized_text(value) {
+            return Block::Delimited {
+                delimiter: raw_discovery::Delimiter::Parenthesis,
+                root_objects: value.split(' ').map(Self::render_dotted).collect(),
+            };
+        }
+        Block::PipeText(raw_discovery::PipeText::new(value))
+    }
+
+    fn qualifies_as_bare_dotted_text(value: &str) -> bool {
+        !value.is_empty()
+            && !value.contains(";;")
+            && value
+                .split('.')
+                .all(|segment| !segment.is_empty() && Atom::new(segment).qualifies_as_symbol())
+    }
+
+    fn qualifies_as_parenthesized_text(value: &str) -> bool {
+        value.contains(' ')
+            && !value
+                .chars()
+                .any(|character| character.is_whitespace() && character != ' ')
+            && value.split(' ').all(Self::qualifies_as_bare_dotted_text)
+    }
+
+    fn render_dotted(text: &str) -> Block {
         let segments: Vec<&str> = text.split('.').collect();
         let (last, leading) = segments
             .split_last()
-            .expect("split always yields at least one segment");
+            .expect("a split string always has one segment");
         let mut block = Block::Atom(Atom::new(*last));
         for segment in leading.iter().rev() {
             block = Block::Application {

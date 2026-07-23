@@ -261,28 +261,36 @@ impl<'table> StructuralEvaluator<'table> {
     fn match_leaf(&self, codec: &LeafCodec, block: &Block) -> Result<DecodeDraft, DecodeError> {
         match codec {
             LeafCodec::Scalar(scalar) => {
-                let text = block.dotted_text().ok_or(DecodeError::LeafNotFlattenable)?;
                 let value = match scalar {
-                    ScalarLeaf::Integer => ScalarValue::Integer(text.parse().map_err(
-                        |error: std::num::ParseIntError| {
-                            DecodeError::ScalarParse(error.to_string())
-                        },
-                    )?),
-                    ScalarLeaf::Float => ScalarValue::Float(text.parse().map_err(
-                        |error: std::num::ParseFloatError| {
-                            DecodeError::ScalarParse(error.to_string())
-                        },
-                    )?),
-                    ScalarLeaf::Text => ScalarValue::Text(text),
-                    ScalarLeaf::Boolean => match text.as_str() {
-                        "true" => ScalarValue::Boolean(true),
-                        "false" => ScalarValue::Boolean(false),
-                        other => {
-                            return Err(DecodeError::ScalarParse(format!(
-                                "not a boolean keyword: {other}"
-                            )));
+                    ScalarLeaf::Integer => {
+                        let text = block.dotted_text().ok_or(DecodeError::LeafNotFlattenable)?;
+                        ScalarValue::Integer(text.parse().map_err(
+                            |error: std::num::ParseIntError| {
+                                DecodeError::ScalarParse(error.to_string())
+                            },
+                        )?)
+                    }
+                    ScalarLeaf::Float => {
+                        let text = block.dotted_text().ok_or(DecodeError::LeafNotFlattenable)?;
+                        ScalarValue::Float(text.parse().map_err(
+                            |error: std::num::ParseFloatError| {
+                                DecodeError::ScalarParse(error.to_string())
+                            },
+                        )?)
+                    }
+                    ScalarLeaf::Text => ScalarValue::Text(Self::match_text_scalar(block)?),
+                    ScalarLeaf::Boolean => {
+                        let text = block.dotted_text().ok_or(DecodeError::LeafNotFlattenable)?;
+                        match text.as_str() {
+                            "true" => ScalarValue::Boolean(true),
+                            "false" => ScalarValue::Boolean(false),
+                            other => {
+                                return Err(DecodeError::ScalarParse(format!(
+                                    "not a boolean keyword: {other}"
+                                )));
+                            }
                         }
-                    },
+                    }
                 };
                 Ok(DecodeDraft::Scalar(value))
             }
@@ -297,6 +305,25 @@ impl<'table> StructuralEvaluator<'table> {
             },
             LeafCodec::Foreign(_) => Err(DecodeError::LeafNotFlattenable),
         }
+    }
+
+    /// Read a text scalar under the string law: dotted atoms, a parenthesized
+    /// single-space word run, or literal-preserving pipe text.
+    fn match_text_scalar(block: &Block) -> Result<String, DecodeError> {
+        if let Some(text) = block.dotted_text() {
+            return Ok(text);
+        }
+        if let Some(words) = block.as_delimited(raw_discovery::Delimiter::Parenthesis) {
+            return words
+                .iter()
+                .map(Self::match_text_scalar)
+                .collect::<Result<Vec<_>, _>>()
+                .map(|words| words.join(" "));
+        }
+        if let Block::PipeText(pipe) = block {
+            return Ok(pipe.text().to_owned());
+        }
+        Err(DecodeError::LeafNotFlattenable)
     }
 
     fn block_kind(block: &Block) -> &'static str {

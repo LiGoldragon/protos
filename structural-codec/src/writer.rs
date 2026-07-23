@@ -1,8 +1,8 @@
-//! The canonical Block→text writer. Kept in this crate for now; if it is later
-//! judged to belong in raw-discovery (as the inverse of `Recognizer::recognize`),
-//! that is its eventual home — but raw-discovery is NOT edited for it here (flagged
-//! placement, per the mission). Expressed as a local extension trait so the writing
-//! logic still lives on a data-bearing type (`Block`), never a free function.
+//! The canonical Block→text writer, owned by structural-codec's encode path.
+//! Encoding selects the one canonical structural form, so its final text policy
+//! belongs beside that operation; raw-discovery discovers raw structure and does not
+//! define canonical textual output. Expressed as a local extension trait so the
+//! writing logic still lives on a data-bearing type (`Block`), never a free function.
 
 use raw_discovery::Block;
 

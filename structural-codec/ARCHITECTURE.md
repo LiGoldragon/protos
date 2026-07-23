@@ -81,9 +81,10 @@ inputs.
   table revisions preserve the StructuralValue mirror hash; structural respellings
   move it by design (law 4). This deviates from §4.4's pre-hardening sketch, which
   carried the delimiter in the mirror.
-- **The canonical Block→text writer lives here** (`writer::CanonicalText`) for now.
-  Its eventual home may be `raw-discovery` (as the inverse of
-  `Recognizer::recognize`); raw-discovery is not edited for it in this slice.
+- **The canonical Block→text writer lives in structural-codec**
+  (`writer::CanonicalText`). Its text policy follows the evaluator's canonical
+  encode form; raw-discovery discovers raw structure and owns no canonical emission
+  policy.
 - **`Literal` decode needs a table-scoped lexicon resolver** (`StructuralEvaluator::
   with_lexicon`). The fixture universe avoids `Literal` on decode paths; encode
   always has the caller's resolver.

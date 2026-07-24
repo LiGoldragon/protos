@@ -10,6 +10,7 @@
 use thiserror::Error;
 
 use crate::block::Delimiter;
+use crate::profile::CarrierIdentity;
 
 /// A byte-and-line position in the recognized source. Carried by
 /// [`RecognizeError`] alone.
@@ -60,6 +61,17 @@ pub enum RecognizeError {
     )]
     DanglingApplication { position: SourcePosition },
 
+    /// A non-period configured application token appeared without a head.
+    #[error(
+        "unexpected glued application token `{token}` with no head object at {}:{}",
+        .position.line,
+        .position.column
+    )]
+    UnexpectedApplicationToken {
+        token: String,
+        position: SourcePosition,
+    },
+
     /// An atom bears a glyph that the active profile's glyph set does not
     /// admit — the `$` sigil under the [`Standard`](crate::GlyphSet::Standard)
     /// set, for instance. A new glyph is a new profile revision, never a runtime
@@ -73,4 +85,22 @@ pub enum RecognizeError {
         glyph: char,
         position: SourcePosition,
     },
+
+    /// A classed bare token did not satisfy any configured boundary.
+    #[error("token `{token}` does not satisfy the active profile boundary at {}:{}", .position.line, .position.column)]
+    TokenBoundary {
+        token: String,
+        position: SourcePosition,
+    },
+
+    /// An opaque carrier opened but did not reach its data-defined terminator.
+    #[error("carrier {identity:?} opened but did not terminate at {}:{}", .position.line, .position.column)]
+    UnclosedCarrier {
+        identity: CarrierIdentity,
+        position: SourcePosition,
+    },
+
+    /// A block-comment trivia rule opened but did not reach its close token.
+    #[error("block comment opened but did not terminate at {}:{}", .position.line, .position.column)]
+    UnclosedBlockComment { position: SourcePosition },
 }

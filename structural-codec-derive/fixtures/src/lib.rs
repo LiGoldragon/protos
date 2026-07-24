@@ -127,7 +127,9 @@ impl DerivedTable {
         let payload = TableIdentityPayload {
             core_universe: FIXTURE_UNIVERSE,
             core_layout_identity: EncodedLayoutIdentity([0u8; 32]),
-            raw_profile_identity: RawProfileIdentity([1u8; 32]),
+            raw_profile_identity: RawProfileIdentity(
+                raw_discovery::TokenProfile::standard().identity().0,
+            ),
             leaf_codec_contracts: Vec::new(),
             entries: self.entries.clone(),
         };

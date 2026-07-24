@@ -48,5 +48,10 @@ mod recognizer;
 
 pub use block::{Atom, AtomCase, Block, Delimiter, Document, PipeText};
 pub use error::{RecognizeError, SourcePosition};
-pub use profile::{GlyphSet, ProfileRevision, RawProfile};
+pub use profile::{
+    BareTokenPolicy, CarrierBody, CarrierCapture, CarrierIdentity, CarrierRule, DelimiterToken,
+    GluedApplicationToken, GlyphClass, GlyphClassSet, GlyphSet, ProfileRevision,
+    PunctuationToken, RawProfile, TokenBoundary, TokenProfile, TokenProfileDomain,
+    TokenProfileError, TokenProfileIdentity, TokenProfileSpec, TriviaRule,
+};
 pub use recognizer::{ForeignLanguage, ForeignRawLayer, RawLayer, Recognizer};

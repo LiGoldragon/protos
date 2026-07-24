@@ -36,9 +36,11 @@
 use std::marker::PhantomData;
 
 use name_table::{NameResolver, NameTable};
-use raw_discovery::{RecognizeError, Recognizer};
+use raw_discovery::{RecognizeError, Recognizer, TokenProfile, TokenProfileIdentity};
 
-use crate::error::{DecodeError, EncodeError, SingleChunkRequired};
+use crate::error::{
+    DecodeError, EncodeError, SingleChunkRequired, TextualProfileError,
+};
 use crate::evaluator::StructuralEvaluator;
 use crate::ids::ScopedEncodedTypeId;
 use crate::table::AddressedStructuralTable;
@@ -131,11 +133,19 @@ pub trait Textual {
     type Error: From<RecognizeError>
         + From<DecodeError>
         + From<EncodeError>
-        + From<SingleChunkRequired>;
+        + From<SingleChunkRequired>
+        + From<TextualProfileError>;
 
     /// The structuretree: the sealed table the trusted evaluator walks in both directions.
     /// This data defines the encoder and decoder.
     fn structuretree(&self) -> &AddressedStructuralTable;
+
+    /// The sealed lexical data paired with the structuretree. Languages may
+    /// override this compatibility default with their own profile; no lexical
+    /// vocabulary belongs in Protos code.
+    fn token_profile(&self) -> TokenProfile {
+        TokenProfile::standard()
+    }
 
     /// The lexicon the table's [`Literal`](crate::form::StructuralForm::Literal) forms
     /// resolve through; `None` when the table carries no literal keywords.
@@ -187,7 +197,9 @@ pub trait Textual {
         names: &mut NameTable,
     ) -> Result<Self::Encoded, Self::Error> {
         let text = view.sole_text()?;
-        let document = Recognizer::standard().recognize(text)?;
+        let profile = self.token_profile();
+        self.require_profile(&profile)?;
+        let document = Recognizer::with_token_profile(profile).recognize(text)?;
         let block = document
             .root_object_at(0)
             .ok_or_else(|| self.missing_root_object())?;
@@ -205,8 +217,21 @@ pub trait Textual {
         encoded: &Self::Encoded,
         names: &mut NameTable,
     ) -> Result<TextualForm<Self::Language>, Self::Error> {
+        let profile = self.token_profile();
+        self.require_profile(&profile)?;
         let mirror = self.reflect(expected, encoded, names)?;
         let block = self.evaluator().encode(expected, &mirror, names)?;
-        Ok(TextualForm::single(block.canonical_text()))
+        Ok(TextualForm::single(block.canonical_text_with(&profile)?))
+    }
+
+    /// Refuse a textual road whose recognizer/emitter data differs from the
+    /// profile identity sealed into the structural table.
+    fn require_profile(&self, profile: &TokenProfile) -> Result<(), Self::Error> {
+        let table: TokenProfileIdentity = self.structuretree().raw_profile_identity().into();
+        let provided = profile.identity();
+        if table != provided {
+            return Err(TextualProfileError::IdentityMismatch { table, provided }.into());
+        }
+        Ok(())
     }
 }

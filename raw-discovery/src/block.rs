@@ -267,6 +267,12 @@ pub enum Delimiter {
 }
 
 impl Delimiter {
+    pub const ALL: [Self; 3] = [
+        Self::Parenthesis,
+        Self::SquareBracket,
+        Self::Brace,
+    ];
+
     pub fn opening_text(self) -> &'static str {
         match self {
             Self::Parenthesis => "(",
@@ -303,31 +309,6 @@ impl Delimiter {
         )
     }
 
-    pub(crate) fn closing_character(self) -> char {
-        match self {
-            Self::Parenthesis => ')',
-            Self::SquareBracket => ']',
-            Self::Brace => '}',
-        }
-    }
-
-    pub(crate) fn from_opening(character: char) -> Option<Self> {
-        match character {
-            '(' => Some(Self::Parenthesis),
-            '[' => Some(Self::SquareBracket),
-            '{' => Some(Self::Brace),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn from_closing(character: char) -> Option<Self> {
-        match character {
-            ')' => Some(Self::Parenthesis),
-            ']' => Some(Self::SquareBracket),
-            '}' => Some(Self::Brace),
-            _ => None,
-        }
-    }
 }
 
 /// A `(| … |)` multiline-string carrier. Holds literal text — delimiters,

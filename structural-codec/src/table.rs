@@ -11,6 +11,7 @@ use content_identity::{ContentHash, DomainSeparation, HashDomain, LayoutVersion}
 use crate::codec::StructuralEntry;
 use crate::error::{DisjointnessError, TableError};
 use crate::ids::{EncodedUniverseId, ScopedEncodedTypeId};
+use raw_discovery::TokenProfileIdentity;
 
 /// The identity of a Core layout the forms target (supplied by the Core side).
 #[derive(
@@ -43,6 +44,18 @@ pub struct EncodedLayoutIdentity(pub [u8; 32]);
     PartialOrd,
 )]
 pub struct RawProfileIdentity(pub [u8; 32]);
+
+impl From<TokenProfileIdentity> for RawProfileIdentity {
+    fn from(identity: TokenProfileIdentity) -> Self {
+        Self(identity.0)
+    }
+}
+
+impl From<RawProfileIdentity> for TokenProfileIdentity {
+    fn from(identity: RawProfileIdentity) -> Self {
+        Self(identity.0)
+    }
+}
 
 /// The identity of a leaf codec's contract.
 #[derive(
@@ -107,6 +120,11 @@ impl AddressedStructuralTable {
     /// EXCLUDED from Core value identity.
     pub fn identity(&self) -> ContentHash<StructuralTableDomain> {
         self.identity
+    }
+
+    /// The sealed lexical-profile identity this structural table is paired with.
+    pub fn raw_profile_identity(&self) -> RawProfileIdentity {
+        self.payload.raw_profile_identity
     }
 
     /// Queried BY expected type, never globally searched; the input never selects its

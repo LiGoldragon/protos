@@ -50,7 +50,10 @@ pub mod writer;
 pub use codec::{ConstructorCodec, StructuralEntry};
 pub use conformance::{ConformanceError, ConformanceHarness, GeneratedCodec};
 pub use encoded_form::{Converted, EncodedConversion, EncodedForm};
-pub use error::{DecodeError, DisjointnessError, EncodeError, TableError};
+pub use error::{
+    DecodeError, DisjointnessError, EncodeError, SingleChunkRequired, TableError,
+    TextualProfileError,
+};
 pub use evaluator::StructuralEvaluator;
 pub use form::{
     AtomForm, CarrierLeaf, DelegationPayload, ForeignLeafId, LeafCodec, LeafForm, ScalarLeaf,

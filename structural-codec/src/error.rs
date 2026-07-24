@@ -7,6 +7,7 @@ use name_table::NameTableError;
 
 use crate::form::DelegationPayload;
 use crate::ids::ScopedEncodedTypeId;
+use raw_discovery::TokenProfileIdentity;
 
 /// A structural table failed conservative disjointness validation: two accepted
 /// decode forms could not be PROVEN structurally distinct, so one might silently
@@ -107,6 +108,24 @@ pub enum TableError {
     Disjointness(#[from] DisjointnessError),
     #[error(transparent)]
     Archive(#[from] ArchiveError),
+}
+
+/// A textual interface paired a structural table with different lexical data,
+/// or asked the profile-driven writer to render a carrier that profile cannot
+/// represent.
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum TextualProfileError {
+    #[error(
+        "structural table pins token profile {table:?}, but the textual interface supplied {provided:?}"
+    )]
+    IdentityMismatch {
+        table: TokenProfileIdentity,
+        provided: TokenProfileIdentity,
+    },
+    #[error("the token profile has no content carrier for literal text")]
+    MissingContentCarrier,
+    #[error("the token profile's content carrier is not an escaped delimited carrier")]
+    InvalidContentCarrier,
 }
 
 /// A [`TextualForm`](crate::TextualForm) value did not carry the single text chunk the

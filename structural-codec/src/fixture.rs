@@ -37,12 +37,16 @@ pub const FIELD: ScopedEncodedTypeId = ScopedEncodedTypeId::fixture(23);
 #[derive(Clone, Debug)]
 pub struct FixtureBuilder {
     newtype_delimiter: Delimiter,
+    raw_profile_identity: RawProfileIdentity,
 }
 
 impl Default for FixtureBuilder {
     fn default() -> Self {
         Self {
             newtype_delimiter: Delimiter::Brace,
+            raw_profile_identity: RawProfileIdentity(
+                raw_discovery::TokenProfile::standard().identity().0,
+            ),
         }
     }
 }
@@ -59,6 +63,12 @@ impl FixtureBuilder {
         self
     }
 
+    /// Pair the fixture structural forms with explicit sealed lexical data.
+    pub fn with_token_profile(mut self, profile: &raw_discovery::TokenProfile) -> Self {
+        self.raw_profile_identity = RawProfileIdentity(profile.identity().0);
+        self
+    }
+
     /// Seal the fixture table (identity computed over the payload, stored outside).
     pub fn build(&self) -> Result<AddressedStructuralTable, TableError> {
         let mut entries: BTreeMap<ScopedEncodedTypeId, StructuralEntry> = BTreeMap::new();
@@ -68,7 +78,7 @@ impl FixtureBuilder {
         let payload = TableIdentityPayload {
             core_universe: crate::ids::FIXTURE_UNIVERSE,
             core_layout_identity: EncodedLayoutIdentity([0u8; 32]),
-            raw_profile_identity: RawProfileIdentity([1u8; 32]),
+            raw_profile_identity: self.raw_profile_identity,
             leaf_codec_contracts: Vec::new(),
             entries,
         };

@@ -1,45 +1,81 @@
 # protos architecture
 
-## Why this repository exists
+## Repository boundary
 
-protos is the separate home the psyche asked for the shared structural machinery
-of the NOTA/Core language family: "consolidate into protos", the machinery in its
-own separate repository. Before consolidation the five crates lived in five
-repositories that pinned each other by individual git revisions, and consumers
-pinned each of the five independently. That fanned every machinery change into a
-rev-bump cascade. protos gathers the machinery into one workspace so it moves as a
-unit; intra-workspace dependencies are path dependencies, and consumers pin one
-repository instead of five.
+The micro-repositories are canonical. `protos` is one ordinary Cargo package,
+not a workspace and not an implementation bundle. It owns only cross-component
+contracts that cannot live in a single mechanism repository.
 
-## The downward layering
+Dependency direction is one-way:
 
-The workspace is a strict downward dependency family. Each crate depends only on
-those above it, and the leaf depends on no sibling:
+```text
+protos
+  ├── content-identity
+  ├── name-table
+  └── structural-codec
+        ├── content-identity
+        ├── name-table
+        └── raw-discovery
+```
 
-- `content-identity` is the leaf. It owns the one portable-archive discipline and
-  the one content-hash family, and depends on no sibling.
-- `name-table` depends on `content-identity`. It owns the identifier space and the
-  single home of the derived-name walkers.
-- `raw-discovery` depends on `content-identity`. It discovers raw structure and
-  never classifies. It adopts `content-identity`'s `PortableArchive` bound rather
-  than restating the rkyv feature discipline inline.
-- `structural-codec` depends on `content-identity`, `name-table`, and
-  `raw-discovery`. It is the trusted structural-form evaluator.
-- `structural-codec-derive` is the derive sibling. Its `fixtures` member holds the
-  law-5 conformance suite that proves the generated codecs agree with the trusted
-  evaluator.
+`structural-codec` does not depend on `protos`. The raw-discovery dependency is
+transitive at runtime; `protos` names the same exact revision as a development
+dependency only because a concrete law fixture implementing
+`structural_codec::Textual` must spell its public `SealedTokenProfile` return
+type.
 
-## The conformance boundary
+## Capsule contract
 
-Law-5 conformance has two halves. The half that proves the generated codec agrees
-with the trusted evaluator is machinery-internal — it names only `structural-codec`,
-`name-table`, `raw-discovery`, and the derive — and lives here, in
-`structural-codec-derive/fixtures/tests/conformance.rs`.
+`CapsuleKind` closes the component set to Schema, Logos, and Nomos. A textual
+language or tool does not create another content kind. In particular, Rust is a
+projection of Logos and owns neither a Capsule kind nor an identity domain here.
 
-The other half — that the derived entries equal `core-schema`'s hand-authored
-entries — inherently reaches down to a consumer. It cannot live upstream without
-forcing two incompatible versions of the machinery into one dependency graph (the
-in-workspace path version and the version a re-pinned `core-schema` would pull by
-git). It therefore lives downstream in `core-schema`, where the machinery and the
-derive resolve at a single pin and their types unify. Keeping that cross-check
-upstream would be the special case; placing it downstream is the normal case.
+`ShortIdentifier` returns the canonical numeric `content_identity::ShortCode`.
+Minting and collision state are authority-bearing implementation concerns and
+remain outside this package.
+
+`Capsule` has required, pure accessors for:
+
+- the component's stringless encoded truth;
+- its complete nametree;
+- a non-optional `ContentHash<ContentDomain>` pin;
+- a non-optional `ContentHash<CapsuleNameTreeDomain>` pin.
+
+The implementing component supplies pure derivation methods for both identities.
+The provided `verify` operation compares derived identities with required pins.
+Its closed outcomes distinguish content derivation, nametree derivation, content
+mismatch, and nametree mismatch; mismatch values retain both the pinned and
+derived hashes. There is no optional-pin state and no runtime domain tag.
+
+## Textual association
+
+`TextualCapsuleAssociation` belongs to the textual projection type. Its
+associated Capsule is constrained so
+`Capsule::EncodedForm == structural_codec::Textual::Encoded`.
+
+An associated type, rather than a caller-selected generic Capsule parameter,
+makes the association single-valued under Rust coherence: a projection chooses
+one Capsule. Different projection types may choose the same Capsule, so several
+views can coexist without manufacturing new semantic identities.
+
+Both directions are explicit:
+
+- `view_capsule` produces the projection's `TextualForm`;
+- `unview_capsule` consumes that view, component-owned typed context, and an
+  already-issued `ShortCode`.
+
+The context exposes its nametree explicitly. The contract provides no mint,
+hidden authority, parser, printer, evaluator, or default construction policy.
+
+## Testing boundary
+
+Runtime fixtures prove verification success and every typed failure, required
+pin types, the three-kind closure, canonical `ShortCode` reuse, and two
+projection types round-tripping one Capsule type. Compile-fail documentation
+proves that no `Rust` kind exists, a projection cannot implement two
+associations, and a projection cannot associate a Capsule with a different
+encoded type.
+
+The repository cannot enumerate all future downstream implementations without
+reversing dependency direction. It therefore proves its closed types and
+coherence laws locally and leaves component inventories to their owners.

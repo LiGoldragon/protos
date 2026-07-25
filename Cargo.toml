@@ -1,12 +1,26 @@
-[workspace]
-resolver = "2"
-members = [
-    "content-identity",
-    "name-table",
-    "raw-discovery",
-    "short-identifier",
-    "capsule",
-    "structural-codec",
-    "structural-codec-derive",
-    "structural-codec-derive/fixtures",
-]
+[package]
+name         = "protos"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.85"
+license      = "MIT OR Apache-2.0"
+repository   = "https://github.com/LiGoldragon/protos"
+description  = "Implementation-free component contracts for the Protos family."
+publish      = false
+
+[lib]
+name = "protos"
+path = "src/lib.rs"
+
+[dependencies]
+content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "ac0075842799b3ece8909ad0eb4b8a92b596b188" }
+name-table       = { git = "https://github.com/LiGoldragon/name-table.git", rev = "a1705ef512efec28925ae3ffc9faa5a2aa4dc4a8" }
+structural-codec = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "e5fa1b3bbdde13f3dac205920b16a2e73f3d4487" }
+
+[dev-dependencies]
+raw-discovery = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "c27a9efabb1981c8b3d887c870fff82fc7daf49c" }
+
+[lints.rust]
+unsafe_code = "forbid"
+unused      = { level = "warn", priority = -1 }
+dead_code   = "warn"

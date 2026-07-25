@@ -75,8 +75,12 @@ construction policy.
 
 Runtime fixtures prove verification success and every typed failure, required
 pin types, the three-kind closure, canonical `ShortCode` reuse, two projection
-association types targeting one Capsule, both directions, and projection
-representations that do not implement `structural_codec::Textual`.
+association types targeting one non-`Clone` Capsule, and both directions over
+independently owned source/document text. Their fixture parsers reconstruct the
+Capsule fields and names from that text, and report typed malformed and
+incompatible-input errors. The projection representations do not implement
+`structural_codec::Textual`; compile-fail documentation also proves that a
+caller cannot select a different Capsule type.
 Compile-fail documentation proves that no `Rust` kind exists, an association
 owner cannot implement two associations, and callers cannot select a different
 Capsule type at a call site.

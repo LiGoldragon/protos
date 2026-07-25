@@ -164,7 +164,7 @@ fn short_identifier_exposes_the_canonical_content_identity_code() {
     let capsule = capsule();
     let exposed: ShortCode = capsule.short_identifier();
     assert_eq!(exposed, code());
-    assert_eq!(exposed.to_base36(), "0016");
+    assert_eq!(exposed.value(), 42);
 }
 
 #[test]

@@ -30,41 +30,244 @@ impl CapsuleUnviewContext for NameTable {
 /// A second association implementation for one projection conflicts by Rust
 /// coherence:
 ///
-/// ```compile_fail
-/// use protos::TextualCapsuleAssociation;
+/// ```compile_fail,E0119
+/// use std::convert::Infallible;
+/// use std::error::Error;
+/// use std::fmt;
+///
+/// use content_identity::{
+///     CapsuleNameTreeDomain, ContentHash, DomainSeparation, HashDomain, LayoutVersion, ShortCode,
+/// };
+/// use name_table::{IdentifierNamespace, NameTable, NameTableError, NameTransaction};
+/// use protos::{Capsule, CapsuleKind, ShortIdentifier, TextualCapsuleAssociation};
+/// use raw_discovery::SealedTokenProfile;
+/// use structural_codec::error::SingleChunkRequired;
+/// use structural_codec::{
+///     AddressedStructuralTable, DecodeError, EncodeError, EncodedForm, ScopedEncodedTypeId,
+///     StructuralValue, Textual, TextualForm,
+/// };
+///
+/// struct TestLanguage;
+///
+/// struct TestEncoded;
+///
+/// impl EncodedForm for TestEncoded {
+///     type Language = TestLanguage;
+/// }
+///
+/// struct TestDomain;
+///
+/// impl HashDomain for TestDomain {
+///     fn separation() -> DomainSeparation {
+///         DomainSeparation::Contextual {
+///             context: "protos duplicate association doctest",
+///             layout: LayoutVersion::new(1),
+///         }
+///     }
+/// }
+///
+/// #[derive(Debug)]
+/// struct TestError;
+///
+/// impl fmt::Display for TestError {
+///     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         formatter.write_str("test error")
+///     }
+/// }
+///
+/// impl Error for TestError {}
+///
+/// impl From<DecodeError> for TestError {
+///     fn from(_: DecodeError) -> Self {
+///         Self
+///     }
+/// }
+///
+/// impl From<EncodeError> for TestError {
+///     fn from(_: EncodeError) -> Self {
+///         Self
+///     }
+/// }
+///
+/// impl From<NameTableError> for TestError {
+///     fn from(_: NameTableError) -> Self {
+///         Self
+///     }
+/// }
+///
+/// impl From<SingleChunkRequired> for TestError {
+///     fn from(_: SingleChunkRequired) -> Self {
+///         Self
+///     }
+/// }
+///
+/// struct TestCapsule {
+///     encoded: TestEncoded,
+///     names: NameTable,
+///     short_identifier: ShortCode,
+///     content_pin: ContentHash<TestDomain>,
+///     nametree_pin: ContentHash<CapsuleNameTreeDomain>,
+/// }
+///
+/// impl TestCapsule {
+///     fn sealed(names: NameTable, short_identifier: ShortCode) -> Self {
+///         Self {
+///             encoded: TestEncoded,
+///             names,
+///             short_identifier,
+///             content_pin: ContentHash::from_bytes([1; 32]),
+///             nametree_pin: ContentHash::from_bytes([2; 32]),
+///         }
+///     }
+/// }
+///
+/// impl ShortIdentifier for TestCapsule {
+///     fn short_identifier(&self) -> ShortCode {
+///         self.short_identifier
+///     }
+/// }
+///
+/// impl Capsule for TestCapsule {
+///     const KIND: CapsuleKind = CapsuleKind::Logos;
+///
+///     type EncodedForm = TestEncoded;
+///     type ContentDomain = TestDomain;
+///     type NameTree = NameTable;
+///     type ContentIdentityError = Infallible;
+///     type NameTreeIdentityError = Infallible;
+///
+///     fn encoded_form(&self) -> &Self::EncodedForm {
+///         &self.encoded
+///     }
+///
+///     fn nametree(&self) -> &Self::NameTree {
+///         &self.names
+///     }
+///
+///     fn content_identity_pin(&self) -> ContentHash<Self::ContentDomain> {
+///         self.content_pin
+///     }
+///
+///     fn nametree_identity_pin(&self) -> ContentHash<CapsuleNameTreeDomain> {
+///         self.nametree_pin
+///     }
+///
+///     fn rederive_content_identity(
+///         &self,
+///     ) -> Result<ContentHash<Self::ContentDomain>, Self::ContentIdentityError> {
+///         Ok(self.content_pin)
+///     }
+///
+///     fn rederive_nametree_identity(
+///         &self,
+///     ) -> Result<ContentHash<CapsuleNameTreeDomain>, Self::NameTreeIdentityError> {
+///         Ok(self.nametree_pin)
+///     }
+/// }
 ///
 /// struct OneProjection;
 ///
+/// impl Textual for OneProjection {
+///     type Encoded = TestEncoded;
+///     type Language = TestLanguage;
+///     type Error = TestError;
+///
+///     fn structuretree(&self) -> &AddressedStructuralTable {
+///         unreachable!("the coherence witness does not execute the structural engine")
+///     }
+///
+///     fn token_profile(&self) -> &SealedTokenProfile {
+///         unreachable!("the coherence witness does not execute the structural engine")
+///     }
+///
+///     fn missing_root_object(&self) -> Self::Error {
+///         TestError
+///     }
+///
+///     fn reify(
+///         &self,
+///         _: ScopedEncodedTypeId,
+///         _: &StructuralValue,
+///         _: &mut NameTransaction<'_>,
+///     ) -> Result<Self::Encoded, Self::Error> {
+///         Ok(TestEncoded)
+///     }
+///
+///     fn reflect(
+///         &self,
+///         _: ScopedEncodedTypeId,
+///         _: &Self::Encoded,
+///         _: &NameTable,
+///     ) -> Result<StructuralValue, Self::Error> {
+///         unreachable!("the coherence witness does not execute the structural engine")
+///     }
+/// }
+///
 /// impl TextualCapsuleAssociation for OneProjection {
-///     type Capsule = ();
-///     type UnviewContext = name_table::NameTable;
-///     type AssociationError = std::convert::Infallible;
+///     type Capsule = TestCapsule;
+///     type UnviewContext = NameTable;
+///     type AssociationError = TestError;
 ///
 ///     fn unview_capsule(
 ///         &self,
-///         _: structural_codec::ScopedEncodedTypeId,
-///         _: &structural_codec::TextualForm<Self::Language>,
-///         _: Self::UnviewContext,
-///         _: content_identity::ShortCode,
+///         _: ScopedEncodedTypeId,
+///         _: &TextualForm<Self::Language>,
+///         context: Self::UnviewContext,
+///         short_identifier: ShortCode,
 ///     ) -> Result<Self::Capsule, Self::AssociationError> {
-///         unreachable!()
+///         Ok(TestCapsule::sealed(context, short_identifier))
 ///     }
 ///
 ///     fn view_capsule(
 ///         &self,
-///         _: structural_codec::ScopedEncodedTypeId,
+///         _: ScopedEncodedTypeId,
 ///         _: &Self::Capsule,
-///     ) -> Result<structural_codec::TextualForm<Self::Language>, Self::AssociationError> {
-///         unreachable!()
+///     ) -> Result<TextualForm<Self::Language>, Self::AssociationError> {
+///         Ok(TextualForm::single(String::new()))
 ///     }
 /// }
 ///
 /// impl TextualCapsuleAssociation for OneProjection {
-///     type Capsule = ();
-///     type UnviewContext = name_table::NameTable;
-///     type AssociationError = std::convert::Infallible;
-///     // A projection cannot select a second Capsule type.
+///     type Capsule = TestCapsule;
+///     type UnviewContext = NameTable;
+///     type AssociationError = TestError;
+///
+///     fn unview_capsule(
+///         &self,
+///         _: ScopedEncodedTypeId,
+///         _: &TextualForm<Self::Language>,
+///         context: Self::UnviewContext,
+///         short_identifier: ShortCode,
+///     ) -> Result<Self::Capsule, Self::AssociationError> {
+///         Ok(TestCapsule::sealed(context, short_identifier))
+///     }
+///
+///     fn view_capsule(
+///         &self,
+///         _: ScopedEncodedTypeId,
+///         _: &Self::Capsule,
+///     ) -> Result<TextualForm<Self::Language>, Self::AssociationError> {
+///         Ok(TextualForm::single(String::new()))
+///     }
 /// }
+///
+/// let projection = OneProjection;
+/// let names = NameTable::new(IdentifierNamespace::Logos);
+/// let code = ShortCode::from_value(1).expect("valid code");
+/// let capsule = projection
+///     .unview_capsule(
+///         ScopedEncodedTypeId::new(structural_codec::FIXTURE_UNIVERSE, 1),
+///         &TextualForm::single(String::new()),
+///         names,
+///         code,
+///     )
+///     .expect("valid association");
+/// let _ = projection
+///     .view_capsule(
+///         ScopedEncodedTypeId::new(structural_codec::FIXTURE_UNIVERSE, 1),
+///         &capsule,
+///     )
+///     .expect("valid association");
 /// ```
 ///
 /// The associated Capsule's encoded truth cannot differ from the projection's

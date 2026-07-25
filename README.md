@@ -28,11 +28,11 @@ Capsule implementation.
   typed content and nametree pins. Implementations provide pure identity
   derivations; the shared `verify` operation reports typed derivation failures
   or pinned-versus-actual mismatches.
-- `TextualCapsuleAssociation` is implemented by a textual projection. Its
-  associated Capsule must carry the same encoded type as
-  `structural_codec::Textual::Encoded`. Rust coherence permits one Capsule
-  association per projection while allowing several projections to target the
-  same Capsule.
+- `TextualCapsuleAssociation` is implemented by the type that owns a projection
+  association, never by `structural_codec::Textual`. Its associated textual
+  representation may be source text, a whole document, or another textual
+  view. Its associated Capsule is fixed for that implementation, while several
+  association owners may target the same Capsule.
 
 ## Validation
 

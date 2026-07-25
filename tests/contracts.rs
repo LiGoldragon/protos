@@ -1,19 +1,15 @@
+use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
 
 use content_identity::{
     CapsuleNameTreeDomain, ContentHash, DomainSeparation, HashDomain, LayoutVersion, ShortCode,
 };
-use name_table::{IdentifierNamespace, NameTable, NameTableError, NameTransaction};
+use name_table::{IdentifierNamespace, NameTable};
 use protos::{
     Capsule, CapsuleKind, CapsuleVerificationError, ShortIdentifier, TextualCapsuleAssociation,
 };
-use raw_discovery::SealedTokenProfile;
-use structural_codec::error::SingleChunkRequired;
-use structural_codec::{
-    AddressedStructuralTable, DecodeError, EncodeError, EncodedForm, ScopedEncodedTypeId,
-    StructuralValue, Textual, TextualForm,
-};
+use structural_codec::EncodedForm;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct FixtureLanguage;
@@ -234,186 +230,74 @@ fn verification_reports_both_mismatches_with_values() {
     }
 }
 
-#[derive(Debug)]
-struct ProjectionError;
+#[derive(Clone)]
+struct SourceRepresentation(FixtureCapsule);
 
-impl fmt::Display for ProjectionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("fixture projection error")
-    }
-}
+#[derive(Clone)]
+struct DocumentRepresentation(FixtureCapsule);
 
-impl Error for ProjectionError {}
+struct SourceAssociation;
+struct DocumentAssociation;
 
-impl From<DecodeError> for ProjectionError {
-    fn from(_: DecodeError) -> Self {
-        Self
-    }
-}
-
-impl From<EncodeError> for ProjectionError {
-    fn from(_: EncodeError) -> Self {
-        Self
-    }
-}
-
-impl From<NameTableError> for ProjectionError {
-    fn from(_: NameTableError) -> Self {
-        Self
-    }
-}
-
-impl From<SingleChunkRequired> for ProjectionError {
-    fn from(_: SingleChunkRequired) -> Self {
-        Self
-    }
-}
-
-struct DecimalProjection;
-struct HexadecimalProjection;
-
-macro_rules! impl_textual_fixture {
-    ($projection:ty) => {
-        impl Textual for $projection {
-            type Encoded = FixtureEncoded;
-            type Language = FixtureLanguage;
-            type Error = ProjectionError;
-
-            fn structuretree(&self) -> &AddressedStructuralTable {
-                unreachable!("association fixtures do not execute the structural engine")
-            }
-
-            fn token_profile(&self) -> &SealedTokenProfile {
-                unreachable!("association fixtures do not execute the structural engine")
-            }
-
-            fn missing_root_object(&self) -> Self::Error {
-                ProjectionError
-            }
-
-            fn reify(
-                &self,
-                _: ScopedEncodedTypeId,
-                _: &StructuralValue,
-                _: &mut NameTransaction<'_>,
-            ) -> Result<Self::Encoded, Self::Error> {
-                unreachable!("association fixtures provide their own contract direction")
-            }
-
-            fn reflect(
-                &self,
-                _: ScopedEncodedTypeId,
-                _: &Self::Encoded,
-                _: &NameTable,
-            ) -> Result<StructuralValue, Self::Error> {
-                unreachable!("association fixtures provide their own contract direction")
-            }
-        }
-    };
-}
-
-impl_textual_fixture!(DecimalProjection);
-impl_textual_fixture!(HexadecimalProjection);
-
-impl TextualCapsuleAssociation for DecimalProjection {
+impl TextualCapsuleAssociation for SourceAssociation {
+    type TextualRepresentation = SourceRepresentation;
     type Capsule = FixtureCapsule;
-    type UnviewContext = NameTable;
-    type AssociationError = ProjectionError;
-
-    fn unview_capsule(
-        &self,
-        _: ScopedEncodedTypeId,
-        view: &TextualForm<Self::Language>,
-        context: Self::UnviewContext,
-        short_identifier: ShortCode,
-    ) -> Result<Self::Capsule, Self::AssociationError> {
-        let value = view.sole_text()?.parse().map_err(|_| ProjectionError)?;
-        Ok(FixtureCapsule::sealed(value, context, short_identifier))
-    }
+    type ViewError = Infallible;
+    type UnviewError = Infallible;
 
     fn view_capsule(
-        &self,
-        _: ScopedEncodedTypeId,
         capsule: &Self::Capsule,
-    ) -> Result<TextualForm<Self::Language>, Self::AssociationError> {
-        Ok(TextualForm::single(capsule.encoded.0.to_string()))
+    ) -> Result<Self::TextualRepresentation, Self::ViewError> {
+        Ok(SourceRepresentation(capsule.clone()))
+    }
+
+    fn unview_capsule(
+        textual: &Self::TextualRepresentation,
+    ) -> Result<Self::Capsule, Self::UnviewError> {
+        Ok(textual.0.clone())
     }
 }
 
-impl TextualCapsuleAssociation for HexadecimalProjection {
+impl TextualCapsuleAssociation for DocumentAssociation {
+    type TextualRepresentation = DocumentRepresentation;
     type Capsule = FixtureCapsule;
-    type UnviewContext = NameTable;
-    type AssociationError = ProjectionError;
-
-    fn unview_capsule(
-        &self,
-        _: ScopedEncodedTypeId,
-        view: &TextualForm<Self::Language>,
-        context: Self::UnviewContext,
-        short_identifier: ShortCode,
-    ) -> Result<Self::Capsule, Self::AssociationError> {
-        let value = u32::from_str_radix(view.sole_text()?, 16).map_err(|_| ProjectionError)?;
-        Ok(FixtureCapsule::sealed(value, context, short_identifier))
-    }
+    type ViewError = Infallible;
+    type UnviewError = Infallible;
 
     fn view_capsule(
-        &self,
-        _: ScopedEncodedTypeId,
         capsule: &Self::Capsule,
-    ) -> Result<TextualForm<Self::Language>, Self::AssociationError> {
-        Ok(TextualForm::single(format!("{:x}", capsule.encoded.0)))
+    ) -> Result<Self::TextualRepresentation, Self::ViewError> {
+        Ok(DocumentRepresentation(capsule.clone()))
+    }
+
+    fn unview_capsule(
+        textual: &Self::TextualRepresentation,
+    ) -> Result<Self::Capsule, Self::UnviewError> {
+        Ok(textual.0.clone())
     }
 }
 
 #[test]
-fn two_textual_projections_round_trip_one_capsule_type() {
-    fn requires_same_capsule<Projection>()
+fn two_projection_associations_round_trip_one_capsule_without_textual() {
+    fn requires_fixed_capsule<Association>()
     where
-        Projection: TextualCapsuleAssociation<Capsule = FixtureCapsule>,
+        Association: TextualCapsuleAssociation<Capsule = FixtureCapsule>,
     {
     }
 
-    requires_same_capsule::<DecimalProjection>();
-    requires_same_capsule::<HexadecimalProjection>();
+    requires_fixed_capsule::<SourceAssociation>();
+    requires_fixed_capsule::<DocumentAssociation>();
 
-    let expected = ScopedEncodedTypeId::new(structural_codec::FIXTURE_UNIVERSE, 1);
     let original = capsule();
 
-    let decimal_view = DecimalProjection
-        .view_capsule(expected, &original)
-        .expect("decimal view");
-    assert_eq!(decimal_view.sole_text().expect("decimal text"), "42");
-    let decimal_round_trip = DecimalProjection
-        .unview_capsule(
-            expected,
-            &decimal_view,
-            NameTable::new(IdentifierNamespace::Logos),
-            code(),
-        )
-        .expect("decimal unview");
-    decimal_round_trip.verify().expect("decimal Capsule");
-    assert_eq!(decimal_round_trip.encoded_form(), original.encoded_form());
+    let source = SourceAssociation::view_capsule(&original).expect("source view");
+    let source_round_trip = SourceAssociation::unview_capsule(&source).expect("source unview");
+    source_round_trip.verify().expect("source Capsule");
+    assert_eq!(source_round_trip, original);
 
-    let hexadecimal_view = HexadecimalProjection
-        .view_capsule(expected, &original)
-        .expect("hexadecimal view");
-    assert_eq!(
-        hexadecimal_view.sole_text().expect("hexadecimal text"),
-        "2a"
-    );
-    let hexadecimal_round_trip = HexadecimalProjection
-        .unview_capsule(
-            expected,
-            &hexadecimal_view,
-            NameTable::new(IdentifierNamespace::Logos),
-            code(),
-        )
-        .expect("hexadecimal unview");
-    hexadecimal_round_trip
-        .verify()
-        .expect("hexadecimal Capsule");
-    assert_eq!(
-        hexadecimal_round_trip.encoded_form(),
-        original.encoded_form()
-    );
+    let document = DocumentAssociation::view_capsule(&original).expect("document view");
+    let document_round_trip =
+        DocumentAssociation::unview_capsule(&document).expect("document unview");
+    document_round_trip.verify().expect("document Capsule");
+    assert_eq!(document_round_trip, original);
 }

@@ -10,4 +10,4 @@ pub use capsule::{
     Capsule, CapsuleKind, CapsuleVerificationError, CapsuleVerificationResult, ShortIdentifier,
 };
 pub use content_identity::{CapsuleNameTreeDomain, ContentHash, HashDomain, ShortCode};
-pub use textual_capsule::{CapsuleUnviewContext, TextualCapsuleAssociation};
+pub use textual_capsule::TextualCapsuleAssociation;

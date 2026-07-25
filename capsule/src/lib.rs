@@ -518,6 +518,20 @@ mod tests {
     }
 
     #[test]
+    fn capsule_nametree_domain_digest_is_locked() {
+        let names = composed_names("SchemaRoot", "LogosRoot");
+        let nametree = CapsuleNameTree::from_name_table(&names).expect("capture nametree");
+        let identity = nametree.rederive_identity().expect("derive identity");
+        let locked = ContentHash::<CapsuleNameTreeDomain>::from_bytes([
+            0x0b, 0xf5, 0x4b, 0x98, 0xdc, 0x62, 0xbc, 0xbc, 0x34, 0x47, 0x6d, 0xef, 0x5d, 0xf6,
+            0xfd, 0x80, 0xea, 0x53, 0xc3, 0xd7, 0x98, 0xa3, 0xd8, 0x36, 0xf6, 0x3b, 0x3c, 0x59,
+            0x1e, 0x1c, 0x5c, 0x33,
+        ]);
+
+        assert_eq!(identity, locked);
+    }
+
+    #[test]
     fn self_contained_capsule_archives_and_restores_complete_composition() {
         let capsule = sealed(7, "SchemaRoot", "LogosRoot");
         capsule.verify().expect("valid Capsule");

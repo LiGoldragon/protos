@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use protos::{
     ACTIVE_WIRE_CONTRACT_ALLOCATIONS, META_SIGNAL_SPIRIT_BINDING, META_SIGNAL_SPIRIT_CONTRACT_ID,
     META_SIGNAL_SPIRIT_WIRE_REVISION, RETIRED_WIRE_CONTRACT_ALLOCATIONS, SIGNAL_SPIRIT_BINDING,
-    SIGNAL_SPIRIT_CONTRACT_ID, SIGNAL_SPIRIT_WIRE_REVISION, WireContractFamily,
+    SIGNAL_SPIRIT_CONTRACT_ID, SIGNAL_SPIRIT_WIRE_REVISION, WIRE_CONTRACT_ALLOCATIONS,
+    WireContractAllocation, WireContractFamily,
 };
 use signal_frame::{
     BoundExchangeFrame, ContractBinding, ContractId, ExchangeFrameBody, HandshakeRequest, RootCode,
@@ -19,18 +20,6 @@ impl WireContract for SignalSpirit {
 struct MetaSignalSpirit;
 
 impl WireContract for MetaSignalSpirit {
-    const BINDING: ContractBinding = META_SIGNAL_SPIRIT_BINDING;
-}
-
-struct SignalSpiritPilotMirror;
-
-impl WireContract for SignalSpiritPilotMirror {
-    const BINDING: ContractBinding = SIGNAL_SPIRIT_BINDING;
-}
-
-struct MetaSignalSpiritMigrationMirror;
-
-impl WireContract for MetaSignalSpiritMigrationMirror {
     const BINDING: ContractBinding = META_SIGNAL_SPIRIT_BINDING;
 }
 
@@ -62,38 +51,30 @@ fn initial_allocations_and_encoded_header_bits_are_exact() {
 }
 
 #[test]
-fn declared_family_table_is_exhaustive_and_single_current() {
+fn declared_family_table_is_exhaustive_and_total() {
     assert_eq!(
         ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len() + RETIRED_WIRE_CONTRACT_ALLOCATIONS.len(),
         WireContractFamily::ALL.len()
     );
+    assert_eq!(WIRE_CONTRACT_ALLOCATIONS.len(), WireContractFamily::COUNT);
 
     for family in WireContractFamily::ALL {
-        let active: Vec<_> = ACTIVE_WIRE_CONTRACT_ALLOCATIONS
-            .iter()
-            .filter(|allocation| allocation.family() == family)
-            .collect();
-        let retired: Vec<_> = RETIRED_WIRE_CONTRACT_ALLOCATIONS
-            .iter()
-            .filter(|allocation| allocation.family() == family)
-            .collect();
-        assert_eq!(active.len() + retired.len(), 1);
-
-        if let Some(allocation) = active.first() {
-            assert_eq!(Some(allocation.current_binding()), family.current_binding());
-            assert_eq!(
-                Some(allocation.supported_bindings()),
-                family.supported_bindings()
-            );
-            assert_eq!(
-                allocation.supported_bindings().last(),
-                Some(&allocation.current_binding())
-            );
-            assert!(family.supports_binding(allocation.current_binding()));
-        } else {
-            assert!(family.active_allocation().is_none());
-            assert!(family.current_binding().is_none());
-            assert!(family.supported_bindings().is_none());
+        match family.allocation() {
+            WireContractAllocation::Active(allocation) => {
+                assert_eq!(allocation.family(), *family);
+                assert_eq!(Some(allocation.current_binding()), family.current_binding());
+                assert_eq!(allocation.supported_bindings(), family.binding_history());
+                assert_eq!(
+                    allocation.supported_bindings().last(),
+                    Some(&allocation.current_binding())
+                );
+                assert!(family.supports_binding(allocation.current_binding()));
+            }
+            WireContractAllocation::Retired(allocation) => {
+                assert_eq!(allocation.family(), *family);
+                assert_eq!(allocation.binding_history(), family.binding_history());
+                assert!(family.current_binding().is_none());
+            }
         }
     }
 }
@@ -101,45 +82,37 @@ fn declared_family_table_is_exhaustive_and_single_current() {
 #[test]
 fn all_ids_are_nonzero_unique_and_never_active_after_retirement() {
     let mut globally_reserved = BTreeSet::new();
-    for allocation in ACTIVE_WIRE_CONTRACT_ALLOCATIONS {
-        let binding = allocation.current_binding();
-        assert_ne!(binding.contract().value(), 0);
-        assert_ne!(binding.revision().value(), 0);
-        assert!(globally_reserved.insert(binding.contract().value()));
-    }
-    for tombstone in RETIRED_WIRE_CONTRACT_ALLOCATIONS {
-        assert_ne!(tombstone.contract_id().value(), 0);
-        assert!(globally_reserved.insert(tombstone.contract_id().value()));
-        assert!(!tombstone.binding_history().is_empty());
+    for allocation in WIRE_CONTRACT_ALLOCATIONS {
+        let (contract_id, history) = match allocation {
+            WireContractAllocation::Active(active) => (
+                active.current_binding().contract(),
+                active.supported_bindings(),
+            ),
+            WireContractAllocation::Retired(retired) => {
+                (retired.contract_id(), retired.binding_history())
+            }
+        };
+        assert_ne!(contract_id.value(), 0);
+        assert!(globally_reserved.insert(contract_id.value()));
+        assert!(!history.is_empty());
         assert!(
-            tombstone
-                .binding_history()
+            history
                 .iter()
-                .all(|binding| binding.contract() == tombstone.contract_id())
-        );
-        assert!(
-            ACTIVE_WIRE_CONTRACT_ALLOCATIONS
-                .iter()
-                .all(|active| active.family() != tombstone.family())
+                .all(|binding| binding.contract() == contract_id)
         );
     }
 }
 
 #[test]
 fn revision_history_is_monotonic_and_retains_each_explicit_decoder() {
-    for allocation in ACTIVE_WIRE_CONTRACT_ALLOCATIONS {
-        let bindings = allocation.supported_bindings();
-        assert!(!bindings.is_empty());
-        for binding in bindings {
-            assert_eq!(binding.contract(), allocation.current_binding().contract());
-        }
-        for revisions in bindings.windows(2) {
+    for allocation in WIRE_CONTRACT_ALLOCATIONS {
+        let history = allocation.binding_history();
+        assert!(!history.is_empty());
+        for revisions in history.windows(2) {
             assert!(revisions[0].revision() < revisions[1].revision());
         }
-    }
-    for tombstone in RETIRED_WIRE_CONTRACT_ALLOCATIONS {
-        for revisions in tombstone.binding_history().windows(2) {
-            assert!(revisions[0].revision() < revisions[1].revision());
+        if let Some(current) = allocation.current_binding() {
+            assert_eq!(Some(&current), history.last());
         }
     }
 }
@@ -151,19 +124,6 @@ fn ordinary_and_owner_only_families_stay_distinct_for_the_same_local_route() {
     assert_eq!(ordinary.route(), meta.route());
     assert_ne!(ordinary.binding(), meta.binding());
     assert_ne!(ordinary.to_le_bytes(), meta.to_le_bytes());
-}
-
-#[test]
-fn pilot_and_migration_aliases_reuse_the_canonical_family_allocation() {
-    assert_eq!(
-        header::<SignalSpiritPilotMirror>().binding(),
-        header::<SignalSpirit>().binding()
-    );
-    assert_eq!(
-        header::<MetaSignalSpiritMigrationMirror>().binding(),
-        header::<MetaSignalSpirit>().binding()
-    );
-    assert_eq!(ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len(), 2);
 }
 
 #[test]

@@ -39,13 +39,13 @@ retains the old binding for its old decoder, and moves the current binding.
 Contract IDs and revisions are nonzero. IDs are globally unique, never reused,
 and remain permanently reserved in the typed retired table after retirement.
 
-The family enum is the closed construction surface for build scripts. Its
-active lookup becomes `None` after retirement, so a tombstoned family cannot
-return an active binding. Record fields and constructors are private, so
-consumers cannot choose arbitrary numeric identities. Pilot and migration
-mirrors proven to be aliases select the same family; they do not add allocation
-records. Legacy unbound frames remain legacy and are not relabelled as revision
-1. The table does not allocate unproven census entries.
+The family enum is the closed construction surface for build scripts. Every
+family resolves to a typed `Active` or `Retired` allocation, so a tombstoned
+family is never mistaken for an absent lookup. Record fields and constructors
+are private, so consumers cannot choose arbitrary numeric identities. Alias
+owners have no allocation entry here and must consume a canonical family
+binding in their own component. Legacy unbound frames remain legacy and are not
+relabelled as revision 1. The table does not allocate unproven census entries.
 
 There is no mutable registry, discovery, file I/O, mint, daemon, hash-derived
 identity, wire string, parser, printer, allocator, or component implementation
@@ -120,6 +120,6 @@ coherence laws locally and leaves component inventories to their owners.
 
 Wire-allocation tests additionally prove the exact constants and short-header
 bits, global active/tombstone uniqueness, nonzero identities, one current
-binding per declared family, monotonic explicit revision history, distinct
-ordinary and owner-only identities under the same local route, alias reuse,
-private record construction, and the single-package exact-dependency boundary.
+binding per active declared family, monotonic explicit revision history,
+distinct ordinary and owner-only identities under the same local route, private
+record construction, and the single-package exact-dependency boundary.

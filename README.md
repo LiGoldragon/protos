@@ -38,9 +38,10 @@ Capsule implementation.
 - `WireContractFamily` closes the proven allocation set to ordinary
   `signal-spirit` and owner-only `meta-signal-spirit`. Their current bindings
   are `(ContractId 1, WireRevision 1)` and `(ContractId 2, WireRevision 1)`.
-  Compile-time active and retired tables are the append-only source for contract
-  build scripts. Pilot and migration aliases reuse their canonical family
-  allocation; legacy unbound frames are not revision 1.
+  Each family has a total typed active-or-retired allocation; compile-time
+  projections derive from one canonical declaration. Alias owners receive no
+  allocation entry and consume a canonical binding in their own component;
+  legacy unbound frames are not revision 1.
 
 ## Validation
 

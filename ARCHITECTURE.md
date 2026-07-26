@@ -59,9 +59,10 @@ and component contracts consume this package in the forward direction.
 language or tool does not create another content kind. In particular, Rust is a
 projection of Logos and owns neither a Capsule kind nor an identity domain here.
 
-`ShortIdentifier` returns the canonical numeric `content_identity::ShortCode`.
-Minting and collision state are authority-bearing implementation concerns and
-remain outside this package.
+Short display is derived only from the full domain-typed content hash and a
+caller-owned resolver in `content-identity`. The result is display data, never
+Capsule state, archive data, or a Capsule accessor. Collision scope stays with
+the resolver owner.
 
 `Capsule` has required, pure accessors for:
 
@@ -75,6 +76,10 @@ The provided `verify` operation compares derived identities with required pins.
 Its closed outcomes distinguish content derivation, nametree derivation, content
 mismatch, and nametree mismatch; mismatch values retain both the pinned and
 derived hashes. There is no optional-pin state and no runtime domain tag.
+
+This package deliberately records no absolute composed-nametree witness lock.
+The first production Capsule in Slice 1 must derive that witness from its real
+component slices; a test fixture is not a production lock.
 
 ## Textual association
 
@@ -104,13 +109,12 @@ construction policy.
 ## Testing boundary
 
 Runtime fixtures prove verification success and every typed failure, required
-pin types, the three-kind closure, canonical `ShortCode` reuse, two projection
-association types targeting one non-`Clone` Capsule, and both directions over
-independently owned source/document text. Their fixture parsers reconstruct the
-Capsule fields and names from that text, and report typed malformed and
-incompatible-input errors. The projection representations do not implement
-`structural_codec::Textual`; compile-fail documentation also proves that a
-caller cannot select a different Capsule type.
+full-pin types, a complete composed nametree, the three-kind closure, and two
+opaque in-memory association owners targeting one fixed Capsule in both
+directions. The fixture derives its nametree pin through the producer-owned
+composed-slice pre-image but records no absolute digest. It supplies no source
+parser or string projection fixture. Compile-fail documentation also proves
+that a caller cannot select a different Capsule type.
 Compile-fail documentation proves that no `Rust` kind exists, an association
 owner cannot implement two associations, and callers cannot select a different
 Capsule type at a call site.

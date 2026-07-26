@@ -1,14 +1,13 @@
 # protos
 
 `protos` is the implementation-free contract package for the Protos language
-family. It relates component Capsules, their canonical short identifiers, and
-textual projections without owning any component engine or language-specific
-data.
+family. It relates component Capsules and textual projections without owning
+any component engine or language-specific data.
 
 The concrete mechanisms remain in their canonical micro-repositories:
 
-- `content-identity` owns content hashes, the canonical `ShortCode`, and the
-  `CapsuleNameTreeDomain`.
+- `content-identity` owns content hashes, their resolver-scoped display
+  projections, and the `CapsuleNameTreeDomain`.
 - `name-table` owns names and name tables.
 - `raw-discovery` owns raw structural discovery.
 - `structural-codec` owns structural forms and the bidirectional evaluator.
@@ -17,19 +16,20 @@ The concrete mechanisms remain in their canonical micro-repositories:
 
 This package depends on exact published revisions of the contracts it names. It
 contains no copied crates, workspace members, path dependencies, parser,
-printer, evaluator, derive macro, short-code mint, or language-specific
+printer, evaluator, derive macro, display allocator, or language-specific
 Capsule implementation.
 
 ## Contracts
 
 - `CapsuleKind` is closed to `Schema`, `Logos`, and `Nomos`. Rust is a textual
   Logos projection, not a Capsule kind.
-- `ShortIdentifier` exposes `content_identity::ShortCode`; allocation policy
-  stays with the owning component.
 - `Capsule` requires its encoded truth, complete nametree, and non-optional
   typed content and nametree pins. Implementations provide pure identity
   derivations; the shared `verify` operation reports typed derivation failures
   or pinned-versus-actual mismatches.
+- A short display is computed only from a domain-typed content hash and a
+  caller-owned resolver. It is not stored in, archived with, or returned by a
+  Capsule.
 - `TextualCapsuleAssociation` is implemented by the type that owns a projection
   association, never by `structural_codec::Textual`. Its associated textual
   representation may be source text, a whole document, or another textual

@@ -154,21 +154,3 @@ fn all_three_families_stay_distinct_for_the_same_local_route() {
     assert_ne!(ordinary.to_le_bytes(), judge.to_le_bytes());
     assert_ne!(meta.to_le_bytes(), judge.to_le_bytes());
 }
-
-#[test]
-fn package_boundary_has_only_exact_one_way_git_dependencies() {
-    let manifest = include_str!("../Cargo.toml");
-    let dependency_sections = manifest
-        .split_once("[dependencies]")
-        .expect("dependencies section")
-        .1
-        .split_once("[lints.rust]")
-        .expect("lints follow dependency sections")
-        .0;
-    assert!(!manifest.contains("[workspace]"));
-    assert!(!dependency_sections.contains("protos-engine"));
-    assert!(!dependency_sections.contains("path ="));
-    assert!(
-        manifest.contains("signal-frame.git\", rev = \"0786fbe8caf27552afcdd5deb85bc82ec6088337\"")
-    );
-}

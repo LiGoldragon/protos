@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use content_identity::{CapsuleNameTreeDomain, ContentHash, HashDomain, ShortCode};
+use content_identity::{CapsuleNameTreeDomain, ContentHash, HashDomain};
 
 /// The complete set of canonical component Capsule roles.
 ///
@@ -25,12 +25,6 @@ pub enum CapsuleKind {
 impl CapsuleKind {
     /// Every canonical Capsule kind, in family order.
     pub const ALL: [Self; 3] = [Self::Schema, Self::Logos, Self::Nomos];
-}
-
-/// A value carrying the canonical numeric short identifier.
-pub trait ShortIdentifier {
-    /// The value's already-issued canonical code.
-    fn short_identifier(&self) -> ShortCode;
 }
 
 /// A typed Capsule verification failure.
@@ -147,7 +141,11 @@ pub type CapsuleVerificationResult<CapsuleType> = Result<
 >;
 
 /// The implementation-free contract shared by the three component Capsules.
-pub trait Capsule: ShortIdentifier {
+///
+/// A short display is not Capsule state. Call the domain-typed
+/// [`ContentHash::short`] operation with a caller-owned resolver when a display
+/// projection is needed.
+pub trait Capsule {
     /// Which one of the three closed component roles this Capsule carries.
     const KIND: CapsuleKind;
 

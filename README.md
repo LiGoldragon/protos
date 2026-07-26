@@ -12,6 +12,8 @@ The concrete mechanisms remain in their canonical micro-repositories:
 - `name-table` owns names and name tables.
 - `raw-discovery` owns raw structural discovery.
 - `structural-codec` owns structural forms and the bidirectional evaluator.
+- `signal-frame` owns the nonzero numeric binding types and short-header
+  encoding.
 
 This package depends on exact published revisions of the contracts it names. It
 contains no copied crates, workspace members, path dependencies, parser,
@@ -33,6 +35,12 @@ Capsule implementation.
   representation may be source text, a whole document, or another textual
   view. Its associated Capsule is fixed for that implementation, while several
   association owners may target the same Capsule.
+- `WireContractFamily` closes the proven allocation set to ordinary
+  `signal-spirit` and owner-only `meta-signal-spirit`. Their current bindings
+  are `(ContractId 1, WireRevision 1)` and `(ContractId 2, WireRevision 1)`.
+  Compile-time active and retired tables are the append-only source for contract
+  build scripts. Pilot and migration aliases reuse their canonical family
+  allocation; legacy unbound frames are not revision 1.
 
 ## Validation
 

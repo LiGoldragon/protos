@@ -15,6 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "ac0075842799b3ece8909ad0eb4b8a92b596b188" }
 name-table       = { git = "https://github.com/LiGoldragon/name-table.git", rev = "a1705ef512efec28925ae3ffc9faa5a2aa4dc4a8" }
+signal-frame     = { git = "https://github.com/LiGoldragon/signal-frame.git", rev = "0786fbe8caf27552afcdd5deb85bc82ec6088337" }
 structural-codec = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "e5fa1b3bbdde13f3dac205920b16a2e73f3d4487" }
 
 [dev-dependencies]

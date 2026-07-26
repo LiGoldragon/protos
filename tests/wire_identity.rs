@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use protos::{
     ACTIVE_WIRE_CONTRACT_ALLOCATIONS, META_SIGNAL_SPIRIT_BINDING, META_SIGNAL_SPIRIT_CONTRACT_ID,
     META_SIGNAL_SPIRIT_WIRE_REVISION, RETIRED_WIRE_CONTRACT_ALLOCATIONS, SIGNAL_SPIRIT_BINDING,
-    SIGNAL_SPIRIT_CONTRACT_ID, SIGNAL_SPIRIT_WIRE_REVISION, WIRE_CONTRACT_ALLOCATIONS,
+    SIGNAL_SPIRIT_CONTRACT_ID, SIGNAL_SPIRIT_JUDGE_BINDING, SIGNAL_SPIRIT_JUDGE_CONTRACT_ID,
+    SIGNAL_SPIRIT_JUDGE_WIRE_REVISION, SIGNAL_SPIRIT_WIRE_REVISION, WIRE_CONTRACT_ALLOCATIONS,
     WireContractAllocation, WireContractFamily,
 };
 use signal_frame::{
@@ -23,6 +24,12 @@ impl WireContract for MetaSignalSpirit {
     const BINDING: ContractBinding = META_SIGNAL_SPIRIT_BINDING;
 }
 
+struct SignalSpiritJudge;
+
+impl WireContract for SignalSpiritJudge {
+    const BINDING: ContractBinding = SIGNAL_SPIRIT_JUDGE_BINDING;
+}
+
 fn header<Contract: WireContract>() -> signal_frame::ShortHeader {
     BoundExchangeFrame::<Contract, (), ()>::new(
         WireRoute::new(RootCode::new(7), VariantCode::new(11)),
@@ -32,11 +39,13 @@ fn header<Contract: WireContract>() -> signal_frame::ShortHeader {
 }
 
 #[test]
-fn initial_allocations_and_encoded_header_bits_are_exact() {
+fn established_and_judge_allocations_and_encoded_header_bits_are_exact() {
     assert_eq!(SIGNAL_SPIRIT_CONTRACT_ID.value(), 1);
     assert_eq!(SIGNAL_SPIRIT_WIRE_REVISION.value(), 1);
     assert_eq!(META_SIGNAL_SPIRIT_CONTRACT_ID.value(), 2);
     assert_eq!(META_SIGNAL_SPIRIT_WIRE_REVISION.value(), 1);
+    assert_eq!(SIGNAL_SPIRIT_JUDGE_CONTRACT_ID.value(), 3);
+    assert_eq!(SIGNAL_SPIRIT_JUDGE_WIRE_REVISION.value(), 1);
     assert!(ContractId::try_new(0).is_err());
     assert!(WireRevision::try_new(0).is_err());
 
@@ -48,10 +57,24 @@ fn initial_allocations_and_encoded_header_bits_are_exact() {
         header::<MetaSignalSpirit>().to_le_bytes(),
         [2, 0, 0, 0, 1, 0, 11, 7]
     );
+    assert_eq!(
+        header::<SignalSpiritJudge>().to_le_bytes(),
+        [3, 0, 0, 0, 1, 0, 11, 7]
+    );
 }
 
 #[test]
 fn declared_family_table_is_exhaustive_and_total() {
+    assert_eq!(
+        WireContractFamily::ALL,
+        &[
+            WireContractFamily::SignalSpirit,
+            WireContractFamily::MetaSignalSpirit,
+            WireContractFamily::SignalSpiritJudge,
+        ]
+    );
+    assert_eq!(ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len(), 3);
+    assert!(RETIRED_WIRE_CONTRACT_ALLOCATIONS.is_empty());
     assert_eq!(
         ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len() + RETIRED_WIRE_CONTRACT_ALLOCATIONS.len(),
         WireContractFamily::ALL.len()
@@ -118,12 +141,18 @@ fn revision_history_is_monotonic_and_retains_each_explicit_decoder() {
 }
 
 #[test]
-fn ordinary_and_owner_only_families_stay_distinct_for_the_same_local_route() {
+fn all_three_families_stay_distinct_for_the_same_local_route() {
     let ordinary = header::<SignalSpirit>();
     let meta = header::<MetaSignalSpirit>();
+    let judge = header::<SignalSpiritJudge>();
     assert_eq!(ordinary.route(), meta.route());
+    assert_eq!(ordinary.route(), judge.route());
     assert_ne!(ordinary.binding(), meta.binding());
+    assert_ne!(ordinary.binding(), judge.binding());
+    assert_ne!(meta.binding(), judge.binding());
     assert_ne!(ordinary.to_le_bytes(), meta.to_le_bytes());
+    assert_ne!(ordinary.to_le_bytes(), judge.to_le_bytes());
+    assert_ne!(meta.to_le_bytes(), judge.to_le_bytes());
 }
 
 #[test]

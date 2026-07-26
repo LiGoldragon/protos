@@ -368,6 +368,17 @@ wire_contract_registry! {
             id: 2,
             revisions: [1],
         }
+        SignalSpiritJudge {
+            constants: (
+                SIGNAL_SPIRIT_JUDGE_CONTRACT_ID,
+                SIGNAL_SPIRIT_JUDGE_WIRE_REVISION,
+                SIGNAL_SPIRIT_JUDGE_BINDING
+            ),
+            history: SIGNAL_SPIRIT_JUDGE_BINDINGS,
+            allocation: SIGNAL_SPIRIT_JUDGE_ALLOCATION,
+            id: 3,
+            revisions: [1],
+        }
     }
     retired {}
 }

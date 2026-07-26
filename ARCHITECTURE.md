@@ -27,10 +27,11 @@ does not expose raw-discovery or structural-codec textual types.
 ## Wire-contract allocation
 
 `protos` owns the append-only allocation data while `signal-frame` owns the
-numeric types and frame encoding. The initial proven active families are:
+numeric types and frame encoding. The proven active families are:
 
 - ordinary `signal-spirit`: `ContractId 1`, current `WireRevision 1`;
-- owner-only `meta-signal-spirit`: `ContractId 2`, current `WireRevision 1`.
+- owner-only `meta-signal-spirit`: `ContractId 2`, current `WireRevision 1`;
+- dedicated `signal-spirit-judge`: `ContractId 3`, current `WireRevision 1`.
 
 The active table is compile-time data. Each record retains its complete ordered
 set of explicitly supported decoder bindings and identifies one current binding
@@ -121,5 +122,5 @@ coherence laws locally and leaves component inventories to their owners.
 Wire-allocation tests additionally prove the exact constants and short-header
 bits, global active/tombstone uniqueness, nonzero identities, one current
 binding per active declared family, monotonic explicit revision history,
-distinct ordinary and owner-only identities under the same local route, private
-record construction, and the single-package exact-dependency boundary.
+distinct ordinary, owner-only, and Judge identities under the same local route,
+private record construction, and the single-package exact-dependency boundary.

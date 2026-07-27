@@ -282,7 +282,7 @@ dependencies = [
 [[package]]
 name = "raw-discovery"
 version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/raw-discovery.git?rev=01b21b94460ba99f4ffbab4d4d4c86661a040208#01b21b94460ba99f4ffbab4d4d4c86661a040208"
+source = "git+https://github.com/LiGoldragon/raw-discovery.git?rev=2ac78f621980fa02daa3b31e90cc5c73570eed6e#2ac78f621980fa02daa3b31e90cc5c73570eed6e"
 dependencies = [
  "content-identity",
  "rkyv",
@@ -376,7 +376,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 [[package]]
 name = "structural-codec"
 version = "0.6.0"
-source = "git+https://github.com/LiGoldragon/structural-codec.git?rev=100e69bcf6430b88ed6a22bb5132bdc2af91546b#100e69bcf6430b88ed6a22bb5132bdc2af91546b"
+source = "git+https://github.com/LiGoldragon/structural-codec.git?rev=23497c43f81b619158e5cfbd83a012eb63c4186f#23497c43f81b619158e5cfbd83a012eb63c4186f"
 dependencies = [
  "content-identity",
  "name-table",

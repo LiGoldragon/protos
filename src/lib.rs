@@ -7,8 +7,10 @@ mod capsule;
 mod textual_capsule;
 mod wire_identity;
 
-pub use capsule::{Capsule, CapsuleKind, CapsuleVerificationError, CapsuleVerificationResult};
-pub use content_identity::{CapsuleNameTreeDomain, ContentHash, HashDomain};
+pub use capsule::{
+    Capsule, CapsuleArchiveError, CapsuleKind, CapsuleKindMismatch, Ethos, Logos, Nomos,
+};
+pub use content_identity::{CapsuleIdentity, CapsuleIdentityVariant, ContentAddressedHash};
 pub use textual_capsule::TextualCapsuleAssociation;
 pub use wire_identity::{
     ACTIVE_WIRE_CONTRACT_ALLOCATIONS, ActiveWireContractAllocation, META_SIGNAL_SPIRIT_BINDING,

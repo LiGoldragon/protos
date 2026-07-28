@@ -87,8 +87,8 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "content-identity"
-version = "0.3.0"
-source = "git+https://github.com/LiGoldragon/content-identity.git?rev=24b43bae5d9748b0e7f679c6ec9f85a643c4d36a#24b43bae5d9748b0e7f679c6ec9f85a643c4d36a"
+version = "0.4.0"
+source = "git+https://github.com/LiGoldragon/content-identity.git?rev=f1f9c6efc828acaefd0f751550cd40389d312bf5#f1f9c6efc828acaefd0f751550cd40389d312bf5"
 dependencies = [
  "blake3",
  "rkyv",
@@ -194,16 +194,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "name-table"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/name-table.git?rev=196610e2907687dcb8dbd0d2dfaafe4aefd9fa27#196610e2907687dcb8dbd0d2dfaafe4aefd9fa27"
-dependencies = [
- "content-identity",
- "rkyv",
- "thiserror",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -232,13 +222,12 @@ dependencies = [
 
 [[package]]
 name = "protos"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "content-identity",
- "name-table",
- "raw-discovery",
+ "rkyv",
  "signal-frame",
- "structural-codec",
+ "static_assertions",
 ]
 
 [[package]]
@@ -277,16 +266,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "daff8b7b3ccf5f7ba270b3e7a0a4d4c701c5797e38dec27c7e2c3dbb830fed1c"
 dependencies = [
  "ptr_meta",
-]
-
-[[package]]
-name = "raw-discovery"
-version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/raw-discovery.git?rev=2ac78f621980fa02daa3b31e90cc5c73570eed6e#2ac78f621980fa02daa3b31e90cc5c73570eed6e"
-dependencies = [
- "content-identity",
- "rkyv",
- "thiserror",
 ]
 
 [[package]]
@@ -374,16 +353,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
-name = "structural-codec"
-version = "0.6.0"
-source = "git+https://github.com/LiGoldragon/structural-codec.git?rev=23497c43f81b619158e5cfbd83a012eb63c4186f#23497c43f81b619158e5cfbd83a012eb63c4186f"
-dependencies = [
- "content-identity",
- "name-table",
- "raw-discovery",
- "rkyv",
- "thiserror",
-]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "syn"

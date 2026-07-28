@@ -1,6 +1,6 @@
 [package]
 name         = "protos"
-version      = "0.2.0"
+version      = "0.3.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -13,13 +13,12 @@ name = "protos"
 path = "src/lib.rs"
 
 [dependencies]
-content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "24b43bae5d9748b0e7f679c6ec9f85a643c4d36a" }
-name-table       = { git = "https://github.com/LiGoldragon/name-table.git", rev = "196610e2907687dcb8dbd0d2dfaafe4aefd9fa27" }
+content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "f1f9c6efc828acaefd0f751550cd40389d312bf5" }
+rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 signal-frame     = { git = "https://github.com/LiGoldragon/signal-frame.git", rev = "0786fbe8caf27552afcdd5deb85bc82ec6088337" }
-structural-codec = { git = "https://github.com/LiGoldragon/structural-codec.git", rev = "23497c43f81b619158e5cfbd83a012eb63c4186f" }
 
 [dev-dependencies]
-raw-discovery = { git = "https://github.com/LiGoldragon/raw-discovery.git", rev = "2ac78f621980fa02daa3b31e90cc5c73570eed6e" }
+static_assertions = "1"
 
 [lints.rust]
 unsafe_code = "forbid"

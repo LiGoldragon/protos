@@ -1,40 +1,38 @@
 # protos
 
 `protos` is the implementation-free contract package for the Protos language
-family. It relates component Capsules and textual projections without owning
-any component engine or language-specific data.
+family. It relates kind-typed Capsules, textual projections, and wire-contract
+allocations without owning a component engine or language-specific data.
 
 The concrete mechanisms remain in their canonical micro-repositories:
 
-- `content-identity` owns content hashes, their resolver-scoped display
-  projections, and the `CapsuleNameTreeDomain`.
-- `name-table` owns names and name tables.
-- `raw-discovery` owns raw structural discovery.
-- `structural-codec` owns structural forms and the bidirectional evaluator.
+- `content-identity` owns whole-Capsule identities and pure-content hashes.
 - `signal-frame` owns the nonzero numeric binding types and short-header
   encoding.
 
-This package depends on exact published revisions of the contracts it names. It
-contains no copied crates, workspace members, path dependencies, parser,
-printer, evaluator, derive macro, display allocator, or language-specific
-Capsule implementation.
+`protos` uses rkyv only for its checked Capsule archive boundary. It has no
+name-table, translator, parser, printer, evaluator, daemon, path dependency, or
+language-specific Capsule implementation.
 
 ## Contracts
 
-- `CapsuleKind` is closed to `Schema`, `Logos`, and `Nomos`. Rust is a textual
-  Logos projection, not a Capsule kind.
-- `Capsule` requires its encoded truth, complete nametree, and non-optional
-  typed content and nametree pins. Implementations provide pure identity
-  derivations; the shared `verify` operation reports typed derivation failures
-  or pinned-versus-actual mismatches.
-- A short display is computed only from a domain-typed content hash and a
-  caller-owned resolver. It is not stored in, archived with, or returned by a
-  Capsule.
-- `TextualCapsuleAssociation` is implemented by the type that owns a projection
-  association, never by `structural_codec::Textual`. Its associated textual
-  representation may be source text, a whole document, or another textual
-  view. Its associated Capsule is fixed for that implementation, while several
-  association owners may target the same Capsule.
+- `Capsule<Kind, CompleteNameTreePin>` is a generic struct with private fields.
+  The private-sealed `CapsuleKind` construction set is `Ethos`, `Nomos`, and
+  `Logos`; Rust has no marker.
+- Normal construction accepts a raw `ContentAddressedHash` and maps the marker
+  to exactly one stored outer variant: `Ethos`, `Nomos`, or `WholeLogos`.
+- The complete NameTree pin is opaque. This package stores and returns it but
+  does not compose, verify, interpret, or query it. Content verification is
+  likewise not wired into this contract.
+- Accessors borrow each stored value, and `into_parts` consumes the Capsule into
+  the same `(CapsuleIdentity, CompleteNameTreePin)` positional pair.
+- The portable archive contains exactly the stored `CapsuleIdentity` and pin,
+  positionally. The marker is not stored separately. Checked restoration first
+  validates the archive, then refuses a valid identity variant that disagrees
+  with the requested marker using `CapsuleKindMismatch`.
+- `TextualCapsuleAssociation` fixes the kind and complete-pin type for one
+  association owner. Several owners may target the same Capsule type, while one
+  owner cannot select multiple Capsule types.
 - `WireContractFamily` closes the proven allocation set to ordinary
   `signal-spirit`, owner-only `meta-signal-spirit`, the dedicated
   `signal-spirit-judge` request/reply contract, and
@@ -46,6 +44,10 @@ Capsule implementation.
   projections derive from one canonical declaration. Alias owners receive no
   allocation entry and consume a canonical binding in their own component;
   legacy unbound frames are not revision 1.
+
+The Capsule contract does not decide how module tables compose the complete
+NameTree pin, whether Capsule identity is minted or derived, or whether encoded
+content gains recursive per-thing hashing.
 
 ## Validation
 

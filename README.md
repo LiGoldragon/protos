@@ -36,10 +36,12 @@ Capsule implementation.
   view. Its associated Capsule is fixed for that implementation, while several
   association owners may target the same Capsule.
 - `WireContractFamily` closes the proven allocation set to ordinary
-  `signal-spirit`, owner-only `meta-signal-spirit`, and the dedicated
-  `signal-spirit-judge` request/reply contract. Their current bindings are
-  `(ContractId 1, WireRevision 1)`, `(ContractId 2, WireRevision 1)`, and
-  `(ContractId 3, WireRevision 1)`.
+  `signal-spirit`, owner-only `meta-signal-spirit`, the dedicated
+  `signal-spirit-judge` request/reply contract, and
+  `signal-sema-translator`. Their current bindings are
+  `(ContractId 1, WireRevision 1)`, `(ContractId 2, WireRevision 1)`,
+  `(ContractId 3, WireRevision 1)`, and
+  `(ContractId 4, WireRevision 1)`.
   Each family has a total typed active-or-retired allocation; compile-time
   projections derive from one canonical declaration. Alias owners receive no
   allocation entry and consume a canonical binding in their own component;

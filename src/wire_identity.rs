@@ -379,6 +379,17 @@ wire_contract_registry! {
             id: 3,
             revisions: [1],
         }
+        SignalSemaTranslator {
+            constants: (
+                SIGNAL_SEMA_TRANSLATOR_CONTRACT_ID,
+                SIGNAL_SEMA_TRANSLATOR_WIRE_REVISION,
+                SIGNAL_SEMA_TRANSLATOR_BINDING
+            ),
+            history: SIGNAL_SEMA_TRANSLATOR_BINDINGS,
+            allocation: SIGNAL_SEMA_TRANSLATOR_ALLOCATION,
+            id: 4,
+            revisions: [1],
+        }
     }
     retired {}
 }

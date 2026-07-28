@@ -91,11 +91,17 @@
                 assert_eq!(protos::META_SIGNAL_SPIRIT_CONTRACT_ID.value(), 2);
                 assert_eq!(protos::SIGNAL_SPIRIT_JUDGE_CONTRACT_ID.value(), 3);
                 assert_eq!(protos::SIGNAL_SPIRIT_JUDGE_WIRE_REVISION.value(), 1);
+                assert_eq!(protos::SIGNAL_SEMA_TRANSLATOR_CONTRACT_ID.value(), 4);
+                assert_eq!(protos::SIGNAL_SEMA_TRANSLATOR_WIRE_REVISION.value(), 1);
                 assert_eq!(
                     protos::WireContractFamily::SignalSpiritJudge.current_binding(),
                     Some(protos::SIGNAL_SPIRIT_JUDGE_BINDING)
                 );
-                assert_eq!(protos::WireContractFamily::COUNT, 3);
+                assert_eq!(
+                    protos::WireContractFamily::SignalSemaTranslator.current_binding(),
+                    Some(protos::SIGNAL_SEMA_TRANSLATOR_BINDING)
+                );
+                assert_eq!(protos::WireContractFamily::COUNT, 4);
             }
             EOF
             ./protos-package-consumer

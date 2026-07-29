@@ -13,7 +13,7 @@ name = "protos"
 path = "src/lib.rs"
 
 [dependencies]
-content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "f1f9c6efc828acaefd0f751550cd40389d312bf5" }
+content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "fdf2db1d5a9e8ea52d24d39a03833c3e6885c355" }
 rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 signal-frame     = { git = "https://github.com/LiGoldragon/signal-frame.git", rev = "0786fbe8caf27552afcdd5deb85bc82ec6088337" }
 

@@ -5,9 +5,7 @@
 /// This type deliberately assigns no identity, Capsule-pin composition, slot,
 /// authorization, or deployment semantics to either value. Those remain the
 /// responsibility of the component that owns the population.
-#[derive(
-    Clone, Debug, Eq, PartialEq, rkyv::Archive, rkyv::Deserialize, rkyv::Serialize,
-)]
+#[derive(Clone, Debug, Eq, PartialEq, rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)]
 pub struct EncodedPopulation<EncodedForm, NameTree>(EncodedForm, NameTree);
 
 impl<EncodedForm, NameTree> EncodedPopulation<EncodedForm, NameTree> {

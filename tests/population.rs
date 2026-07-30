@@ -1,13 +1,9 @@
 use protos::EncodedPopulation;
 
-#[derive(
-    Clone, Debug, Eq, PartialEq, rkyv::Archive, rkyv::Deserialize, rkyv::Serialize,
-)]
+#[derive(Clone, Debug, Eq, PartialEq, rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)]
 struct FixtureEncodedForm(Vec<u16>);
 
-#[derive(
-    Clone, Debug, Eq, PartialEq, rkyv::Archive, rkyv::Deserialize, rkyv::Serialize,
-)]
+#[derive(Clone, Debug, Eq, PartialEq, rkyv::Archive, rkyv::Deserialize, rkyv::Serialize)]
 struct FixtureNameTree(Vec<(u16, String)>);
 
 #[test]

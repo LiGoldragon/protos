@@ -103,6 +103,21 @@ This contract intentionally does not decide:
 - whether encoded content is recursively hashed per thing;
 - how the pin itself is composed or verified.
 
+## Encoded population
+
+`EncodedPopulation<EncodedForm, NameTree>` is the neutral positional pair used
+when a component boundary must carry a complete encoded form together with its
+complete NameTree value. Both type parameters remain opaque. The carrier only
+constructs, borrows, archives, and returns the two values in their original
+positions.
+
+The generic rkyv derives make concrete populations eligible for the shared
+validated portable-archive discipline when their two component types meet that
+discipline. The carrier itself does not validate that either input is complete,
+compose or infer a Capsule pin, derive identity, assign slots, authorize a
+caller, or define deployment and storage behavior. Each owning component must
+provide those semantics at its own typed boundary.
+
 ## Textual association
 
 `TextualCapsuleAssociation` belongs to an association owner, not to its textual
@@ -136,6 +151,10 @@ The Capsule witnesses prove:
 - fields are private, the kind trait is sealed, and no Rust marker exists;
 - two association owners can target one fixed Capsule while coherence rejects
   two selections by one owner.
+
+The encoded-population witness separately proves accessor and consuming
+position preservation, a validated portable-archive round trip, and refusal of
+a truncated archive.
 
 Wire-allocation tests separately prove the exact constants and short-header
 bits, global active/tombstone uniqueness, nonzero identities, one current

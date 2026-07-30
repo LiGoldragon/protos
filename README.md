@@ -22,8 +22,10 @@ language-specific Capsule implementation.
 - Normal construction accepts a raw `ContentAddressedHash` and maps the marker
   to exactly one stored outer variant: `Ethos`, `Nomos`, or `WholeLogos`.
 - The complete NameTree pin is opaque. This package stores and returns it but
-  does not compose, verify, interpret, or query it. Content verification is
-  likewise not wired into this contract.
+  does not compose, verify, interpret, or query it. The pin is not part of the
+  `ContentAddressedHash`; production components that require rename-stable
+  Capsule bytes keep mutable projection metadata outside their immutable
+  Capsule archive.
 - Accessors borrow each stored value, and `into_parts` consumes the Capsule into
   the same `(CapsuleIdentity, CompleteNameTreePin)` positional pair.
 - The portable archive contains exactly the stored `CapsuleIdentity` and pin,
@@ -45,9 +47,9 @@ language-specific Capsule implementation.
   allocation entry and consume a canonical binding in their own component;
   legacy unbound frames are not revision 1.
 
-The Capsule contract does not decide how module tables compose the complete
-NameTree pin, whether Capsule identity is minted or derived, or whether encoded
-content gains recursive per-thing hashing.
+The Capsule contract does not decide how module tables compose projection
+metadata or whether encoded content gains recursive per-thing hashing. Capsule
+identity is derived only from canonical encoded content by `content-identity`.
 
 ## Validation
 

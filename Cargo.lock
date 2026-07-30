@@ -87,8 +87,8 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "content-identity"
-version = "0.4.0"
-source = "git+https://github.com/LiGoldragon/content-identity.git?rev=fdf2db1d5a9e8ea52d24d39a03833c3e6885c355#fdf2db1d5a9e8ea52d24d39a03833c3e6885c355"
+version = "0.5.0"
+source = "git+https://github.com/LiGoldragon/content-identity.git?rev=896b21e17f31b66d0802bff899b4b60acea9c0f1#896b21e17f31b66d0802bff899b4b60acea9c0f1"
 dependencies = [
  "blake3",
  "rkyv",
@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "protos"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "content-identity",
  "rkyv",

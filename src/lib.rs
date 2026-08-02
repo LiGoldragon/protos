@@ -4,6 +4,7 @@
 //! micro-repository. This crate owns only the contracts that relate components.
 
 mod capsule;
+mod interface;
 mod population;
 mod textual_capsule;
 mod wire_identity;
@@ -12,6 +13,7 @@ pub use capsule::{
     Capsule, CapsuleArchiveError, CapsuleKind, CapsuleKindMismatch, Ethos, Logos, Nomos,
 };
 pub use content_identity::{CapsuleIdentity, CapsuleIdentityVariant, ContentAddressedHash};
+pub use interface::{Input, Output, Refusal};
 pub use population::EncodedPopulation;
 pub use textual_capsule::TextualCapsuleAssociation;
 pub use wire_identity::{

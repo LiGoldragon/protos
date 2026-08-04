@@ -1,13 +1,15 @@
 use std::collections::BTreeSet;
 
 use protos::{
-    ACTIVE_WIRE_CONTRACT_ALLOCATIONS, META_SIGNAL_SPIRIT_BINDING, META_SIGNAL_SPIRIT_CONTRACT_ID,
-    META_SIGNAL_SPIRIT_WIRE_REVISION, RETIRED_WIRE_CONTRACT_ALLOCATIONS,
-    SIGNAL_SEMA_TRANSLATOR_BINDING, SIGNAL_SEMA_TRANSLATOR_CONTRACT_ID,
-    SIGNAL_SEMA_TRANSLATOR_WIRE_REVISION, SIGNAL_SPIRIT_BINDING, SIGNAL_SPIRIT_CONTRACT_ID,
-    SIGNAL_SPIRIT_JUDGE_BINDING, SIGNAL_SPIRIT_JUDGE_CONTRACT_ID,
-    SIGNAL_SPIRIT_JUDGE_WIRE_REVISION, SIGNAL_SPIRIT_WIRE_REVISION, WIRE_CONTRACT_ALLOCATIONS,
-    WireContractAllocation, WireContractFamily,
+    ACTIVE_WIRE_CONTRACT_ALLOCATIONS, META_SIGNAL_LOJIX_BINDING, META_SIGNAL_LOJIX_CONTRACT_ID,
+    META_SIGNAL_LOJIX_WIRE_REVISION, META_SIGNAL_SPIRIT_BINDING, META_SIGNAL_SPIRIT_CONTRACT_ID,
+    META_SIGNAL_SPIRIT_WIRE_REVISION, RETIRED_WIRE_CONTRACT_ALLOCATIONS, SIGNAL_LOJIX_BINDING,
+    SIGNAL_LOJIX_CONTRACT_ID, SIGNAL_LOJIX_WIRE_REVISION, SIGNAL_SEMA_TRANSLATOR_BINDING,
+    SIGNAL_SEMA_TRANSLATOR_CONTRACT_ID, SIGNAL_SEMA_TRANSLATOR_WIRE_REVISION,
+    SIGNAL_SPIRIT_BINDING, SIGNAL_SPIRIT_CONTRACT_ID, SIGNAL_SPIRIT_JUDGE_BINDING,
+    SIGNAL_SPIRIT_JUDGE_CONTRACT_ID, SIGNAL_SPIRIT_JUDGE_WIRE_REVISION,
+    SIGNAL_SPIRIT_WIRE_REVISION, WIRE_CONTRACT_ALLOCATIONS, WireContractAllocation,
+    WireContractFamily,
 };
 use signal_frame::{
     BoundExchangeFrame, ContractBinding, ContractId, ExchangeFrameBody, HandshakeRequest, RootCode,
@@ -38,6 +40,18 @@ impl WireContract for SignalSemaTranslator {
     const BINDING: ContractBinding = SIGNAL_SEMA_TRANSLATOR_BINDING;
 }
 
+struct SignalLojix;
+
+impl WireContract for SignalLojix {
+    const BINDING: ContractBinding = SIGNAL_LOJIX_BINDING;
+}
+
+struct MetaSignalLojix;
+
+impl WireContract for MetaSignalLojix {
+    const BINDING: ContractBinding = META_SIGNAL_LOJIX_BINDING;
+}
+
 fn header<Contract: WireContract>() -> signal_frame::ShortHeader {
     BoundExchangeFrame::<Contract, (), ()>::new(
         WireRoute::new(RootCode::new(7), VariantCode::new(11)),
@@ -56,6 +70,10 @@ fn established_allocations_and_encoded_header_bits_are_exact() {
     assert_eq!(SIGNAL_SPIRIT_JUDGE_WIRE_REVISION.value(), 1);
     assert_eq!(SIGNAL_SEMA_TRANSLATOR_CONTRACT_ID.value(), 4);
     assert_eq!(SIGNAL_SEMA_TRANSLATOR_WIRE_REVISION.value(), 1);
+    assert_eq!(SIGNAL_LOJIX_CONTRACT_ID.value(), 5);
+    assert_eq!(SIGNAL_LOJIX_WIRE_REVISION.value(), 1);
+    assert_eq!(META_SIGNAL_LOJIX_CONTRACT_ID.value(), 6);
+    assert_eq!(META_SIGNAL_LOJIX_WIRE_REVISION.value(), 1);
     assert!(ContractId::try_new(0).is_err());
     assert!(WireRevision::try_new(0).is_err());
 
@@ -75,6 +93,14 @@ fn established_allocations_and_encoded_header_bits_are_exact() {
         header::<SignalSemaTranslator>().to_le_bytes(),
         [4, 0, 0, 0, 1, 0, 11, 7]
     );
+    assert_eq!(
+        header::<SignalLojix>().to_le_bytes(),
+        [5, 0, 0, 0, 1, 0, 11, 7]
+    );
+    assert_eq!(
+        header::<MetaSignalLojix>().to_le_bytes(),
+        [6, 0, 0, 0, 1, 0, 11, 7]
+    );
 }
 
 #[test]
@@ -86,9 +112,11 @@ fn declared_family_table_is_exhaustive_and_total() {
             WireContractFamily::MetaSignalSpirit,
             WireContractFamily::SignalSpiritJudge,
             WireContractFamily::SignalSemaTranslator,
+            WireContractFamily::SignalLojix,
+            WireContractFamily::MetaSignalLojix,
         ]
     );
-    assert_eq!(ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len(), 4);
+    assert_eq!(ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len(), 6);
     assert!(RETIRED_WIRE_CONTRACT_ALLOCATIONS.is_empty());
     assert_eq!(
         ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len() + RETIRED_WIRE_CONTRACT_ALLOCATIONS.len(),
@@ -162,6 +190,8 @@ fn all_families_stay_distinct_for_the_same_local_route() {
         header::<MetaSignalSpirit>(),
         header::<SignalSpiritJudge>(),
         header::<SignalSemaTranslator>(),
+        header::<SignalLojix>(),
+        header::<MetaSignalLojix>(),
     ];
     for pair in headers.windows(2) {
         assert_eq!(pair[0].route(), pair[1].route());

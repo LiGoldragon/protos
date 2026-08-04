@@ -38,10 +38,12 @@ language-specific Capsule implementation.
 - `WireContractFamily` closes the proven allocation set to ordinary
   `signal-spirit`, owner-only `meta-signal-spirit`, the dedicated
   `signal-spirit-judge` request/reply contract, and
-  `signal-sema-translator`. Their current bindings are
+  `signal-sema-translator`, ordinary `signal-lojix`, and owner-only
+  `meta-signal-lojix`. Their current bindings are
   `(ContractId 1, WireRevision 1)`, `(ContractId 2, WireRevision 1)`,
   `(ContractId 3, WireRevision 1)`, and
-  `(ContractId 4, WireRevision 1)`.
+  `(ContractId 4, WireRevision 1)`, `(ContractId 5, WireRevision 1)`, and
+  `(ContractId 6, WireRevision 1)`.
   Each family has a total typed active-or-retired allocation; compile-time
   projections derive from one canonical declaration. Alias owners receive no
   allocation entry and consume a canonical binding in their own component;

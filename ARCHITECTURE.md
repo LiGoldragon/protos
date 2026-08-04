@@ -27,7 +27,9 @@ numeric types and frame encoding. The proven active families are:
 - ordinary `signal-spirit`: `ContractId 1`, current `WireRevision 1`;
 - owner-only `meta-signal-spirit`: `ContractId 2`, current `WireRevision 1`;
 - dedicated `signal-spirit-judge`: `ContractId 3`, current `WireRevision 1`;
-- `signal-sema-translator`: `ContractId 4`, current `WireRevision 1`.
+- `signal-sema-translator`: `ContractId 4`, current `WireRevision 1`;
+- ordinary `signal-lojix`: `ContractId 5`, current `WireRevision 1`;
+- owner-only `meta-signal-lojix`: `ContractId 6`, current `WireRevision 1`.
 
 The active table is compile-time data. Each record retains its complete ordered
 set of explicitly supported decoder bindings and identifies one current binding

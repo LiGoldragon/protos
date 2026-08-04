@@ -390,6 +390,28 @@ wire_contract_registry! {
             id: 4,
             revisions: [1],
         }
+        SignalLojix {
+            constants: (
+                SIGNAL_LOJIX_CONTRACT_ID,
+                SIGNAL_LOJIX_WIRE_REVISION,
+                SIGNAL_LOJIX_BINDING
+            ),
+            history: SIGNAL_LOJIX_BINDINGS,
+            allocation: SIGNAL_LOJIX_ALLOCATION,
+            id: 5,
+            revisions: [1],
+        }
+        MetaSignalLojix {
+            constants: (
+                META_SIGNAL_LOJIX_CONTRACT_ID,
+                META_SIGNAL_LOJIX_WIRE_REVISION,
+                META_SIGNAL_LOJIX_BINDING
+            ),
+            history: META_SIGNAL_LOJIX_BINDINGS,
+            allocation: META_SIGNAL_LOJIX_ALLOCATION,
+            id: 6,
+            revisions: [1],
+        }
     }
     retired {}
 }

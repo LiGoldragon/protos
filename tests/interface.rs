@@ -2,16 +2,19 @@
 
 use std::fmt;
 
-use protos::{Input, Output, Refusal};
+use protos::{Input, Output, Refusal, Stream, StreamEvent, StreamIdentity, StreamOpen};
 
 struct Command;
 struct Event;
+
+struct Initiation;
 
 #[derive(Debug)]
 struct Rejected;
 
 impl Input for Command {}
 impl Output for Event {}
+impl Input for Initiation {}
 impl Refusal for Rejected {}
 
 impl fmt::Display for Rejected {
@@ -21,6 +24,33 @@ impl fmt::Display for Rejected {
 }
 
 impl std::error::Error for Rejected {}
+
+#[derive(Default)]
+struct Runtime {
+    pending: Option<Event>,
+}
+
+impl StreamOpen for Runtime {
+    type Initiation = Initiation;
+    type Event = Event;
+    type InitiationRefusal = Rejected;
+
+    fn open(
+        &mut self,
+        _initiation: Self::Initiation,
+    ) -> Result<Stream<Self::Event>, Self::InitiationRefusal> {
+        self.pending = Some(Event);
+        Ok(Stream::new(StreamIdentity::new(7)))
+    }
+}
+
+impl StreamEvent for Runtime {
+    type Event = Event;
+
+    fn next(&mut self, _stream: &Stream<Self::Event>) -> Option<Self::Event> {
+        self.pending.take()
+    }
+}
 
 #[test]
 fn positional_roles_are_implementation_free_and_refusal_is_a_rust_error() {
@@ -33,4 +63,18 @@ fn positional_roles_are_implementation_free_and_refusal_is_a_rust_error() {
     accepts_input::<Command>();
     accepts_output::<Event>();
     assert_eq!(accepts_refusal(&Rejected).to_string(), "rejected");
+}
+
+#[test]
+fn stream_contracts_preserve_event_typed_identity_without_runtime_storage() {
+    let mut runtime = Runtime::default();
+    let stream = runtime.open(Initiation).expect("establish stream");
+    assert_eq!(stream.identity().value(), 7);
+    assert!(runtime.next(&stream).is_some());
+    assert!(runtime.next(&stream).is_none());
+
+    let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&stream).expect("archive stream handle");
+    let restored = rkyv::from_bytes::<Stream<Event>, rkyv::rancor::Error>(&bytes)
+        .expect("restore stream handle");
+    assert_eq!(restored.identity().value(), stream.identity().value());
 }

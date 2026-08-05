@@ -93,6 +93,10 @@
                 assert_eq!(protos::SIGNAL_SPIRIT_JUDGE_WIRE_REVISION.value(), 1);
                 assert_eq!(protos::SIGNAL_SEMA_TRANSLATOR_CONTRACT_ID.value(), 4);
                 assert_eq!(protos::SIGNAL_SEMA_TRANSLATOR_WIRE_REVISION.value(), 1);
+                assert_eq!(protos::SIGNAL_LOJIX_CONTRACT_ID.value(), 5);
+                assert_eq!(protos::SIGNAL_LOJIX_WIRE_REVISION.value(), 1);
+                assert_eq!(protos::META_SIGNAL_LOJIX_CONTRACT_ID.value(), 6);
+                assert_eq!(protos::META_SIGNAL_LOJIX_WIRE_REVISION.value(), 1);
                 assert_eq!(
                     protos::WireContractFamily::SignalSpiritJudge.current_binding(),
                     Some(protos::SIGNAL_SPIRIT_JUDGE_BINDING)
@@ -101,7 +105,36 @@
                     protos::WireContractFamily::SignalSemaTranslator.current_binding(),
                     Some(protos::SIGNAL_SEMA_TRANSLATOR_BINDING)
                 );
-                assert_eq!(protos::WireContractFamily::COUNT, 4);
+                assert_eq!(
+                    protos::WireContractFamily::SignalLojix.current_binding(),
+                    Some(protos::SIGNAL_LOJIX_BINDING)
+                );
+                assert_eq!(
+                    protos::WireContractFamily::MetaSignalLojix.current_binding(),
+                    Some(protos::META_SIGNAL_LOJIX_BINDING)
+                );
+                // The family census belongs to the crate's own test suite. This
+                // consumer proves only that the packaged artifact exports a
+                // self-consistent registry, so adding a family never breaks it.
+                assert_eq!(
+                    protos::WireContractFamily::COUNT,
+                    protos::WireContractFamily::ALL.len()
+                );
+                assert_eq!(
+                    protos::WIRE_CONTRACT_ALLOCATIONS.len(),
+                    protos::WireContractFamily::COUNT
+                );
+                assert_eq!(
+                    protos::ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len()
+                        + protos::RETIRED_WIRE_CONTRACT_ALLOCATIONS.len(),
+                    protos::WireContractFamily::COUNT
+                );
+                for family in protos::WireContractFamily::ALL {
+                    assert!(!family.binding_history().is_empty());
+                    if let Some(binding) = family.current_binding() {
+                        assert!(family.supports_binding(binding));
+                    }
+                }
             }
             EOF
             ./protos-package-consumer

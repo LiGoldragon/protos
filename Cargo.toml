@@ -1,6 +1,6 @@
 [package]
 name         = "protos"
-version      = "0.5.0"
+version      = "0.5.1"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
@@ -15,7 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 content-identity = { git = "https://github.com/LiGoldragon/content-identity.git", rev = "896b21e17f31b66d0802bff899b4b60acea9c0f1" }
 rkyv             = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
-signal-frame     = { git = "https://github.com/LiGoldragon/signal-frame.git", rev = "0786fbe8caf27552afcdd5deb85bc82ec6088337" }
+signal-frame     = { git = "https://github.com/LiGoldragon/signal-frame.git", rev = "8aa0bcaeb29fe9e461a11706a469638d2fd109ac" }
 
 [dev-dependencies]
 static_assertions = "1"

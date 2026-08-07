@@ -13,7 +13,9 @@ pub use capsule::{
     Capsule, CapsuleArchiveError, CapsuleKind, CapsuleKindMismatch, Ethos, Logos, Nomos,
 };
 pub use content_identity::{CapsuleIdentity, CapsuleIdentityVariant, ContentAddressedHash};
-pub use interface::{Input, Output, Refusal, Stream, StreamEvent, StreamIdentity, StreamOpen};
+pub use interface::{
+    Input, OpenedStream, Output, Refusal, Stream, StreamEvent, StreamIdentity, StreamOpen,
+};
 pub use population::EncodedPopulation;
 pub use textual_capsule::TextualCapsuleAssociation;
 pub use wire_identity::{

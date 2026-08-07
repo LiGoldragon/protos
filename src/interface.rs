@@ -19,6 +19,13 @@ pub trait Output {}
 /// concrete [`std::fmt::Display`] and [`std::error::Error`] implementations.
 pub trait Refusal: std::error::Error {}
 
+/// A stream declared by a component.
+///
+/// Membership is supplied by an Interface document's stream position; component
+/// authors do not restate it on the declaration.
+// psyche-grasp: slightly-reviewed (2026-08-07)
+pub trait Stream {}
+
 /// Stable, event-typed identity of one established stream.
 ///
 /// This is an opaque contract value. A component runtime allocates it and owns
@@ -51,12 +58,12 @@ impl<Event> StreamIdentity<Event> {
 /// The handle carries the typed identity required for later event routing and
 /// termination. It is not a grant, receipt, subscription token, or queue.
 #[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, Clone, Debug, Eq, PartialEq)]
-pub struct Stream<Event> {
+pub struct OpenedStream<Event> {
     identity: StreamIdentity<Event>,
 }
 
 // Contract-value exception: this only exposes the typed handle's identity.
-impl<Event> Stream<Event> {
+impl<Event> OpenedStream<Event> {
     /// Construct the direct output handle for one established identity.
     pub const fn new(identity: StreamIdentity<Event>) -> Self {
         Self { identity }
@@ -71,8 +78,8 @@ impl<Event> Stream<Event> {
 /// Signature-only contract for a component that establishes a stream.
 ///
 /// Implementations belong to the generated component/runtime. Successful
-/// establishment returns [`Stream`] itself; refusal remains an ordinary typed
-/// component failure.
+/// establishment returns [`OpenedStream`] itself; refusal remains an ordinary
+/// typed component failure.
 pub trait StreamOpen {
     /// Strict initiation input.
     type Initiation: Input;
@@ -85,18 +92,18 @@ pub trait StreamOpen {
     fn open(
         &mut self,
         initiation: Self::Initiation,
-    ) -> Result<Stream<Self::Event>, Self::InitiationRefusal>;
+    ) -> Result<OpenedStream<Self::Event>, Self::InitiationRefusal>;
 }
 
 /// Signature-only contract for delivering an event through an established stream.
 ///
 /// This contract intentionally does not define closing. Closing is a separate
 /// strict transformer input, not a third universal trait or a method on
-/// [`Stream`].
+/// [`OpenedStream`].
 pub trait StreamEvent {
     /// Typed event carried by the stream.
     type Event;
 
     /// Deliver the next event for one established stream, if available.
-    fn next(&mut self, stream: &Stream<Self::Event>) -> Option<Self::Event>;
+    fn next(&mut self, stream: &OpenedStream<Self::Event>) -> Option<Self::Event>;
 }

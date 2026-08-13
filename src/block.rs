@@ -1,6 +1,8 @@
 use std::ops::Range;
 
-use crate::{BlockScanning, Headed, Realize, Shape, StringCarrying, Textualize, WalkFault};
+use crate::{
+    BlockScanning, Headed, Realize, Shape, SourceSlicing, StringCarrying, Textualize, WalkFault,
+};
 
 /// The dotted prefix that is structurally part of a block. An absent value is
 /// an unprefixed block.
@@ -24,13 +26,17 @@ pub enum StringCarrier {
 pub struct Block {
     pub head: Option<Head>,
     pub shape: Shape,
-    pub body: StringCarrier,
+    pub body: SourceText,
+    pub string_carrier: Option<StringCarrier>,
     pub span: Range<usize>,
 }
 
-/// The first-pass scanner. It makes blocks and does not assign dialect meaning.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct BlockScanner;
+/// The first-pass scanner. It retains the source it separates and does not
+/// assign dialect meaning.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BlockScanner {
+    source: SourceText,
+}
 
 impl Headed for Block {
     fn head(&self) -> Option<&Head> {
@@ -47,18 +53,19 @@ impl Textualize for Block {
             text.push_str(&head.0);
             text.push('.');
         }
-        match &self.body {
-            StringCarrier::Bare(body) => text.push_str(body),
-            StringCarrier::Parenthesized(body) => {
-                text.push('(');
-                text.push_str(body);
-                text.push(')');
-            }
-            StringCarrier::CurlyQuoted(body) => {
-                text.push('“');
-                text.push_str(body);
-                text.push('”');
-            }
+        let (opening, closing) = match self.shape {
+            Shape::Bare => (None, None),
+            Shape::CurlyQuoted | Shape::DottedCurlyQuoted => (Some('“'), Some('”')),
+            Shape::Parenthesized | Shape::DottedParenthesized => (Some('('), Some(')')),
+            Shape::SquareBracketed | Shape::DottedSquareBracketed => (Some('['), Some(']')),
+            Shape::Braced | Shape::DottedBraced => (Some('{'), Some('}')),
+        };
+        if let Some(opening) = opening {
+            text.push(opening);
+        }
+        text.push_str(&self.body.0);
+        if let Some(closing) = closing {
+            text.push(closing);
         }
         SourceText(text)
     }
@@ -68,7 +75,11 @@ impl Textualize for StringCarrier {
     type Textual = SourceText;
 
     fn textualize(&self) -> SourceText {
-        SourceText(self.textual_body().to_owned())
+        match self {
+            Self::Bare(body) => SourceText(body.clone()),
+            Self::Parenthesized(body) => SourceText(format!("({body})")),
+            Self::CurlyQuoted(body) => SourceText(format!("“{body}”")),
+        }
     }
 }
 
@@ -82,7 +93,16 @@ impl StringCarrying for StringCarrier {
 
 impl BlockScanning for SourceText {
     fn blocks(&self) -> Result<Vec<Block>, WalkFault> {
-        BlockScanner.scan(&self.0)
+        BlockScanner {
+            source: self.clone(),
+        }
+        .scan()
+    }
+}
+
+impl SourceSlicing for SourceText {
+    fn source_slice(&self, span: Range<usize>) -> Option<&str> {
+        self.0.get(span)
     }
 }
 
@@ -96,12 +116,18 @@ impl Realize for SourceText {
 }
 
 trait Scanning {
-    fn scan(&self, source: &str) -> Result<Vec<Block>, WalkFault>;
+    fn scan(&self) -> Result<Vec<Block>, WalkFault>;
 }
 
 impl Scanning for BlockScanner {
-    fn scan(&self, source: &str) -> Result<Vec<Block>, WalkFault> {
+    fn scan(&self) -> Result<Vec<Block>, WalkFault> {
+        let source = &self.source.0;
         let characters: Vec<char> = source.chars().collect();
+        let byte_offsets: Vec<usize> = source
+            .char_indices()
+            .map(|(offset, _)| offset)
+            .chain(std::iter::once(source.len()))
+            .collect();
         let mut blocks = Vec::new();
         let mut index = 0;
 
@@ -116,7 +142,10 @@ impl Scanning for BlockScanner {
             let start = index;
             while index < characters.len()
                 && !characters[index].is_whitespace()
-                && !matches!(characters[index], '(' | '“' | ')' | '”')
+                && !matches!(
+                    characters[index],
+                    '(' | ')' | '“' | '”' | '[' | ']' | '{' | '}'
+                )
             {
                 index += 1;
             }
@@ -134,9 +163,7 @@ impl Scanning for BlockScanner {
 
             match characters.get(index).copied() {
                 Some('(') => {
-                    if !prefix.is_empty() && !dotted {
-                        return Err(WalkFault::InvalidHead);
-                    }
+                    self.require_delimited_prefix(&prefix, dotted)?;
                     index += 1;
                     let (body, next) = self.parenthesized(&characters, index)?;
                     blocks.push(Block {
@@ -146,15 +173,14 @@ impl Scanning for BlockScanner {
                         } else {
                             Shape::Parenthesized
                         },
-                        body: StringCarrier::Parenthesized(body),
-                        span: start..next,
+                        body: SourceText(body.clone()),
+                        string_carrier: Some(StringCarrier::Parenthesized(body)),
+                        span: byte_offsets[start]..byte_offsets[next],
                     });
                     index = next;
                 }
                 Some('“') => {
-                    if !prefix.is_empty() && !dotted {
-                        return Err(WalkFault::InvalidHead);
-                    }
+                    self.require_delimited_prefix(&prefix, dotted)?;
                     index += 1;
                     let (body, next) = self.curly_quoted(&characters, index)?;
                     blocks.push(Block {
@@ -164,12 +190,49 @@ impl Scanning for BlockScanner {
                         } else {
                             Shape::CurlyQuoted
                         },
-                        body: StringCarrier::CurlyQuoted(body),
-                        span: start..next,
+                        body: SourceText(body.clone()),
+                        string_carrier: Some(StringCarrier::CurlyQuoted(body)),
+                        span: byte_offsets[start]..byte_offsets[next],
                     });
                     index = next;
                 }
-                Some(')') | Some('”') => {
+                Some('[') => {
+                    self.require_delimited_prefix(&prefix, dotted)?;
+                    index += 1;
+                    let (body, next) =
+                        self.structural(&characters, index, '[', ']', Shape::SquareBracketed)?;
+                    blocks.push(Block {
+                        head,
+                        shape: if dotted {
+                            Shape::DottedSquareBracketed
+                        } else {
+                            Shape::SquareBracketed
+                        },
+                        body: SourceText(body),
+                        string_carrier: None,
+                        span: byte_offsets[start]..byte_offsets[next],
+                    });
+                    index = next;
+                }
+                Some('{') => {
+                    self.require_delimited_prefix(&prefix, dotted)?;
+                    index += 1;
+                    let (body, next) =
+                        self.structural(&characters, index, '{', '}', Shape::Braced)?;
+                    blocks.push(Block {
+                        head,
+                        shape: if dotted {
+                            Shape::DottedBraced
+                        } else {
+                            Shape::Braced
+                        },
+                        body: SourceText(body),
+                        string_carrier: None,
+                        span: byte_offsets[start]..byte_offsets[next],
+                    });
+                    index = next;
+                }
+                Some(')') | Some('”') | Some(']') | Some('}') => {
                     return Err(WalkFault::UnexpectedCloser(characters[index]));
                 }
                 Some(_) | None => {
@@ -179,8 +242,9 @@ impl Scanning for BlockScanner {
                     blocks.push(Block {
                         head: None,
                         shape: Shape::Bare,
-                        body: StringCarrier::Bare(prefix),
-                        span: start..index,
+                        body: SourceText(prefix.clone()),
+                        string_carrier: Some(StringCarrier::Bare(prefix)),
+                        span: byte_offsets[start]..byte_offsets[index],
                     });
                 }
             }
@@ -189,7 +253,20 @@ impl Scanning for BlockScanner {
     }
 }
 
-trait StringScanning {
+trait PrefixChecking {
+    fn require_delimited_prefix(&self, prefix: &str, dotted: bool) -> Result<(), WalkFault>;
+}
+
+impl PrefixChecking for BlockScanner {
+    fn require_delimited_prefix(&self, prefix: &str, dotted: bool) -> Result<(), WalkFault> {
+        if !prefix.is_empty() && !dotted {
+            return Err(WalkFault::InvalidHead);
+        }
+        Ok(())
+    }
+}
+
+trait DelimiterScanning {
     fn parenthesized(
         &self,
         characters: &[char],
@@ -197,9 +274,17 @@ trait StringScanning {
     ) -> Result<(String, usize), WalkFault>;
     fn curly_quoted(&self, characters: &[char], start: usize)
     -> Result<(String, usize), WalkFault>;
+    fn structural(
+        &self,
+        characters: &[char],
+        start: usize,
+        opening: char,
+        closing: char,
+        shape: Shape,
+    ) -> Result<(String, usize), WalkFault>;
 }
 
-impl StringScanning for BlockScanner {
+impl DelimiterScanning for BlockScanner {
     fn parenthesized(
         &self,
         characters: &[char],
@@ -251,5 +336,47 @@ impl StringScanning for BlockScanner {
             index += 1;
         }
         Err(WalkFault::UnclosedBlock(Shape::CurlyQuoted))
+    }
+
+    fn structural(
+        &self,
+        characters: &[char],
+        start: usize,
+        opening: char,
+        closing: char,
+        shape: Shape,
+    ) -> Result<(String, usize), WalkFault> {
+        let mut depth = 0;
+        let mut body = String::new();
+        let mut index = start;
+        while index < characters.len() {
+            match characters[index] {
+                '\\' if index + 1 < characters.len() => {
+                    body.push(characters[index]);
+                    index += 1;
+                    body.push(characters[index]);
+                }
+                '“' => {
+                    let quote_start = index + 1;
+                    let (quoted, next) = self.curly_quoted(characters, quote_start)?;
+                    body.push('“');
+                    body.push_str(&quoted);
+                    body.push('”');
+                    index = next - 1;
+                }
+                character if character == opening => {
+                    depth += 1;
+                    body.push(character);
+                }
+                character if character == closing && depth == 0 => return Ok((body, index + 1)),
+                character if character == closing => {
+                    depth -= 1;
+                    body.push(character);
+                }
+                character => body.push(character),
+            }
+            index += 1;
+        }
+        Err(WalkFault::UnclosedBlock(shape))
     }
 }

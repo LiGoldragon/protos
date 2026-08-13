@@ -16,12 +16,17 @@ when text becomes real values or real values become text.
 | `Realize` | `SourceText` | turns textual data into real blocks |
 | `Textualize` | `Block` | projects a real block into textual data |
 | `Walk` | `StructuralWalk`, `RealizeWalk`, `TextualizeWalk` | owns `enter`, `close`, `position`, and `resume` |
-| `WalkTracing` | `StructuralWalk` | exposes recorded resumption evidence |
+| `WalkObserving` / `FrameObserving` | structural walks and completed frames | expose read-only transition evidence |
+| `CursorObserving` | direction drivers | exposes source/output byte cursors |
 | `RealizeDriving` / `TextualizeDriving` | the two direction drivers | bind the neutral walk to source spans and emitted text |
 
 `ShapeDefined` is deliberately discrimination-only. A dialect's selected type
 owns its own context and interior. The substrate does not define Datom,
 Meaning, Signal, storage, a daemon, or a component vocabulary.
+
+The first pass retains block bodies and UTF-8 byte extents, not inter-block
+trivia. `TextualizeWalk` emits one space between adjacent blocks: its result is
+canonical block projection, not a byte-identical source formatter.
 
 ## Validation
 

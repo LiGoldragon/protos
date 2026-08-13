@@ -28,9 +28,15 @@ cannot consume a block body. A selected dialect type owns the next context;
 the walk keeps the parent's frame untouched until the child closes, then
 resumes the parent exactly once.
 
-The first pass is lexical. Parenthesized and curly-quoted string carriers keep
+The first pass is lexical. All block extents and driver cursors are UTF-8 byte
+offsets; `SourceSlicing` is the safe access capability. Parenthesized and curly-quoted string carriers keep
 their interiors opaque to other delimiters; parentheses balance until their
 final unbalanced closer. Interpretation of those interiors is a dialect seam.
+
+Inter-block trivia is not a block. The substrate therefore provides canonical
+block projection with one space between blocks, not byte-identical preservation
+of a source document's formatting. Dialects that require source fidelity own a
+separate textual concern.
 
 ## Out of scope
 

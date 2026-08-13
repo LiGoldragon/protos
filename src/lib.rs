@@ -13,8 +13,8 @@ pub use block::{Block, BlockScanner, Head, SourceText, StringCarrier};
 pub use form::{Realize, Textualize};
 pub use shape::{Shape, ShapeDefined};
 pub use walk::{
-    RealizeDriving, RealizeWalk, StructuralWalk, TextualizeDriving, TextualizeWalk, Walk,
-    WalkFault, WalkFrame, WalkTracing,
+    CursorObserving, FrameObserving, RealizeDriving, RealizeWalk, StructuralWalk,
+    TextualizeDriving, TextualizeWalk, Walk, WalkFault, WalkFrame, WalkObservation, WalkObserving,
 };
 
 /// A value that can disclose the optional dotted prefix carried by a block.
@@ -30,4 +30,9 @@ pub trait BlockScanning {
 /// Access to a string carrier's lexical body.
 pub trait StringCarrying {
     fn textual_body(&self) -> &str;
+}
+
+/// Safe access to a UTF-8 byte extent in source text.
+pub trait SourceSlicing {
+    fn source_slice(&self, span: std::ops::Range<usize>) -> Option<&str>;
 }

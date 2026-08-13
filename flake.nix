@@ -1,5 +1,5 @@
 {
-  description = "protos — implementation-free component contracts";
+  description = "protos — universal structural substrate";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -16,134 +16,17 @@
         pkgs = import nixpkgs { inherit system; };
         rust = rust-build.lib.${system}.fromPkgs pkgs;
         inherit (rust) craneLib toolchain;
-        rustDylibExtension = pkgs.stdenv.hostPlatform.extensions.sharedLibrary;
         src = rust.cleanSource { root = ./.; };
-        commonArguments = { inherit src; strictDeps = true; };
-        checkArguments = commonArguments // {
-          cargoArtifacts = null;
-          doInstallCargoArtifacts = false;
-        };
-        package = craneLib.buildPackage (commonArguments // {
-          cargoArtifacts = null;
-          doInstallCargoArtifacts = false;
-          installPhaseCommand = ''
-            artifact_directory=target/release/deps
-            test -d "$artifact_directory"
-            install -d -m 755 "$out/lib"
-
-            find "$artifact_directory" -maxdepth 1 -type f \
-              \( -name 'lib*.rlib' -o -name 'lib*.rmeta' \
-                 -o -name "lib*${rustDylibExtension}" \) -print \
-              | sort \
-              | while IFS= read -r artifact; do
-                  install -Dm444 "$artifact" "$out/lib/$(basename "$artifact")"
-                done
-
-            mapfile -t protos_rlibs < <(
-              find "$out/lib" -maxdepth 1 -type f -name 'libprotos-*.rlib' -print | sort
-            )
-            mapfile -t protos_rmetas < <(
-              find "$out/lib" -maxdepth 1 -type f -name 'libprotos-*.rmeta' -print | sort
-            )
-            test "''${#protos_rlibs[@]}" -eq 1
-            test "''${#protos_rmetas[@]}" -eq 1
-            protos_rlib="''${protos_rlibs[0]}"
-            protos_rmeta="''${protos_rmetas[0]}"
-            install -Dm444 "$protos_rlib" "$out/lib/libprotos.rlib"
-            install -Dm444 "$protos_rmeta" "$out/lib/libprotos.rmeta"
-          '';
-        });
-      in
-      {
-        packages.default = package;
+        common = { inherit src; strictDeps = true; cargoArtifacts = null; doInstallCargoArtifacts = false; };
+      in {
+        packages.default = craneLib.buildPackage common;
         checks = {
-          build = craneLib.cargoBuild checkArguments;
-          test = craneLib.cargoTest checkArguments;
-          doc = craneLib.cargoDoc (checkArguments // {
-            RUSTDOCFLAGS = "-D warnings";
-          });
-          fmt = craneLib.cargoFmt {
-            inherit src;
-            doInstallCargoArtifacts = false;
-          };
-          clippy = craneLib.cargoClippy (checkArguments // {
-            cargoClippyExtraArgs = "--all-targets -- -D warnings";
-          });
-          package-contents = pkgs.runCommand "protos-package-contents" {
-            nativeBuildInputs = [ pkgs.findutils pkgs.coreutils pkgs.stdenv.cc toolchain ];
-          } ''
-            test -s ${package}/lib/libprotos.rlib
-            test -s ${package}/lib/libprotos.rmeta
-            protos_rlib_count="$(find ${package}/lib -maxdepth 1 -type f -name 'libprotos-*.rlib' -printf . | wc -c)"
-            protos_rmeta_count="$(find ${package}/lib -maxdepth 1 -type f -name 'libprotos-*.rmeta' -printf . | wc -c)"
-            test "$protos_rlib_count" -eq 1
-            test "$protos_rmeta_count" -eq 1
-            rustc \
-              --edition=2024 \
-              --crate-name protos_package_consumer \
-              --crate-type bin \
-              -L dependency=${package}/lib \
-              --extern protos=${package}/lib/libprotos.rlib \
-              -o protos-package-consumer \
-              - <<'EOF'
-            fn main() {
-                assert_eq!(protos::SIGNAL_SPIRIT_CONTRACT_ID.value(), 1);
-                assert_eq!(protos::META_SIGNAL_SPIRIT_CONTRACT_ID.value(), 2);
-                assert_eq!(protos::SIGNAL_SPIRIT_JUDGE_CONTRACT_ID.value(), 3);
-                assert_eq!(protos::SIGNAL_SPIRIT_JUDGE_WIRE_REVISION.value(), 1);
-                assert_eq!(protos::SIGNAL_SEMA_TRANSLATOR_CONTRACT_ID.value(), 4);
-                assert_eq!(protos::SIGNAL_SEMA_TRANSLATOR_WIRE_REVISION.value(), 1);
-                assert_eq!(protos::SIGNAL_LOJIX_CONTRACT_ID.value(), 5);
-                assert_eq!(protos::SIGNAL_LOJIX_WIRE_REVISION.value(), 1);
-                assert_eq!(protos::META_SIGNAL_LOJIX_CONTRACT_ID.value(), 6);
-                assert_eq!(protos::META_SIGNAL_LOJIX_WIRE_REVISION.value(), 1);
-                assert_eq!(
-                    protos::WireContractFamily::SignalSpiritJudge.current_binding(),
-                    Some(protos::SIGNAL_SPIRIT_JUDGE_BINDING)
-                );
-                assert_eq!(
-                    protos::WireContractFamily::SignalSemaTranslator.current_binding(),
-                    Some(protos::SIGNAL_SEMA_TRANSLATOR_BINDING)
-                );
-                assert_eq!(
-                    protos::WireContractFamily::SignalLojix.current_binding(),
-                    Some(protos::SIGNAL_LOJIX_BINDING)
-                );
-                assert_eq!(
-                    protos::WireContractFamily::MetaSignalLojix.current_binding(),
-                    Some(protos::META_SIGNAL_LOJIX_BINDING)
-                );
-                // The family census belongs to the crate's own test suite. This
-                // consumer proves only that the packaged artifact exports a
-                // self-consistent registry, so adding a family never breaks it.
-                assert_eq!(
-                    protos::WireContractFamily::COUNT,
-                    protos::WireContractFamily::ALL.len()
-                );
-                assert_eq!(
-                    protos::WIRE_CONTRACT_ALLOCATIONS.len(),
-                    protos::WireContractFamily::COUNT
-                );
-                assert_eq!(
-                    protos::ACTIVE_WIRE_CONTRACT_ALLOCATIONS.len()
-                        + protos::RETIRED_WIRE_CONTRACT_ALLOCATIONS.len(),
-                    protos::WireContractFamily::COUNT
-                );
-                for family in protos::WireContractFamily::ALL {
-                    assert!(!family.binding_history().is_empty());
-                    if let Some(binding) = family.current_binding() {
-                        assert!(family.supports_binding(binding));
-                    }
-                }
-            }
-            EOF
-            ./protos-package-consumer
-            touch $out
-          '';
+          build = craneLib.cargoBuild common;
+          test = craneLib.cargoTest common;
+          doc = craneLib.cargoDoc (common // { RUSTDOCFLAGS = "-D warnings"; });
+          fmt = craneLib.cargoFmt { inherit src; doInstallCargoArtifacts = false; };
+          clippy = craneLib.cargoClippy (common // { cargoClippyExtraArgs = "--all-targets -- -D warnings"; });
         };
-        devShells.default = pkgs.mkShell {
-          name = "protos";
-          packages = [ pkgs.jujutsu toolchain ];
-        };
+        devShells.default = pkgs.mkShell { packages = [ pkgs.jujutsu toolchain ]; };
       });
 }

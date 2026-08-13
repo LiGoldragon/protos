@@ -1,13 +1,13 @@
-This repository is under fast development and constantly breaking.
+# Protos agent boundary
 
-Keep the Protos family's structural mechanisms in canonical micro-repositories;
-protos.git owns only implementation-free component-contract traits, laws, and
-generic types, never component implementations, per-component vocabulary,
-per-language data, or structural machinery.
+This repository holds the quick-new universal structural substrate.
 
-## Protos estate status
+Keep every Rust method under a trait. The trait and main-type roster precedes
+implementation. `ShapeDefined` discriminates only: it exposes `shapes()` and
+selects from Shape plus Head, while selected dialect types own their contexts.
+`Realize` is text to real and is called on the textual type; `Textualize` is
+real to text and is called on the real type.
 
-Stack: correct-new
-Status: active
-Role: implementation-free component-contract package.
-Current divergences: structural parsing boundary (primary-xqb.8.9) and numeric registry (primary-xqb.8.10). This marking makes no package-duty decision.
+Do not add Meaning, Signal, component, archive-identity, numeric-registry, or
+legacy/frozen imports. The first scanner is lexical only; it owns universal
+string carriers and opacity, never a dialect's interpretation.

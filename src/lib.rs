@@ -1,32 +1,33 @@
-//! Implementation-free component contracts for the Protos family.
+//! Universal structural vocabulary for Protos-family dialects.
 //!
-//! Concrete identity, name, and structural machinery lives in its canonical
-//! micro-repository. This crate owns only the contracts that relate components.
+//! This crate owns no dialect meanings. A dialect supplies its own real types
+//! and implements the capability traits below; this crate supplies the fixed
+//! textual shapes, lexical blocks, string carriers, and one frame discipline.
 
-mod capsule;
-mod interface;
-mod population;
-mod textual_capsule;
-mod wire_identity;
+mod block;
+mod form;
+mod shape;
+mod walk;
 
-pub use capsule::{
-    Capsule, CapsuleArchiveError, CapsuleKind, CapsuleKindMismatch, Ethos, Logos, Nomos,
+pub use block::{Block, BlockScanner, Head, SourceText, StringCarrier};
+pub use form::{Realize, Textualize};
+pub use shape::{Shape, ShapeDefined};
+pub use walk::{
+    RealizeDriving, RealizeWalk, StructuralWalk, TextualizeDriving, TextualizeWalk, Walk,
+    WalkFault, WalkFrame, WalkTracing,
 };
-pub use content_identity::{CapsuleIdentity, CapsuleIdentityVariant, ContentAddressedHash};
-pub use interface::{
-    Input, OpenedStream, Output, Refusal, Stream, StreamEvent, StreamIdentity, StreamOpen,
-};
-pub use population::EncodedPopulation;
-pub use textual_capsule::TextualCapsuleAssociation;
-pub use wire_identity::{
-    ACTIVE_WIRE_CONTRACT_ALLOCATIONS, ActiveWireContractAllocation, META_SIGNAL_LOJIX_BINDING,
-    META_SIGNAL_LOJIX_CONTRACT_ID, META_SIGNAL_LOJIX_WIRE_REVISION, META_SIGNAL_SPIRIT_BINDING,
-    META_SIGNAL_SPIRIT_CONTRACT_ID, META_SIGNAL_SPIRIT_WIRE_REVISION,
-    RETIRED_WIRE_CONTRACT_ALLOCATIONS, RetiredWireContractAllocation, SIGNAL_LOJIX_BINDING,
-    SIGNAL_LOJIX_CONTRACT_ID, SIGNAL_LOJIX_WIRE_REVISION, SIGNAL_SEMA_TRANSLATOR_BINDING,
-    SIGNAL_SEMA_TRANSLATOR_CONTRACT_ID, SIGNAL_SEMA_TRANSLATOR_WIRE_REVISION,
-    SIGNAL_SPIRIT_BINDING, SIGNAL_SPIRIT_CONTRACT_ID, SIGNAL_SPIRIT_JUDGE_BINDING,
-    SIGNAL_SPIRIT_JUDGE_CONTRACT_ID, SIGNAL_SPIRIT_JUDGE_WIRE_REVISION,
-    SIGNAL_SPIRIT_WIRE_REVISION, WIRE_CONTRACT_ALLOCATIONS, WireContractAllocation,
-    WireContractFamily,
-};
+
+/// A value that can disclose the optional dotted prefix carried by a block.
+pub trait Headed {
+    fn head(&self) -> Option<&Head>;
+}
+
+/// A lexical source that can be separated into universal structural blocks.
+pub trait BlockScanning {
+    fn blocks(&self) -> Result<Vec<Block>, WalkFault>;
+}
+
+/// Access to a string carrier's lexical body.
+pub trait StringCarrying {
+    fn textual_body(&self) -> &str;
+}

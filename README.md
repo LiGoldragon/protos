@@ -44,9 +44,10 @@ scalar/carrier body text. While a callback is live, its block frame remains
 private in the shared neutral walk. The driver itself closes that frame and
 resumes the parent; a failed callback faults its driver after cleanup, rather
 than inventing a parent advancement.
-`Block::span` and `Block::body_span` are UTF-8 extents rebased to the root
-source, so a dialect witness can tie its own context work to actual source
-text without gaining mutable frame access.
+`SourceText::blocks()` reports `Block::span` and `Block::body_span` relative
+to that `SourceText`. Scoped `RealizeDriving` callbacks rebase both to the
+root source before exposing a block to a dialect, so a recursive witness can
+tie context work to actual root text without gaining mutable frame access.
 
 `TextualizeScoping::textualize_block` rejects a mismatched `Shape` and Head
 before it mutates output or walk state: dotted shapes require a Head and every

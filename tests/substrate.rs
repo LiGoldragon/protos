@@ -19,6 +19,87 @@ struct RecursiveFixture {
     source: SourceText,
 }
 
+struct SiblingFixture {
+    source: SourceText,
+}
+
+struct SiblingValue {
+    selection: SiblingSelection,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SiblingSelection {
+    First,
+    Second,
+}
+
+trait SiblingReading {
+    fn read(
+        &self,
+        scope: &mut RealizeScope<'_>,
+        block: &protos::Block,
+    ) -> Result<SiblingValue, WalkFault>;
+}
+
+trait SiblingWriting {
+    fn write(&self, scope: &mut TextualizeScope<'_>, value: &SiblingValue)
+    -> Result<(), WalkFault>;
+}
+
+impl ShapeDefined for SiblingValue {
+    type Selection = SiblingSelection;
+
+    fn shapes() -> &'static [Shape] {
+        &[Shape::DottedParenthesized]
+    }
+
+    fn select(shape: Shape, head: Option<&protos::Head>) -> Option<Self::Selection> {
+        let first = protos::Head("First".into());
+        let second = protos::Head("Second".into());
+        match (shape, head) {
+            (Shape::DottedParenthesized, Some(value)) if value == &first => {
+                Some(SiblingSelection::First)
+            }
+            (Shape::DottedParenthesized, Some(value)) if value == &second => {
+                Some(SiblingSelection::Second)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl SiblingReading for SiblingFixture {
+    fn read(
+        &self,
+        _scope: &mut RealizeScope<'_>,
+        block: &protos::Block,
+    ) -> Result<SiblingValue, WalkFault> {
+        let selection =
+            SiblingValue::select(block.shape, block.head()).ok_or(WalkFault::InvalidHead)?;
+        Ok(SiblingValue { selection })
+    }
+}
+
+impl SiblingWriting for SiblingFixture {
+    fn write(
+        &self,
+        scope: &mut TextualizeScope<'_>,
+        value: &SiblingValue,
+    ) -> Result<(), WalkFault> {
+        let head = match value.selection {
+            SiblingSelection::First => protos::Head("First".into()),
+            SiblingSelection::Second => protos::Head("Second".into()),
+        };
+        scope.textualize_block(Shape::DottedParenthesized, Some(&head), |body| {
+            body.emit_scalar(match value.selection {
+                SiblingSelection::First => "é",
+                SiblingSelection::Second => "two",
+            });
+            Ok(())
+        })
+    }
+}
+
 trait RecursiveReading {
     fn read(&self, scope: &mut RealizeScope<'_>, block: &protos::Block) -> Result<(), WalkFault>;
 }
@@ -291,6 +372,25 @@ fn drivers_use_real_source_and_output_spans_then_finish_balanced_and_reusable() 
 }
 
 #[test]
+fn realization_cursor_covers_trailing_utf8_trivia_and_resets_on_reuse() {
+    let mut walk = RealizeWalk::default();
+    let trailing = SourceText("é  \n".into());
+    walk.realize_source::<(), WalkFault, _>(&trailing, |_, _| Ok(()))
+        .expect("trailing trivia source");
+    assert_eq!(walk.cursor(), trailing.0.len());
+
+    let empty = SourceText(String::new());
+    walk.realize_source::<(), WalkFault, _>(&empty, |_, _| Ok(()))
+        .expect("empty source reuse");
+    assert_eq!(walk.cursor(), 0);
+
+    let following = SourceText("two ".into());
+    walk.realize_source::<(), WalkFault, _>(&following, |_, _| Ok(()))
+        .expect("second nonempty source reuse");
+    assert_eq!(walk.cursor(), following.0.len());
+}
+
+#[test]
 fn textual_walk_is_canonical_block_projection_not_source_format_preservation() {
     let source = SourceText("one\n\n  two\tthree".into());
     let mut walk = RealizeWalk::default();
@@ -494,4 +594,102 @@ fn branded_realization_scope_ignores_a_forged_callback_block_and_keeps_utf8_span
     );
     assert_eq!(walk.cursor(), source.0.len());
     assert_eq!(walk.observation().depth, 0);
+}
+
+#[test]
+fn typed_shape_defined_siblings_use_scoped_lifecycle_and_actual_extents() {
+    let fixture = SiblingFixture {
+        source: SourceText("Parent.{ First.(é) Second.(two) }".into()),
+    };
+    let parent = fixture.source.blocks().expect("parent block").remove(0);
+    let mut realized = Vec::new();
+    let mut source_spans = Vec::new();
+    let mut realize = RealizeWalk::default();
+
+    realize
+        .realize_source::<(), WalkFault, _>(&fixture.source, |root, block| {
+            assert_eq!(block.shape, Shape::DottedBraced);
+            root.realize_body(&mut |scope, child| {
+                source_spans.push((
+                    child.span.clone(),
+                    fixture.source.source_slice(child.span.clone()),
+                ));
+                realized.push(fixture.read(scope, child)?);
+                Ok(())
+            })?;
+            Ok(())
+        })
+        .expect("two typed sibling values");
+
+    assert_eq!(parent.shape, Shape::DottedBraced);
+    assert_eq!(
+        realized
+            .into_iter()
+            .map(|value| value.selection)
+            .collect::<Vec<_>>(),
+        vec![SiblingSelection::First, SiblingSelection::Second]
+    );
+    assert_eq!(
+        source_spans,
+        vec![
+            (
+                "Parent.{ ".len().."Parent.{ First.(é)".len(),
+                Some("First.(é)")
+            ),
+            (
+                "Parent.{ First.(é) ".len().."Parent.{ First.(é) Second.(two)".len(),
+                Some("Second.(two)")
+            ),
+        ]
+    );
+    assert_eq!(realize.observation().resumptions, 3);
+    assert_eq!(realize.cursor(), fixture.source.0.len());
+
+    let values = vec![
+        SiblingValue {
+            selection: SiblingSelection::First,
+        },
+        SiblingValue {
+            selection: SiblingSelection::Second,
+        },
+    ];
+    let mut textualize = TextualizeWalk::default();
+    textualize
+        .textualize_source::<(), WalkFault, _>(|root| {
+            root.textualize_block(
+                Shape::DottedBraced,
+                Some(&protos::Head("Parent".into())),
+                |parent_scope| {
+                    for value in &values {
+                        fixture.write(parent_scope, value)?;
+                    }
+                    Ok(())
+                },
+            )
+        })
+        .expect("typed sibling projection");
+    let output = textualize.textual_source();
+    assert_eq!(output, SourceText("Parent.{First.(é) Second.(two)}".into()));
+    let output_parent = output.blocks().expect("output parent").remove(0);
+    let output_children = output_parent.body.blocks().expect("output siblings");
+    assert_eq!(output_children.len(), 2);
+    assert_eq!(
+        output_children[0].head().expect("First head"),
+        &protos::Head("First".into())
+    );
+    assert_eq!(
+        output_children[1].head().expect("Second head"),
+        &protos::Head("Second".into())
+    );
+    let first_output_span = (output_parent.body_span.start + output_children[0].span.start)
+        ..(output_parent.body_span.start + output_children[0].span.end);
+    let second_output_span = (output_parent.body_span.start + output_children[1].span.start)
+        ..(output_parent.body_span.start + output_children[1].span.end);
+    assert_eq!(output.source_slice(first_output_span), Some("First.(é)"));
+    assert_eq!(
+        output.source_slice(second_output_span),
+        Some("Second.(two)")
+    );
+    assert_eq!(textualize.observation().resumptions, 3);
+    assert_eq!(textualize.cursor(), output.0.len());
 }

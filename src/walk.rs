@@ -373,6 +373,7 @@ impl RealizeDriving for RealizeWalk {
         if self.is_faulted() {
             return Err(E::from(WalkFault::FaultedWalk));
         }
+        self.source_cursor = 0;
         self.enter(Shape::Bare, 0..source.0.len());
         let mut scope = RealizeScope {
             driver: self,
@@ -384,6 +385,7 @@ impl RealizeDriving for RealizeWalk {
             Ok(values) => {
                 scope.driver.structural.finish(0..source.0.len());
                 scope.driver.close();
+                scope.driver.source_cursor = source.0.len();
                 Ok(values)
             }
             Err(error) => {

@@ -44,6 +44,22 @@ impl Headed for Block {
     }
 }
 
+trait BlockRendering {
+    fn delimiters(&self) -> (Option<char>, Option<char>);
+}
+
+impl BlockRendering for Block {
+    fn delimiters(&self) -> (Option<char>, Option<char>) {
+        match self.shape {
+            Shape::Bare => (None, None),
+            Shape::CurlyQuoted | Shape::DottedCurlyQuoted => (Some('“'), Some('”')),
+            Shape::Parenthesized | Shape::DottedParenthesized => (Some('('), Some(')')),
+            Shape::SquareBracketed | Shape::DottedSquareBracketed => (Some('['), Some(']')),
+            Shape::Braced | Shape::DottedBraced => (Some('{'), Some('}')),
+        }
+    }
+}
+
 impl Textualize for Block {
     type Textual = SourceText;
 
@@ -53,13 +69,7 @@ impl Textualize for Block {
             text.push_str(&head.0);
             text.push('.');
         }
-        let (opening, closing) = match self.shape {
-            Shape::Bare => (None, None),
-            Shape::CurlyQuoted | Shape::DottedCurlyQuoted => (Some('“'), Some('”')),
-            Shape::Parenthesized | Shape::DottedParenthesized => (Some('('), Some(')')),
-            Shape::SquareBracketed | Shape::DottedSquareBracketed => (Some('['), Some(']')),
-            Shape::Braced | Shape::DottedBraced => (Some('{'), Some('}')),
-        };
+        let (opening, closing) = self.delimiters();
         if let Some(opening) = opening {
             text.push(opening);
         }
@@ -68,18 +78,6 @@ impl Textualize for Block {
             text.push(closing);
         }
         SourceText(text)
-    }
-}
-
-impl Textualize for StringCarrier {
-    type Textual = SourceText;
-
-    fn textualize(&self) -> SourceText {
-        match self {
-            Self::Bare(body) => SourceText(body.clone()),
-            Self::Parenthesized(body) => SourceText(format!("({body})")),
-            Self::CurlyQuoted(body) => SourceText(format!("“{body}”")),
-        }
     }
 }
 

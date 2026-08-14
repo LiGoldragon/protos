@@ -14,7 +14,7 @@ when text becomes real values or real values become text.
 | `BlockScanning` | `SourceText` | separates text into lexical `Block`s |
 | `StringCarrying` | `StringCarrier` | borrows a carrier's lexical body |
 | `Realize` | `SourceText` | turns textual data into real blocks |
-| `Textualize` | `Block` | projects a real block into textual data |
+| `Textualize` | `Block` | projects a real block into textual data; lexical carriers are not real values |
 | `Walk` | `StructuralWalk`, `RealizeWalk`, `TextualizeWalk` | owns `enter`, `close`, `position`, and `resume` |
 | `WalkObserving` / `FrameObserving` | structural walks and completed frames | expose read-only transition evidence |
 | `CursorObserving` | direction drivers | exposes source/output byte cursors |

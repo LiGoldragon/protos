@@ -30,18 +30,6 @@ impl ShapeDefined for Example {
 }
 
 #[test]
-fn string_carriers_reemit_their_delimiters() {
-    assert_eq!(
-        StringCarrier::Parenthesized("kept } ] opaque".into()).textualize(),
-        SourceText("(kept } ] opaque)".into())
-    );
-    assert_eq!(
-        StringCarrier::CurlyQuoted("legacy".into()).textualize(),
-        SourceText("“legacy”".into())
-    );
-}
-
-#[test]
 fn first_pass_keeps_string_interior_opaque_and_carries_head() {
     let source = SourceText("Note.(inside } ] (nested) and “quote) tail".into());
     let blocks = source.realize().expect("a balanced string block");
@@ -57,6 +45,10 @@ fn first_pass_keeps_string_interior_opaque_and_carries_head() {
     assert_eq!(
         blocks[1].string_carrier,
         Some(StringCarrier::Bare("tail".into()))
+    );
+    assert_eq!(
+        blocks[0].textualize(),
+        SourceText("Note.(inside } ] (nested) and “quote)".into())
     );
 }
 

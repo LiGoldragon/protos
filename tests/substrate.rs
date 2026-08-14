@@ -38,27 +38,21 @@ impl RecursiveReading for RecursiveFixture {
                     self.source.source_slice(block.span.clone()),
                     Some("Report.{ Map.[ [ Entry.(child sees } ] only as text) ] ] }")
                 );
-                scope.realize_body(block, &mut |child_scope, child| {
-                    self.read(child_scope, child)
-                })?;
+                scope.realize_body(&mut |child_scope, child| self.read(child_scope, child))?;
             }
             Shape::DottedSquareBracketed => {
                 assert_eq!(
                     self.source.source_slice(block.span.clone()),
                     Some("Map.[ [ Entry.(child sees } ] only as text) ] ]")
                 );
-                scope.realize_body(block, &mut |child_scope, child| {
-                    self.read(child_scope, child)
-                })?;
+                scope.realize_body(&mut |child_scope, child| self.read(child_scope, child))?;
             }
             Shape::SquareBracketed => {
                 assert_eq!(
                     self.source.source_slice(block.span.clone()),
                     Some("[ Entry.(child sees } ] only as text) ]")
                 );
-                scope.realize_body(block, &mut |child_scope, child| {
-                    self.read(child_scope, child)
-                })?;
+                scope.realize_body(&mut |child_scope, child| self.read(child_scope, child))?;
             }
             Shape::DottedParenthesized => {
                 assert_eq!(
@@ -453,4 +447,51 @@ fn textual_scope_rejects_shape_head_mismatches_before_emission() {
     assert_eq!(dotted.textual_source(), SourceText(String::new()));
     assert_eq!(dotted.observation().depth, 0);
     assert_eq!(dotted.observation().resumptions, 0);
+
+    let mut empty = TextualizeWalk::default();
+    let empty_result = empty.textualize_source::<(), WalkFault, _>(|scope| {
+        scope.textualize_block(
+            Shape::DottedParenthesized,
+            Some(&protos::Head(String::new())),
+            |_| Ok(()),
+        )
+    });
+    assert_eq!(empty_result, Err(WalkFault::InvalidHead));
+    assert_eq!(empty.textual_source(), SourceText(String::new()));
+    assert_eq!(empty.observation().depth, 0);
+    assert_eq!(empty.observation().resumptions, 0);
+}
+
+#[test]
+fn branded_realization_scope_ignores_a_forged_callback_block_and_keeps_utf8_spans() {
+    let source = SourceText("Outer.{ é child }".into());
+    let mut walk = RealizeWalk::default();
+    let mut actual = Vec::new();
+    walk.realize_source::<(), WalkFault, _>(&source, |scope, block| {
+        assert_eq!(
+            source.source_slice(block.span.clone()),
+            Some("Outer.{ é child }")
+        );
+        let mut forged = block.clone();
+        forged.body = SourceText("forged".into());
+        forged.body_span = 0..6;
+        forged.span = 0..6;
+        assert_eq!(forged.body.0, "forged");
+
+        scope.realize_body(&mut |_, child| {
+            actual.push((child.span.clone(), source.source_slice(child.span.clone())));
+            Ok(())
+        })?;
+        Ok(())
+    })
+    .expect("the live scope uses its driver-branded source rather than forged Block data");
+    assert_eq!(
+        actual,
+        vec![
+            ("Outer.{ ".len().."Outer.{ é".len(), Some("é")),
+            ("Outer.{ é ".len().."Outer.{ é child".len(), Some("child")),
+        ]
+    );
+    assert_eq!(walk.cursor(), source.0.len());
+    assert_eq!(walk.observation().depth, 0);
 }

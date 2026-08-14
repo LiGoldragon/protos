@@ -30,9 +30,13 @@ resumes the parent exactly once.
 
 `RealizeDriving::realize_source` alone opens the synthetic document frame.
 It gives dialect code a data-bearing `RealizeScope`, whose `RealizeScoping`
-capability takes a parent `Block` and derives its body origin internally. For
-every scanned child, the driver enters the neutral walk, calls the dialect with
-that lexical `Block`, then closes and resumes itself. `TextualizeDriving::textualize_source`
+capability takes only a nested callback. The driver brands each scope with its
+actual live body text and absolute extent, derives recursive source provenance
+only from that private state, and creates a fresh branded scope for every
+scanned child. The callback's separately supplied lexical `Block` is for
+Shape/Head discrimination only; it cannot be submitted as provenance. For every
+scanned child, the driver enters the neutral walk, calls the dialect with that
+lexical `Block`, then closes and resumes itself. `TextualizeDriving::textualize_source`
 likewise owns the document frame and supplies `TextualizeScope`. Its
 `TextualizeScoping::textualize_block` alone emits Head and delimiters, scopes
 the dialect body callback, records the actual output span, and closes/resumes;

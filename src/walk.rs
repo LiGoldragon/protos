@@ -169,6 +169,8 @@ pub struct TextualizeWalk {
 /// ```
 pub struct RealizeScope<'a> {
     driver: &'a mut RealizeWalk,
+    body: SourceText,
+    body_span: Range<usize>,
 }
 
 /// The restricted, data-bearing textualization handle a dialect receives
@@ -207,14 +209,14 @@ pub trait TextualizeDriving {
 /// Recursive realization available only inside a driver-owned live scope.
 ///
 /// ```compile_fail
-/// use protos::{Block, RealizeScope, RealizeScoping, WalkFault};
-/// fn lie(scope: &mut RealizeScope<'_>, block: &Block) -> Result<(), WalkFault> {
-///     scope.realize_body(block, 12, &mut |_, _| Ok(()))?;
+/// use protos::{RealizeScope, RealizeScoping, WalkFault};
+/// fn lie(scope: &mut RealizeScope<'_>) -> Result<(), WalkFault> {
+///     scope.realize_body(12, &mut |_, _| Ok(()))?;
 ///     Ok(())
 /// }
 /// ```
 pub trait RealizeScoping {
-    fn realize_body<T, E, F>(&mut self, parent: &Block, dialect: &mut F) -> Result<Vec<T>, E>
+    fn realize_body<T, E, F>(&mut self, dialect: &mut F) -> Result<Vec<T>, E>
     where
         E: From<WalkFault>,
         F: FnMut(&mut RealizeScope<'_>, &Block) -> Result<T, E>;
@@ -241,18 +243,24 @@ trait ShapeHeading {
 
 impl ShapeHeading for Shape {
     fn accepts_head(&self, head: Option<&Head>) -> bool {
-        matches!(
-            (self, head),
-            (Shape::DottedCurlyQuoted, Some(_))
-                | (Shape::DottedParenthesized, Some(_))
-                | (Shape::DottedSquareBracketed, Some(_))
-                | (Shape::DottedBraced, Some(_))
-                | (Shape::Bare, None)
-                | (Shape::CurlyQuoted, None)
-                | (Shape::Parenthesized, None)
-                | (Shape::SquareBracketed, None)
-                | (Shape::Braced, None)
-        )
+        match (self, head) {
+            (
+                Shape::DottedCurlyQuoted
+                | Shape::DottedParenthesized
+                | Shape::DottedSquareBracketed
+                | Shape::DottedBraced,
+                Some(Head(value)),
+            ) => !value.is_empty(),
+            (
+                Shape::Bare
+                | Shape::CurlyQuoted
+                | Shape::Parenthesized
+                | Shape::SquareBracketed
+                | Shape::Braced,
+                None,
+            ) => true,
+            _ => false,
+        }
     }
 }
 
@@ -366,16 +374,12 @@ impl RealizeDriving for RealizeWalk {
             return Err(E::from(WalkFault::FaultedWalk));
         }
         self.enter(Shape::Bare, 0..source.0.len());
-        let root = Block {
-            head: None,
-            shape: Shape::Bare,
+        let mut scope = RealizeScope {
+            driver: self,
             body: source.clone(),
-            string_carrier: None,
             body_span: 0..source.0.len(),
-            span: 0..source.0.len(),
         };
-        let mut scope = RealizeScope { driver: self };
-        let result = scope.realize_body(&root, &mut dialect);
+        let result = scope.realize_body(&mut dialect);
         match result {
             Ok(values) => {
                 scope.driver.structural.finish(0..source.0.len());
@@ -391,7 +395,7 @@ impl RealizeDriving for RealizeWalk {
 }
 
 impl RealizeScoping for RealizeScope<'_> {
-    fn realize_body<T, E, F>(&mut self, parent: &Block, dialect: &mut F) -> Result<Vec<T>, E>
+    fn realize_body<T, E, F>(&mut self, dialect: &mut F) -> Result<Vec<T>, E>
     where
         E: From<WalkFault>,
         F: FnMut(&mut RealizeScope<'_>, &Block) -> Result<T, E>,
@@ -400,23 +404,28 @@ impl RealizeScoping for RealizeScope<'_> {
             return Err(E::from(WalkFault::FaultedWalk));
         }
         let mut values = Vec::new();
-        for mut block in parent.body.blocks().map_err(E::from)? {
-            block.span = (parent.body_span.start + block.span.start)
-                ..(parent.body_span.start + block.span.end);
-            block.body_span = (parent.body_span.start + block.body_span.start)
-                ..(parent.body_span.start + block.body_span.end);
+        for mut block in self.body.blocks().map_err(E::from)? {
+            block.span =
+                (self.body_span.start + block.span.start)..(self.body_span.start + block.span.end);
+            block.body_span = (self.body_span.start + block.body_span.start)
+                ..(self.body_span.start + block.body_span.end);
             self.driver.enter(block.shape, block.span.clone());
             self.driver.source_cursor = block.span.end;
-            match dialect(self, &block) {
+            let mut child_scope = RealizeScope {
+                driver: &mut *self.driver,
+                body: block.body.clone(),
+                body_span: block.body_span.clone(),
+            };
+            match dialect(&mut child_scope, &block) {
                 Ok(value) => {
-                    self.driver.close();
-                    self.driver.resume();
-                    self.driver.source_cursor = block.span.end;
+                    child_scope.driver.close();
+                    child_scope.driver.resume();
+                    child_scope.driver.source_cursor = block.span.end;
                     values.push(value);
                 }
                 Err(error) => {
-                    self.driver.close();
-                    self.driver.fail();
+                    child_scope.driver.close();
+                    child_scope.driver.fail();
                     return Err(error);
                 }
             }

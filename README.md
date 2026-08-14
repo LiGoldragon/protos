@@ -35,8 +35,11 @@ The scoped driver callbacks are the only recursive dialect seam. Typed dialect
 contexts are bounded by `RealizeScoping` or `TextualizeScoping`, never by the
 concrete drivers: the data-bearing `RealizeScope` and `TextualizeScope` do not
 implement `Walk`, do not expose observations or cursors, and keep their driver
-field private. A realization scope derives its nested body origin from the
-parent `Block`; a textual scope can open another structural block or emit only
+field private. Each realization scope is branded by the driver with the actual
+live block body and its absolute UTF-8 extent; `realize_body` takes no source,
+origin, or Block argument. A callback may inspect or clone its separately
+provided `Block` for discrimination, but cannot submit it as recursive
+provenance. A textual scope can open another structural block or emit only
 scalar/carrier body text. While a callback is live, its block frame remains
 private in the shared neutral walk. The driver itself closes that frame and
 resumes the parent; a failed callback faults its driver after cleanup, rather

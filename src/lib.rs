@@ -13,9 +13,11 @@ pub use block::{Block, BlockScanner, Head, SourceText, StringCarrier};
 pub use form::{Realize, Textualize};
 pub use shape::{Shape, ShapeDefined};
 pub use walk::{
-    CursorObserving, FrameObserving, RealizeDriving, RealizeScope, RealizeScoping, RealizeWalk,
-    StructuralWalk, TextualizeDriving, TextualizeScope, TextualizeScoping, TextualizeWalk, Walk,
-    WalkFault, WalkFrame, WalkObservation, WalkObserving,
+    CursorObserving, FrameIdentity, FrameObserving, IdentityObserving, ObservationViewing,
+    ParentObservation, ParentObserving, RealizeDriving, RealizeScope, RealizeScoping, RealizeWalk,
+    StructuralWalk, TextualizeDriving, TextualizeScope, TextualizeScoping, TextualizeWalk,
+    TransitionObserving, Walk, WalkFault, WalkFrame, WalkObservation, WalkObserving,
+    WalkTransition, WalkTransitionKind,
 };
 
 /// A value that can disclose the optional dotted prefix carried by a block.

@@ -16,7 +16,8 @@ when text becomes real values or real values become text.
 | `Realize` | `SourceText` | turns textual data into real blocks |
 | `Textualize` | `Block` | projects a real block into textual data; lexical carriers are not real values |
 | `Walk` | `StructuralWalk`, `RealizeWalk`, `TextualizeWalk` | owns `enter`, `close`, `position`, and `resume` |
-| `WalkObserving` / `FrameObserving` | structural walks and completed frames | expose read-only transition evidence |
+| `WalkObserving` / `ObservationViewing` | structural walks and observations | expose a copied append-only transition history |
+| `TransitionObserving` / `FrameObserving` / `ParentObserving` / `IdentityObserving` | transition records, frames, parent facts, identities | disclose transition kind, absolute span, frame identity, and parent position without mutation |
 | `CursorObserving` | direction drivers | exposes source/output byte cursors |
 | `RealizeDriving` | `RealizeWalk` | scopes source root and nested bodies: scan, enter, dialect callback, close, then exactly-one resume |
 | `TextualizeDriving` | `TextualizeWalk` | scopes output root and blocks: Head/delimiters, enter, dialect callback, closer, then exactly-one resume |
@@ -48,6 +49,12 @@ than inventing a parent advancement.
 to that `SourceText`. Scoped `RealizeDriving` callbacks rebase both to the
 root source before exposing a block to a dialect, so a recursive witness can
 tie context work to actual root text without gaining mutable frame access.
+
+Every reusable `RealizeWalk` or `TextualizeWalk` root run resets its transition
+history and frame identities to zero before its document-root `enter`. The
+returned `WalkObservation` is therefore evidence for that one source or output
+run. A successful root closes without a parent or resume. A failed run retains
+its actual close-only history, is marked faulted, and cannot be reused.
 
 `TextualizeScoping::textualize_block` rejects a mismatched `Shape` and Head
 before it mutates output or walk state: dotted shapes require a Head and every

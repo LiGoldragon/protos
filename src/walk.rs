@@ -5,18 +5,51 @@ use crate::{Block, BlockScanning, Head, Shape, SourceText};
 /// A read-only record of one completed structural frame.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WalkFrame {
+    identity: FrameIdentity,
     shape: Shape,
     position: usize,
     span: Range<usize>,
 }
 
+/// The per-root identity of a frame owned by the neutral walk.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameIdentity {
+    ordinal: usize,
+}
+
+/// A parent's read-only position at one actual child transition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ParentObservation {
+    frame: FrameIdentity,
+    position: usize,
+}
+
+/// The kind of structural transition performed by the neutral walk.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WalkTransitionKind {
+    Enter,
+    Close,
+    Resume,
+}
+
+/// An append-only fact recorded by an actual `Walk` transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WalkTransition {
+    ordinal: usize,
+    kind: WalkTransitionKind,
+    frame: WalkFrame,
+    parent_before: Option<ParentObservation>,
+    parent_after: Option<ParentObservation>,
+}
+
 /// Read-only facts about a structural walk.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WalkObservation {
-    pub depth: usize,
-    pub resumptions: usize,
-    pub last_closed: Option<WalkFrame>,
-    pub faulted: bool,
+    depth: usize,
+    resumptions: usize,
+    last_closed: Option<WalkFrame>,
+    faulted: bool,
+    history: Vec<WalkTransition>,
 }
 
 /// A structural failure which is independent of any dialect's meanings.
@@ -43,9 +76,39 @@ pub trait WalkObserving {
 
 /// Read-only access to a completed frame's structural facts.
 pub trait FrameObserving {
+    fn identity(&self) -> FrameIdentity;
     fn shape(&self) -> Shape;
     fn position(&self) -> usize;
     fn span(&self) -> Range<usize>;
+}
+
+/// Read-only access to a frame identity.
+pub trait IdentityObserving {
+    fn ordinal(&self) -> usize;
+}
+
+/// Read-only access to a parent position captured by a transition.
+pub trait ParentObserving {
+    fn frame(&self) -> FrameIdentity;
+    fn position(&self) -> usize;
+}
+
+/// Read-only access to one append-only transition record.
+pub trait TransitionObserving {
+    fn ordinal(&self) -> usize;
+    fn kind(&self) -> WalkTransitionKind;
+    fn frame(&self) -> &WalkFrame;
+    fn parent_before(&self) -> Option<ParentObservation>;
+    fn parent_after(&self) -> Option<ParentObservation>;
+}
+
+/// Read-only access to a completed walk and its actual transition history.
+pub trait ObservationViewing {
+    fn depth(&self) -> usize;
+    fn resumptions(&self) -> usize;
+    fn last_closed(&self) -> Option<&WalkFrame>;
+    fn faulted(&self) -> bool;
+    fn history(&self) -> &[WalkTransition];
 }
 
 /// The neutral owner of every frame transition.
@@ -55,6 +118,8 @@ pub struct StructuralWalk {
     resumptions: usize,
     awaiting_resume: bool,
     last_closed: Option<WalkFrame>,
+    history: Vec<WalkTransition>,
+    next_identity: usize,
 }
 
 trait FrameFinishing {
@@ -65,16 +130,42 @@ trait WalkAborting {
     fn abort(&mut self);
 }
 
+trait FaultFinishing {
+    fn finish_faulted(&mut self, end: usize);
+}
+
+trait HistoryResetting {
+    fn reset_history(&mut self);
+}
+
+trait TransitionRecording {
+    fn parent_observation(&self) -> Option<ParentObservation>;
+    fn record_transition(
+        &mut self,
+        kind: WalkTransitionKind,
+        frame: WalkFrame,
+        parent_before: Option<ParentObservation>,
+        parent_after: Option<ParentObservation>,
+    );
+}
+
 impl Walk for StructuralWalk {
     fn enter(&mut self, shape: Shape, span: Range<usize>) {
         if self.awaiting_resume {
             return;
         }
-        self.frames.push(WalkFrame {
+        let parent = self.parent_observation();
+        let frame = WalkFrame {
+            identity: FrameIdentity {
+                ordinal: self.next_identity,
+            },
             shape,
             position: 0,
             span,
-        });
+        };
+        self.next_identity += 1;
+        self.frames.push(frame.clone());
+        self.record_transition(WalkTransitionKind::Enter, frame, parent, parent);
     }
 
     fn close(&mut self) -> Option<WalkFrame> {
@@ -84,6 +175,8 @@ impl Walk for StructuralWalk {
         let closed = self.frames.pop()?;
         self.awaiting_resume = !self.frames.is_empty();
         self.last_closed = Some(closed.clone());
+        let parent = self.parent_observation();
+        self.record_transition(WalkTransitionKind::Close, closed.clone(), parent, parent);
         Some(closed)
     }
 
@@ -96,8 +189,23 @@ impl Walk for StructuralWalk {
             return;
         }
         if let Some(frame) = self.frames.last_mut() {
+            let before = ParentObservation {
+                frame: frame.identity,
+                position: frame.position,
+            };
             frame.position += 1;
+            let after = ParentObservation {
+                frame: frame.identity,
+                position: frame.position,
+            };
+            let parent = frame.clone();
             self.resumptions += 1;
+            self.record_transition(
+                WalkTransitionKind::Resume,
+                parent,
+                Some(before),
+                Some(after),
+            );
         }
         self.awaiting_resume = false;
     }
@@ -113,8 +221,56 @@ impl FrameFinishing for StructuralWalk {
 
 impl WalkAborting for StructuralWalk {
     fn abort(&mut self) {
-        self.frames.clear();
+        while let Some(closed) = self.frames.pop() {
+            let parent = self.parent_observation();
+            self.last_closed = Some(closed.clone());
+            self.record_transition(WalkTransitionKind::Close, closed, parent, parent);
+        }
         self.awaiting_resume = false;
+    }
+}
+
+impl FaultFinishing for StructuralWalk {
+    fn finish_faulted(&mut self, end: usize) {
+        for frame in &mut self.frames {
+            frame.span.end = end;
+        }
+    }
+}
+
+impl HistoryResetting for StructuralWalk {
+    fn reset_history(&mut self) {
+        self.frames.clear();
+        self.resumptions = 0;
+        self.awaiting_resume = false;
+        self.last_closed = None;
+        self.history.clear();
+        self.next_identity = 0;
+    }
+}
+
+impl TransitionRecording for StructuralWalk {
+    fn parent_observation(&self) -> Option<ParentObservation> {
+        self.frames.last().map(|frame| ParentObservation {
+            frame: frame.identity,
+            position: frame.position,
+        })
+    }
+
+    fn record_transition(
+        &mut self,
+        kind: WalkTransitionKind,
+        frame: WalkFrame,
+        parent_before: Option<ParentObservation>,
+        parent_after: Option<ParentObservation>,
+    ) {
+        self.history.push(WalkTransition {
+            ordinal: self.history.len(),
+            kind,
+            frame,
+            parent_before,
+            parent_after,
+        });
     }
 }
 
@@ -125,11 +281,16 @@ impl WalkObserving for StructuralWalk {
             resumptions: self.resumptions,
             last_closed: self.last_closed.clone(),
             faulted: false,
+            history: self.history.clone(),
         }
     }
 }
 
 impl FrameObserving for WalkFrame {
+    fn identity(&self) -> FrameIdentity {
+        self.identity
+    }
+
     fn shape(&self) -> Shape {
         self.shape
     }
@@ -140,6 +301,66 @@ impl FrameObserving for WalkFrame {
 
     fn span(&self) -> Range<usize> {
         self.span.clone()
+    }
+}
+
+impl IdentityObserving for FrameIdentity {
+    fn ordinal(&self) -> usize {
+        self.ordinal
+    }
+}
+
+impl ParentObserving for ParentObservation {
+    fn frame(&self) -> FrameIdentity {
+        self.frame
+    }
+
+    fn position(&self) -> usize {
+        self.position
+    }
+}
+
+impl TransitionObserving for WalkTransition {
+    fn ordinal(&self) -> usize {
+        self.ordinal
+    }
+
+    fn kind(&self) -> WalkTransitionKind {
+        self.kind
+    }
+
+    fn frame(&self) -> &WalkFrame {
+        &self.frame
+    }
+
+    fn parent_before(&self) -> Option<ParentObservation> {
+        self.parent_before
+    }
+
+    fn parent_after(&self) -> Option<ParentObservation> {
+        self.parent_after
+    }
+}
+
+impl ObservationViewing for WalkObservation {
+    fn depth(&self) -> usize {
+        self.depth
+    }
+
+    fn resumptions(&self) -> usize {
+        self.resumptions
+    }
+
+    fn last_closed(&self) -> Option<&WalkFrame> {
+        self.last_closed.as_ref()
+    }
+
+    fn faulted(&self) -> bool {
+        self.faulted
+    }
+
+    fn history(&self) -> &[WalkTransition] {
+        &self.history
     }
 }
 
@@ -287,6 +508,7 @@ impl DriverFailing for RealizeWalk {
 
 impl DriverFailing for TextualizeWalk {
     fn fail(&mut self) {
+        self.structural.finish_faulted(self.output.0.len());
         self.structural.abort();
         self.faulted = true;
     }
@@ -373,6 +595,7 @@ impl RealizeDriving for RealizeWalk {
         if self.is_faulted() {
             return Err(E::from(WalkFault::FaultedWalk));
         }
+        self.structural.reset_history();
         self.source_cursor = 0;
         self.enter(Shape::Bare, 0..source.0.len());
         let mut scope = RealizeScope {
@@ -465,6 +688,7 @@ impl TextualizeDriving for TextualizeWalk {
         if self.is_faulted() {
             return Err(E::from(WalkFault::FaultedWalk));
         }
+        self.structural.reset_history();
         self.output = SourceText(String::new());
         self.emission_cursor = 0;
         self.enter(Shape::Bare, 0..0);
@@ -480,6 +704,11 @@ impl TextualizeDriving for TextualizeWalk {
                 Ok(value)
             }
             Err(error) => {
+                scope
+                    .driver
+                    .structural
+                    .finish(0..scope.driver.output.0.len());
+                scope.driver.emission_cursor = scope.driver.output.0.len();
                 scope.driver.close();
                 scope.driver.fail();
                 Err(error)
@@ -541,6 +770,9 @@ impl TextualizeScoping for TextualizeScope<'_> {
                 Ok(value)
             }
             Err(error) => {
+                let end = self.driver.output.0.len();
+                self.driver.structural.finish(start..end);
+                self.driver.emission_cursor = end;
                 self.driver.close();
                 self.driver.fail();
                 Err(error)

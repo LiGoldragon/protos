@@ -1,7 +1,8 @@
 use protos::{
-    BlockScanning, CursorObserving, FrameObserving, Headed, Realize, RealizeDriving, RealizeWalk,
-    Shape, ShapeDefined, SourceSlicing, SourceText, StringCarrier, StringCarrying, StructuralWalk,
-    Textualize, TextualizeDriving, TextualizeWalk, Walk, WalkFault, WalkObserving,
+    BlockScanning, CursorObserving, FrameObserving, Headed, Realize, RealizeDriving, RealizeScope,
+    RealizeScoping, RealizeWalk, Shape, ShapeDefined, SourceSlicing, SourceText, StringCarrier,
+    StringCarrying, StructuralWalk, Textualize, TextualizeDriving, TextualizeScope,
+    TextualizeScoping, TextualizeWalk, Walk, WalkFault, WalkObserving,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -19,66 +20,47 @@ struct RecursiveFixture {
 }
 
 trait RecursiveReading {
-    fn read(&self, walk: &mut RealizeWalk, block: &protos::Block) -> Result<(), WalkFault>;
+    fn read(&self, scope: &mut RealizeScope<'_>, block: &protos::Block) -> Result<(), WalkFault>;
 }
 
 trait RecursiveWriting {
-    fn write_document(&self, walk: &mut TextualizeWalk) -> Result<(), WalkFault>;
-    fn write_report(&self, walk: &mut TextualizeWalk) -> Result<(), WalkFault>;
-    fn write_map(&self, walk: &mut TextualizeWalk) -> Result<(), WalkFault>;
-    fn write_vector(&self, walk: &mut TextualizeWalk) -> Result<(), WalkFault>;
+    fn write_document(&self, scope: &mut TextualizeScope<'_>) -> Result<(), WalkFault>;
+    fn write_report(&self, scope: &mut TextualizeScope<'_>) -> Result<(), WalkFault>;
+    fn write_map(&self, scope: &mut TextualizeScope<'_>) -> Result<(), WalkFault>;
+    fn write_vector(&self, scope: &mut TextualizeScope<'_>) -> Result<(), WalkFault>;
 }
 
 impl RecursiveReading for RecursiveFixture {
-    fn read(&self, walk: &mut RealizeWalk, block: &protos::Block) -> Result<(), WalkFault> {
+    fn read(&self, scope: &mut RealizeScope<'_>, block: &protos::Block) -> Result<(), WalkFault> {
         match block.shape {
             Shape::DottedBraced => {
-                assert_eq!(walk.position(), 0, "Report begins at its own position");
                 assert_eq!(
                     self.source.source_slice(block.span.clone()),
                     Some("Report.{ Map.[ [ Entry.(child sees } ] only as text) ] ] }")
                 );
-                walk.realize_body(&block.body, block.body_span.start, &mut |driver, child| {
-                    self.read(driver, child)
+                scope.realize_body(block, &mut |child_scope, child| {
+                    self.read(child_scope, child)
                 })?;
-                assert_eq!(walk.position(), 1, "Map close resumes Report exactly once");
-                assert_eq!(
-                    walk.observation().last_closed.expect("Map closed").shape(),
-                    Shape::DottedSquareBracketed
-                );
             }
             Shape::DottedSquareBracketed => {
-                assert_eq!(walk.position(), 0, "Map begins before its Vector child");
                 assert_eq!(
                     self.source.source_slice(block.span.clone()),
                     Some("Map.[ [ Entry.(child sees } ] only as text) ] ]")
                 );
-                walk.realize_body(&block.body, block.body_span.start, &mut |driver, child| {
-                    self.read(driver, child)
+                scope.realize_body(block, &mut |child_scope, child| {
+                    self.read(child_scope, child)
                 })?;
-                assert_eq!(walk.position(), 1, "Vector close resumes Map exactly once");
             }
             Shape::SquareBracketed => {
-                assert_eq!(walk.position(), 0, "Vector begins before its Entry child");
                 assert_eq!(
                     self.source.source_slice(block.span.clone()),
                     Some("[ Entry.(child sees } ] only as text) ]")
                 );
-                walk.realize_body(&block.body, block.body_span.start, &mut |driver, child| {
-                    self.read(driver, child)
+                scope.realize_body(block, &mut |child_scope, child| {
+                    self.read(child_scope, child)
                 })?;
-                assert_eq!(
-                    walk.position(),
-                    1,
-                    "Entry close resumes Vector exactly once"
-                );
             }
             Shape::DottedParenthesized => {
-                assert_eq!(
-                    walk.position(),
-                    0,
-                    "Entry starts while Vector remains unchanged"
-                );
                 assert_eq!(
                     self.source.source_slice(block.span.clone()),
                     Some("Entry.(child sees } ] only as text)")
@@ -99,69 +81,39 @@ impl RecursiveReading for RecursiveFixture {
 }
 
 impl RecursiveWriting for RecursiveFixture {
-    fn write_document(&self, walk: &mut TextualizeWalk) -> Result<(), WalkFault> {
-        walk.textualize_block(
+    fn write_document(&self, scope: &mut TextualizeScope<'_>) -> Result<(), WalkFault> {
+        scope.textualize_block(
             Shape::DottedBraced,
             Some(&protos::Head("Report".into())),
             |driver| self.write_report(driver),
         )
     }
 
-    fn write_report(&self, walk: &mut TextualizeWalk) -> Result<(), WalkFault> {
-        assert_eq!(walk.position(), 0, "Report begins before Map");
-        walk.textualize_block(
+    fn write_report(&self, scope: &mut TextualizeScope<'_>) -> Result<(), WalkFault> {
+        scope.textualize_block(
             Shape::DottedSquareBracketed,
             Some(&protos::Head("Map".into())),
             |driver| self.write_map(driver),
         )?;
-        assert_eq!(walk.position(), 1, "Map close resumes Report exactly once");
-        let closed = walk.observation().last_closed.expect("Map output span");
-        assert_eq!(
-            walk.textual_source().source_slice(closed.span()),
-            Some("Map.[[Entry.(child sees } ] only as text)]]")
-        );
         Ok(())
     }
 
-    fn write_map(&self, walk: &mut TextualizeWalk) -> Result<(), WalkFault> {
-        assert_eq!(walk.position(), 0, "Map begins before Vector");
-        walk.textualize_block(Shape::SquareBracketed, None, |driver| {
+    fn write_map(&self, scope: &mut TextualizeScope<'_>) -> Result<(), WalkFault> {
+        scope.textualize_block(Shape::SquareBracketed, None, |driver| {
             self.write_vector(driver)
         })?;
-        assert_eq!(walk.position(), 1, "Vector close resumes Map exactly once");
-        let closed = walk.observation().last_closed.expect("Vector output span");
-        assert_eq!(
-            walk.textual_source().source_slice(closed.span()),
-            Some("[Entry.(child sees } ] only as text)]")
-        );
         Ok(())
     }
 
-    fn write_vector(&self, walk: &mut TextualizeWalk) -> Result<(), WalkFault> {
-        assert_eq!(walk.position(), 0, "Vector begins before Entry");
-        walk.textualize_block(
+    fn write_vector(&self, scope: &mut TextualizeScope<'_>) -> Result<(), WalkFault> {
+        scope.textualize_block(
             Shape::DottedParenthesized,
             Some(&protos::Head("Entry".into())),
             |driver| {
-                assert_eq!(
-                    driver.position(),
-                    0,
-                    "Entry is live before its carrier body"
-                );
-                driver.emit_text("child sees } ] only as text");
+                driver.emit_scalar("child sees } ] only as text");
                 Ok(())
             },
         )?;
-        assert_eq!(
-            walk.position(),
-            1,
-            "Entry close resumes Vector exactly once"
-        );
-        let closed = walk.observation().last_closed.expect("Entry output span");
-        assert_eq!(
-            walk.textual_source().source_slice(closed.span()),
-            Some("Entry.(child sees } ] only as text)")
-        );
         Ok(())
     }
 }
@@ -414,6 +366,17 @@ fn scoped_drivers_keep_recursive_dialect_lifecycle_in_one_neutral_walk() {
         SourceText("Report.{Map.[[Entry.(child sees } ] only as text)]]}".into()),
         "the driver projects canonical structural text rather than source trivia"
     );
+    let report = output.blocks().expect("rescanned report").remove(0);
+    assert_eq!(report.shape, Shape::DottedBraced);
+    assert_eq!(report.head().expect("Report head").0, "Report");
+    let map = report.body.blocks().expect("rescanned Map").remove(0);
+    assert_eq!(map.shape, Shape::DottedSquareBracketed);
+    assert_eq!(map.head().expect("Map head").0, "Map");
+    let vector = map.body.blocks().expect("rescanned Vector").remove(0);
+    assert_eq!(vector.shape, Shape::SquareBracketed);
+    let entry = vector.body.blocks().expect("rescanned Entry").remove(0);
+    assert_eq!(entry.shape, Shape::DottedParenthesized);
+    assert_eq!(entry.head().expect("Entry head").0, "Entry");
     assert_eq!(textualize.cursor(), output.0.len());
     assert_eq!(textualize.observation().depth, 0);
     assert_eq!(textualize.observation().resumptions, 4);
@@ -445,4 +408,49 @@ fn scoped_driver_failure_closes_without_resuming_and_becomes_unusable() {
         walk.realize_source::<(), WalkFault, _>(&source, |_, _| Ok(())),
         Err(WalkFault::FaultedWalk)
     );
+}
+
+#[test]
+fn textual_scope_failure_closes_without_resuming_and_becomes_unusable() {
+    let mut walk = TextualizeWalk::default();
+    let failure = walk.textualize_source::<(), WalkFault, _>(|_| Err(WalkFault::InvalidHead));
+    assert_eq!(failure, Err(WalkFault::InvalidHead));
+    assert_eq!(walk.observation().depth, 0);
+    assert_eq!(
+        walk.observation().resumptions,
+        0,
+        "failed root has no resume"
+    );
+    assert!(walk.observation().faulted);
+    assert_eq!(walk.textual_source(), SourceText(String::new()));
+    assert_eq!(
+        walk.textualize_source::<(), WalkFault, _>(|_| Ok(())),
+        Err(WalkFault::FaultedWalk)
+    );
+}
+
+#[test]
+fn textual_scope_rejects_shape_head_mismatches_before_emission() {
+    let parenthesized = TextualizeWalk::default();
+    let mut parenthesized = parenthesized;
+    let parenthesized_result = parenthesized.textualize_source::<(), WalkFault, _>(|scope| {
+        scope.textualize_block(
+            Shape::Parenthesized,
+            Some(&protos::Head("Wrong".into())),
+            |_| Ok(()),
+        )
+    });
+    assert_eq!(parenthesized_result, Err(WalkFault::InvalidHead));
+    assert_eq!(parenthesized.textual_source(), SourceText(String::new()));
+    assert_eq!(parenthesized.observation().depth, 0);
+    assert_eq!(parenthesized.observation().resumptions, 0);
+
+    let mut dotted = TextualizeWalk::default();
+    let dotted_result = dotted.textualize_source::<(), WalkFault, _>(|scope| {
+        scope.textualize_block(Shape::DottedBraced, None, |_| Ok(()))
+    });
+    assert_eq!(dotted_result, Err(WalkFault::InvalidHead));
+    assert_eq!(dotted.textual_source(), SourceText(String::new()));
+    assert_eq!(dotted.observation().depth, 0);
+    assert_eq!(dotted.observation().resumptions, 0);
 }

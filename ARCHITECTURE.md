@@ -28,15 +28,19 @@ cannot consume a block body. A selected dialect type owns the next context;
 the walk keeps the parent's frame untouched until the child closes, then
 resumes the parent exactly once.
 
-`RealizeDriving::realize_source` alone opens the synthetic document frame;
-`realize_body` works within a live parent. For every scanned child, the driver
-enters the neutral walk, calls the dialect with that lexical `Block`, then
-closes and resumes itself. `TextualizeDriving::textualize_source` likewise
-owns the document frame, while `textualize_block` alone emits Head and
-delimiters, scopes the dialect body callback, records the actual output span,
-and closes/resumes. Dialect callbacks never receive frame mutation authority.
-On a callback failure the active scope closes without a false resume and the
-driver is faulted rather than silently reused.
+`RealizeDriving::realize_source` alone opens the synthetic document frame.
+It gives dialect code a data-bearing `RealizeScope`, whose `RealizeScoping`
+capability takes a parent `Block` and derives its body origin internally. For
+every scanned child, the driver enters the neutral walk, calls the dialect with
+that lexical `Block`, then closes and resumes itself. `TextualizeDriving::textualize_source`
+likewise owns the document frame and supplies `TextualizeScope`. Its
+`TextualizeScoping::textualize_block` alone emits Head and delimiters, scopes
+the dialect body callback, records the actual output span, and closes/resumes;
+`emit_scalar` is content-only emission inside that valid scope. The scope types
+do not implement `Walk`, reveal observations, cursors, raw output, or mutable
+driver state. A mismatched Shape/Head pair fails before output or lifecycle
+mutation. On a callback failure the active scope closes without a false resume
+and the driver is faulted rather than silently reused.
 
 The first pass is lexical. All block and body extents and driver cursors are UTF-8 byte
 offsets; `SourceSlicing` is the safe access capability. Parenthesized and curly-quoted string carriers keep

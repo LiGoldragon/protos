@@ -160,6 +160,28 @@ pub struct TextualizeWalk {
     faulted: bool,
 }
 
+/// The restricted, data-bearing realization handle a dialect receives while a
+/// lexical block frame is live.
+///
+/// ```compile_fail
+/// use protos::{RealizeScope, Walk};
+/// fn corrupt(scope: &mut RealizeScope<'_>) { Walk::close(scope); }
+/// ```
+pub struct RealizeScope<'a> {
+    driver: &'a mut RealizeWalk,
+}
+
+/// The restricted, data-bearing textualization handle a dialect receives
+/// while a structural output frame is live.
+///
+/// ```compile_fail
+/// use protos::{TextualizeScope, Walk};
+/// fn corrupt(scope: &mut TextualizeScope<'_>) { Walk::resume(scope); }
+/// ```
+pub struct TextualizeScope<'a> {
+    driver: &'a mut TextualizeWalk,
+}
+
 /// A direction layer which scopes universal source blocks through the neutral walk.
 pub trait RealizeDriving {
     fn realize_blocks(&mut self, source: &SourceText) -> Result<Vec<Block>, WalkFault>;
@@ -167,17 +189,7 @@ pub trait RealizeDriving {
     fn realize_source<T, E, F>(&mut self, source: &SourceText, dialect: F) -> Result<Vec<T>, E>
     where
         E: From<WalkFault>,
-        F: FnMut(&mut Self, &Block) -> Result<T, E>;
-
-    fn realize_body<T, E, F>(
-        &mut self,
-        source: &SourceText,
-        origin: usize,
-        dialect: &mut F,
-    ) -> Result<Vec<T>, E>
-    where
-        E: From<WalkFault>,
-        F: FnMut(&mut Self, &Block) -> Result<T, E>;
+        F: FnMut(&mut RealizeScope<'_>, &Block) -> Result<T, E>;
 }
 
 /// A direction layer which scopes universal output blocks through the neutral walk.
@@ -187,8 +199,29 @@ pub trait TextualizeDriving {
     fn textualize_source<T, E, F>(&mut self, dialect: F) -> Result<T, E>
     where
         E: From<WalkFault>,
-        F: FnOnce(&mut Self) -> Result<T, E>;
+        F: FnOnce(&mut TextualizeScope<'_>) -> Result<T, E>;
 
+    fn textual_source(&self) -> SourceText;
+}
+
+/// Recursive realization available only inside a driver-owned live scope.
+///
+/// ```compile_fail
+/// use protos::{Block, RealizeScope, RealizeScoping, WalkFault};
+/// fn lie(scope: &mut RealizeScope<'_>, block: &Block) -> Result<(), WalkFault> {
+///     scope.realize_body(block, 12, &mut |_, _| Ok(()))?;
+///     Ok(())
+/// }
+/// ```
+pub trait RealizeScoping {
+    fn realize_body<T, E, F>(&mut self, parent: &Block, dialect: &mut F) -> Result<Vec<T>, E>
+    where
+        E: From<WalkFault>,
+        F: FnMut(&mut RealizeScope<'_>, &Block) -> Result<T, E>;
+}
+
+/// Safe dialect emission within a driver-owned live output scope.
+pub trait TextualizeScoping {
     fn textualize_block<T, E, F>(
         &mut self,
         shape: Shape,
@@ -197,10 +230,30 @@ pub trait TextualizeDriving {
     ) -> Result<T, E>
     where
         E: From<WalkFault>,
-        F: FnOnce(&mut Self) -> Result<T, E>;
+        F: FnOnce(&mut TextualizeScope<'_>) -> Result<T, E>;
 
-    fn emit_text(&mut self, text: &str);
-    fn textual_source(&self) -> SourceText;
+    fn emit_scalar(&mut self, text: &str);
+}
+
+trait ShapeHeading {
+    fn accepts_head(&self, head: Option<&Head>) -> bool;
+}
+
+impl ShapeHeading for Shape {
+    fn accepts_head(&self, head: Option<&Head>) -> bool {
+        matches!(
+            (self, head),
+            (Shape::DottedCurlyQuoted, Some(_))
+                | (Shape::DottedParenthesized, Some(_))
+                | (Shape::DottedSquareBracketed, Some(_))
+                | (Shape::DottedBraced, Some(_))
+                | (Shape::Bare, None)
+                | (Shape::CurlyQuoted, None)
+                | (Shape::Parenthesized, None)
+                | (Shape::SquareBracketed, None)
+                | (Shape::Braced, None)
+        )
+    }
 }
 
 /// Read-only cursor evidence recorded by either direction driver.
@@ -307,55 +360,63 @@ impl RealizeDriving for RealizeWalk {
     fn realize_source<T, E, F>(&mut self, source: &SourceText, mut dialect: F) -> Result<Vec<T>, E>
     where
         E: From<WalkFault>,
-        F: FnMut(&mut Self, &Block) -> Result<T, E>,
+        F: FnMut(&mut RealizeScope<'_>, &Block) -> Result<T, E>,
     {
         if self.is_faulted() {
             return Err(E::from(WalkFault::FaultedWalk));
         }
         self.enter(Shape::Bare, 0..source.0.len());
-        let result = self.realize_body(source, 0, &mut dialect);
+        let root = Block {
+            head: None,
+            shape: Shape::Bare,
+            body: source.clone(),
+            string_carrier: None,
+            body_span: 0..source.0.len(),
+            span: 0..source.0.len(),
+        };
+        let mut scope = RealizeScope { driver: self };
+        let result = scope.realize_body(&root, &mut dialect);
         match result {
             Ok(values) => {
-                self.structural.finish(0..source.0.len());
-                self.close();
+                scope.driver.structural.finish(0..source.0.len());
+                scope.driver.close();
                 Ok(values)
             }
             Err(error) => {
-                self.fail();
+                scope.driver.fail();
                 Err(error)
             }
         }
     }
+}
 
-    fn realize_body<T, E, F>(
-        &mut self,
-        source: &SourceText,
-        origin: usize,
-        dialect: &mut F,
-    ) -> Result<Vec<T>, E>
+impl RealizeScoping for RealizeScope<'_> {
+    fn realize_body<T, E, F>(&mut self, parent: &Block, dialect: &mut F) -> Result<Vec<T>, E>
     where
         E: From<WalkFault>,
-        F: FnMut(&mut Self, &Block) -> Result<T, E>,
+        F: FnMut(&mut RealizeScope<'_>, &Block) -> Result<T, E>,
     {
-        if self.is_faulted() {
+        if self.driver.is_faulted() {
             return Err(E::from(WalkFault::FaultedWalk));
         }
         let mut values = Vec::new();
-        for mut block in source.blocks().map_err(E::from)? {
-            block.span = (origin + block.span.start)..(origin + block.span.end);
-            block.body_span = (origin + block.body_span.start)..(origin + block.body_span.end);
-            self.enter(block.shape, block.span.clone());
-            self.source_cursor = block.span.end;
+        for mut block in parent.body.blocks().map_err(E::from)? {
+            block.span = (parent.body_span.start + block.span.start)
+                ..(parent.body_span.start + block.span.end);
+            block.body_span = (parent.body_span.start + block.body_span.start)
+                ..(parent.body_span.start + block.body_span.end);
+            self.driver.enter(block.shape, block.span.clone());
+            self.driver.source_cursor = block.span.end;
             match dialect(self, &block) {
                 Ok(value) => {
-                    self.close();
-                    self.resume();
-                    self.source_cursor = block.span.end;
+                    self.driver.close();
+                    self.driver.resume();
+                    self.driver.source_cursor = block.span.end;
                     values.push(value);
                 }
                 Err(error) => {
-                    self.close();
-                    self.fail();
+                    self.driver.close();
+                    self.driver.fail();
                     return Err(error);
                 }
             }
@@ -372,7 +433,7 @@ impl TextualizeDriving for TextualizeWalk {
                     block.shape,
                     block.head.as_ref(),
                     |body| {
-                        body.emit_text(&block.body.0);
+                        body.emit_scalar(&block.body.0);
                         Ok(())
                     },
                 )?;
@@ -388,7 +449,7 @@ impl TextualizeDriving for TextualizeWalk {
     fn textualize_source<T, E, F>(&mut self, dialect: F) -> Result<T, E>
     where
         E: From<WalkFault>,
-        F: FnOnce(&mut Self) -> Result<T, E>,
+        F: FnOnce(&mut TextualizeScope<'_>) -> Result<T, E>,
     {
         if self.is_faulted() {
             return Err(E::from(WalkFault::FaultedWalk));
@@ -396,20 +457,31 @@ impl TextualizeDriving for TextualizeWalk {
         self.output = SourceText(String::new());
         self.emission_cursor = 0;
         self.enter(Shape::Bare, 0..0);
-        match dialect(self) {
+        let mut scope = TextualizeScope { driver: self };
+        match dialect(&mut scope) {
             Ok(value) => {
-                self.structural.finish(0..self.output.0.len());
-                self.emission_cursor = self.output.0.len();
-                self.close();
+                scope
+                    .driver
+                    .structural
+                    .finish(0..scope.driver.output.0.len());
+                scope.driver.emission_cursor = scope.driver.output.0.len();
+                scope.driver.close();
                 Ok(value)
             }
             Err(error) => {
-                self.fail();
+                scope.driver.close();
+                scope.driver.fail();
                 Err(error)
             }
         }
     }
 
+    fn textual_source(&self) -> SourceText {
+        self.output.clone()
+    }
+}
+
+impl TextualizeScoping for TextualizeScope<'_> {
     fn textualize_block<T, E, F>(
         &mut self,
         shape: Shape,
@@ -418,18 +490,21 @@ impl TextualizeDriving for TextualizeWalk {
     ) -> Result<T, E>
     where
         E: From<WalkFault>,
-        F: FnOnce(&mut Self) -> Result<T, E>,
+        F: FnOnce(&mut TextualizeScope<'_>) -> Result<T, E>,
     {
-        if self.is_faulted() {
+        if self.driver.is_faulted() {
             return Err(E::from(WalkFault::FaultedWalk));
         }
-        if self.position() != 0 {
-            self.emit_text(" ");
+        if !shape.accepts_head(head) {
+            return Err(E::from(WalkFault::InvalidHead));
         }
-        let start = self.output.0.len();
+        if self.driver.position() != 0 {
+            self.emit_scalar(" ");
+        }
+        let start = self.driver.output.0.len();
         if let Some(head) = head {
-            self.emit_text(&head.0);
-            self.emit_text(".");
+            self.emit_scalar(&head.0);
+            self.emit_scalar(".");
         }
         let delimiters = match shape {
             Shape::Bare => (None, None),
@@ -439,37 +514,33 @@ impl TextualizeDriving for TextualizeWalk {
             Shape::Braced | Shape::DottedBraced => (Some('{'), Some('}')),
         };
         if let Some(opening) = delimiters.0 {
-            self.emit_text(&opening.to_string());
+            self.emit_scalar(&opening.to_string());
         }
-        self.enter(shape, start..start);
+        self.driver.enter(shape, start..start);
         match dialect(self) {
             Ok(value) => {
                 if let Some(closing) = delimiters.1 {
-                    self.emit_text(&closing.to_string());
+                    self.emit_scalar(&closing.to_string());
                 }
-                let end = self.output.0.len();
-                self.structural.finish(start..end);
-                self.emission_cursor = end;
-                self.close();
-                self.resume();
+                let end = self.driver.output.0.len();
+                self.driver.structural.finish(start..end);
+                self.driver.emission_cursor = end;
+                self.driver.close();
+                self.driver.resume();
                 Ok(value)
             }
             Err(error) => {
-                self.close();
-                self.fail();
+                self.driver.close();
+                self.driver.fail();
                 Err(error)
             }
         }
     }
 
-    fn emit_text(&mut self, text: &str) {
-        if !self.is_faulted() {
-            self.output.0.push_str(text);
-            self.emission_cursor = self.output.0.len();
+    fn emit_scalar(&mut self, text: &str) {
+        if !self.driver.is_faulted() {
+            self.driver.output.0.push_str(text);
+            self.driver.emission_cursor = self.driver.output.0.len();
         }
-    }
-
-    fn textual_source(&self) -> SourceText {
-        self.output.clone()
     }
 }

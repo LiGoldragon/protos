@@ -10,7 +10,7 @@ use crate::{
 pub struct Head(pub String);
 
 /// Text as data before a dialect gives it a real type.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SourceText(pub String);
 
 /// The string forms whose lexical opacity is universally known.
@@ -28,6 +28,9 @@ pub struct Block {
     pub shape: Shape,
     pub body: SourceText,
     pub string_carrier: Option<StringCarrier>,
+    /// The UTF-8 extent of the body within the source that produced this block.
+    /// A driver rebases this extent when it scans a nested body from a root source.
+    pub body_span: Range<usize>,
     pub span: Range<usize>,
 }
 
@@ -163,6 +166,7 @@ impl Scanning for BlockScanner {
                 Some('(') => {
                     self.require_delimited_prefix(&prefix, dotted)?;
                     index += 1;
+                    let body_start = index;
                     let (body, next) = self.parenthesized(&characters, index)?;
                     blocks.push(Block {
                         head,
@@ -173,6 +177,7 @@ impl Scanning for BlockScanner {
                         },
                         body: SourceText(body.clone()),
                         string_carrier: Some(StringCarrier::Parenthesized(body)),
+                        body_span: byte_offsets[body_start]..byte_offsets[next - 1],
                         span: byte_offsets[start]..byte_offsets[next],
                     });
                     index = next;
@@ -180,6 +185,7 @@ impl Scanning for BlockScanner {
                 Some('“') => {
                     self.require_delimited_prefix(&prefix, dotted)?;
                     index += 1;
+                    let body_start = index;
                     let (body, next) = self.curly_quoted(&characters, index)?;
                     blocks.push(Block {
                         head,
@@ -190,6 +196,7 @@ impl Scanning for BlockScanner {
                         },
                         body: SourceText(body.clone()),
                         string_carrier: Some(StringCarrier::CurlyQuoted(body)),
+                        body_span: byte_offsets[body_start]..byte_offsets[next - 1],
                         span: byte_offsets[start]..byte_offsets[next],
                     });
                     index = next;
@@ -197,6 +204,7 @@ impl Scanning for BlockScanner {
                 Some('[') => {
                     self.require_delimited_prefix(&prefix, dotted)?;
                     index += 1;
+                    let body_start = index;
                     let (body, next) =
                         self.structural(&characters, index, '[', ']', Shape::SquareBracketed)?;
                     blocks.push(Block {
@@ -208,6 +216,7 @@ impl Scanning for BlockScanner {
                         },
                         body: SourceText(body),
                         string_carrier: None,
+                        body_span: byte_offsets[body_start]..byte_offsets[next - 1],
                         span: byte_offsets[start]..byte_offsets[next],
                     });
                     index = next;
@@ -215,6 +224,7 @@ impl Scanning for BlockScanner {
                 Some('{') => {
                     self.require_delimited_prefix(&prefix, dotted)?;
                     index += 1;
+                    let body_start = index;
                     let (body, next) =
                         self.structural(&characters, index, '{', '}', Shape::Braced)?;
                     blocks.push(Block {
@@ -226,6 +236,7 @@ impl Scanning for BlockScanner {
                         },
                         body: SourceText(body),
                         string_carrier: None,
+                        body_span: byte_offsets[body_start]..byte_offsets[next - 1],
                         span: byte_offsets[start]..byte_offsets[next],
                     });
                     index = next;
@@ -242,6 +253,7 @@ impl Scanning for BlockScanner {
                         shape: Shape::Bare,
                         body: SourceText(prefix.clone()),
                         string_carrier: Some(StringCarrier::Bare(prefix)),
+                        body_span: byte_offsets[start]..byte_offsets[index],
                         span: byte_offsets[start]..byte_offsets[index],
                     });
                 }

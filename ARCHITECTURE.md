@@ -28,7 +28,17 @@ cannot consume a block body. A selected dialect type owns the next context;
 the walk keeps the parent's frame untouched until the child closes, then
 resumes the parent exactly once.
 
-The first pass is lexical. All block extents and driver cursors are UTF-8 byte
+`RealizeDriving::realize_source` alone opens the synthetic document frame;
+`realize_body` works within a live parent. For every scanned child, the driver
+enters the neutral walk, calls the dialect with that lexical `Block`, then
+closes and resumes itself. `TextualizeDriving::textualize_source` likewise
+owns the document frame, while `textualize_block` alone emits Head and
+delimiters, scopes the dialect body callback, records the actual output span,
+and closes/resumes. Dialect callbacks never receive frame mutation authority.
+On a callback failure the active scope closes without a false resume and the
+driver is faulted rather than silently reused.
+
+The first pass is lexical. All block and body extents and driver cursors are UTF-8 byte
 offsets; `SourceSlicing` is the safe access capability. Parenthesized and curly-quoted string carriers keep
 their interiors opaque to other delimiters; parentheses balance until their
 final unbalanced closer. Interpretation of those interiors is a dialect seam.

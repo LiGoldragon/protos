@@ -77,6 +77,54 @@ fn first_pass_recognises_ruled_structural_blocks_and_heads() {
 }
 
 #[test]
+fn structural_blocks_keep_nested_ruled_parenthesis_strings_opaque() {
+    let source = SourceText(
+        "Group.{ (Deep } ] “quote) [ Note.tail ] Map.[ remark.(child sees } ] and (nested markup) only as text) ] }".into(),
+    );
+    let group = source.blocks().expect("whole Group block").remove(0);
+    assert_eq!(group.shape, Shape::DottedBraced);
+    assert_eq!(group.head().expect("Group head").0, "Group");
+    assert_eq!(group.textualize(), source);
+
+    let contents = group.body.blocks().expect("Group contents");
+    assert_eq!(contents.len(), 3);
+    assert_eq!(contents[0].shape, Shape::Parenthesized);
+    assert_eq!(
+        contents[0].string_carrier,
+        Some(StringCarrier::Parenthesized("Deep } ] “quote".into()))
+    );
+    assert_eq!(contents[1].shape, Shape::SquareBracketed);
+    assert_eq!(contents[2].shape, Shape::DottedSquareBracketed);
+    assert_eq!(contents[2].head().expect("Map head").0, "Map");
+
+    let map_contents = contents[2].body.blocks().expect("Map contents");
+    assert_eq!(map_contents.len(), 1);
+    assert_eq!(map_contents[0].shape, Shape::DottedParenthesized);
+    assert_eq!(map_contents[0].head().expect("remark head").0, "remark");
+    assert_eq!(
+        map_contents[0].string_carrier,
+        Some(StringCarrier::Parenthesized(
+            "child sees } ] and (nested markup) only as text".into()
+        ))
+    );
+}
+
+#[test]
+fn structural_blocks_keep_escaped_unbalanced_parentheses_inside_strings() {
+    let source = SourceText("Group.{ remark.(a lone \\( remains text) }".into());
+    let group = source.blocks().expect("Group").remove(0);
+    assert_eq!(group.textualize(), source);
+    let remark = group.body.blocks().expect("content").remove(0);
+    assert_eq!(remark.shape, Shape::DottedParenthesized);
+    assert_eq!(
+        remark.string_carrier,
+        Some(StringCarrier::Parenthesized(
+            "a lone \\( remains text".into()
+        ))
+    );
+}
+
+#[test]
 fn shape_definition_only_selects() {
     let selection = Example {
         selection: ExampleSelection::Bare,

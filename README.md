@@ -25,7 +25,9 @@ owns its own context and interior. The substrate does not define Datom,
 Meaning, Signal, storage, a daemon, or a component vocabulary.
 
 The first pass retains block bodies and UTF-8 byte extents, not inter-block
-trivia. `TextualizeWalk` emits one space between adjacent blocks: its result is
+trivia. Parenthesis and curly-quote strings remain opaque inside every
+brace/square structural block until their own balance-aware close.
+`TextualizeWalk` emits one space between adjacent blocks: its result is
 canonical block projection, not a byte-identical source formatter.
 
 ## Validation

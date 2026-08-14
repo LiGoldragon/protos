@@ -364,6 +364,15 @@ impl DelimiterScanning for BlockScanner {
                     body.push('”');
                     index = next - 1;
                 }
+                '(' => {
+                    let parenthesis_start = index + 1;
+                    let (parenthesized, next) =
+                        self.parenthesized(characters, parenthesis_start)?;
+                    body.push('(');
+                    body.push_str(&parenthesized);
+                    body.push(')');
+                    index = next - 1;
+                }
                 character if character == opening => {
                     depth += 1;
                     body.push(character);

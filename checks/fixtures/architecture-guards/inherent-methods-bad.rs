@@ -1,9 +1,14 @@
-struct Subject {
-    value: u8,
+struct Subject<T> {
+    value: T,
 }
 
-impl Subject {
-    fn method(&self) -> u8 {
-        self.value
+impl<T> Subject<T>
+where
+    T: for<'a> Bound<'a>,
+{
+    fn method(&self) -> &T {
+        &self.value
     }
 }
+
+trait Bound<'a> {}

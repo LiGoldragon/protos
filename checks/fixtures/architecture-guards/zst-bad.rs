@@ -12,3 +12,7 @@ impl Acts for Empty {
 impl Acts for Tuple {
     fn act(&self) {}
 }
+
+impl Acts for (Empty) {
+    fn act(&self) {}
+}

@@ -7,3 +7,5 @@ mod nested {
     #[inline]
     pub(crate) async unsafe fn inline_nested() {}
 }
+
+extern "C" fn external_function() {}

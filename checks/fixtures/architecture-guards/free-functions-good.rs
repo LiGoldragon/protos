@@ -1,4 +1,5 @@
 struct Holder;
+type Callback = extern "C" fn(u8);
 
 trait Methods {
     fn method(&self);

@@ -146,11 +146,20 @@ def matching(tokens_: list[Token]) -> dict[int, int]:
     return pairs
 
 
+def _is_function_pointer(tokens_: list[Token], index: int) -> bool:
+    for token in reversed(tokens_[:index]):
+        if token.value in {";", "{", "}"}:
+            return False
+        if token.value == "=":
+            return True
+    return False
+
+
 def scope_violations(tokens_: list[Token]) -> list[str]:
     violations: list[str] = []
     scopes: list[str] = []
     pending: str | None = None
-    for token in tokens_:
+    for index, token in enumerate(tokens_):
         value = token.value
         if value in {"trait", "impl", "fn", "mod"}:
             pending = value
@@ -163,7 +172,7 @@ def scope_violations(tokens_: list[Token]) -> list[str]:
             pending = None
         elif value == ";":
             pending = None
-        if value == "fn":
+        if value == "fn" and not _is_function_pointer(tokens_, index):
             nearest = next((scope for scope in reversed(scopes) if scope != "block"), None)
             if nearest not in {"trait", "impl"}:
                 violations.append(f"line {token.line}: free function")
@@ -177,21 +186,49 @@ def inherent_violations(tokens_: list[Token]) -> list[str]:
         if tokens_[index].value != "impl":
             index += 1
             continue
-        has_for = False
         end = index + 1
         while end < len(tokens_) and tokens_[end].value not in {"{", ";"}:
-            has_for |= tokens_[end].value == "for"
             end += 1
-        if end < len(tokens_) and tokens_[end].value == "{" and not has_for:
+        angle = paren = bracket = 0
+        has_trait_for = False
+        for token in tokens_[index + 1 : end]:
+            if token.value == "where" and not (angle or paren or bracket):
+                break
+            if token.value == "for" and not (angle or paren or bracket):
+                has_trait_for = True
+            elif token.value == "<":
+                angle += 1
+            elif token.value == ">" and angle:
+                angle -= 1
+            elif token.value == "(":
+                paren += 1
+            elif token.value == ")" and paren:
+                paren -= 1
+            elif token.value == "[":
+                bracket += 1
+            elif token.value == "]" and bracket:
+                bracket -= 1
+        if end < len(tokens_) and tokens_[end].value == "{" and not has_trait_for:
             violations.append(f"line {tokens_[index].line}: inherent impl")
         index = end
     return violations
 
 
+def _matching_angle(tokens_: list[Token], start: int) -> int | None:
+    depth = 0
+    for index in range(start, len(tokens_)):
+        if tokens_[index].value == "<":
+            depth += 1
+        elif tokens_[index].value == ">" and depth:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
 def zst_violations(tokens_: list[Token]) -> list[str]:
     pairs = matching(tokens_)
     zst_names: set[str] = set()
-    declarations: list[tuple[str, int]] = []
     index = 0
     while index < len(tokens_):
         if tokens_[index].value != "struct" or index + 1 >= len(tokens_):
@@ -211,7 +248,6 @@ def zst_violations(tokens_: list[Token]) -> list[str]:
             empty = pairs[marker] == marker + 1
         if empty:
             zst_names.add(name)
-            declarations.append((name, tokens_[index].line))
         index = marker + 1
 
     violations: list[str] = []
@@ -231,7 +267,7 @@ def zst_violations(tokens_: list[Token]) -> list[str]:
             )
             target = header[for_index + 1 :] if for_index is not None else header
             if for_index is None and target and target[0].value == "<":
-                generic_end = pairs.get(index + 1)
+                generic_end = _matching_angle(tokens_, index + 1)
                 if generic_end is not None:
                     target = tokens_[generic_end + 1 : end]
             target = target[: next(
@@ -240,7 +276,7 @@ def zst_violations(tokens_: list[Token]) -> list[str]:
             )]
             path = []
             for token in target:
-                if token.value in {"<", "(", "["}:
+                if token.value in {"<", "["}:
                     break
                 if token.value.isidentifier() and token.value not in {"dyn", "const", "unsafe"}:
                     path.append(token)
@@ -254,7 +290,7 @@ def zst_violations(tokens_: list[Token]) -> list[str]:
 
 
 FORBIDDEN = re.compile(
-    r"(?<![A-Za-z0-9_])(archive|code|encode|decode|codec|transcode)(?![A-Za-z0-9_])",
+    r"(?<!\w)(archive|code|encode|decode|codec|transcode)(?!\w)",
     re.IGNORECASE,
 )
 
@@ -271,29 +307,48 @@ GUARDS = {
 }
 
 
+def scan_source(guard: str, source: str) -> list[str]:
+    return GUARDS[guard](source)
+
+
 def scan_path(guard: str, path: Path) -> list[str]:
-    return GUARDS[guard](path.read_text(encoding="utf-8"))
+    return scan_source(guard, path.read_text(encoding="utf-8"))
 
 
 def production_failures(source_root: Path, guard: str) -> list[str]:
+    paths = sorted(source_root.rglob("*.rs"))
+    if guard == "zst-behavior":
+        source = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+        return [f"{source_root}: {failure}" for failure in scan_source(guard, source)]
     failures: list[str] = []
-    for path in sorted(source_root.rglob("*.rs")):
+    for path in paths:
         failures.extend(f"{path}: {failure}" for failure in scan_path(guard, path))
     return failures
 
 
-def fixture_failures(fixtures: Path) -> list[str]:
+def fixture_failures(fixtures: Path, selected_guard: str | None = None) -> list[str]:
     failures: list[str] = []
     names = {
-        "free-functions": ("free-functions", 5),
+        "free-functions": ("free-functions", 6),
         "inherent-methods": ("inherent-methods", 1),
-        "zst-behavior": ("zst", 2),
+        "zst-behavior": ("zst", 4),
         "forbidden-vocabulary": ("vocabulary", 7),
     }
+    if selected_guard is not None:
+        names = {selected_guard: names[selected_guard]}
     for guard, (stem, minimum_bad_matches) in names.items():
-        bad = fixtures / f"{stem}-bad.rs"
         good = fixtures / f"{stem}-good.rs"
-        bad_failures = scan_path(guard, bad)
+        if guard == "zst-behavior":
+            bad_paths = [
+                fixtures / "zst-bad.rs",
+                fixtures / "zst-cross-file-decl.rs",
+                fixtures / "zst-cross-file-impl.rs",
+            ]
+            bad_source = "\n".join(path.read_text(encoding="utf-8") for path in bad_paths)
+            bad_failures = scan_source(guard, bad_source)
+        else:
+            bad = fixtures / f"{stem}-bad.rs"
+            bad_failures = scan_path(guard, bad)
         good_failures = scan_path(guard, good)
         if len(bad_failures) < minimum_bad_matches:
             failures.append(
@@ -318,7 +373,8 @@ def main(arguments: list[str]) -> int:
         if arguments[3] != "--guard" or arguments[4] not in GUARDS:
             print("unknown guard", file=sys.stderr)
             return 2
-        failures = production_failures(source_root, arguments[4])
+        failures = fixture_failures(fixture_root, arguments[4])
+        failures.extend(production_failures(source_root, arguments[4]))
     else:
         failures = fixture_failures(fixture_root)
         failures.extend(

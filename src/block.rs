@@ -340,11 +340,11 @@ impl DelimiterScanning for BlockScanner {
         &self,
         characters: &[char],
         start: usize,
-        opening: char,
+        _opening: char,
         closing: char,
         shape: Shape,
     ) -> Result<(String, usize), WalkFault> {
-        let mut depth = 0;
+        let mut closers = vec![closing];
         let mut body = String::new();
         let mut index = start;
         while index < characters.len() {
@@ -371,13 +371,19 @@ impl DelimiterScanning for BlockScanner {
                     body.push(')');
                     index = next - 1;
                 }
-                character if character == opening => {
-                    depth += 1;
-                    body.push(character);
+                '{' => {
+                    closers.push('}');
+                    body.push('{');
                 }
-                character if character == closing && depth == 0 => return Ok((body, index + 1)),
-                character if character == closing => {
-                    depth -= 1;
+                '[' => {
+                    closers.push(']');
+                    body.push('[');
+                }
+                character if closers.last() == Some(&character) => {
+                    closers.pop();
+                    if closers.is_empty() {
+                        return Ok((body, index + 1));
+                    }
                     body.push(character);
                 }
                 character => body.push(character),

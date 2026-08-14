@@ -102,6 +102,29 @@ fn structural_blocks_keep_nested_ruled_parenthesis_strings_opaque() {
 }
 
 #[test]
+fn structural_blocks_balance_cross_nested_braces_and_squares() {
+    let source =
+        SourceText("Outer.{ [Inner.{(} stays string) {x}}] Tail.[ {y] stays string} ] }".into());
+    let outer = source.blocks().expect("outer").remove(0);
+    assert_eq!(outer.shape, Shape::DottedBraced);
+    assert_eq!(outer.head().expect("Outer head").0, "Outer");
+    assert_eq!(outer.textualize(), source);
+
+    let body = outer.body.blocks().expect("Outer body");
+    assert_eq!(body[0].shape, Shape::SquareBracketed);
+    assert_eq!(body[0].head(), None);
+    let square_contents = body[0].body.blocks().expect("square contents");
+    assert_eq!(square_contents[0].shape, Shape::DottedBraced);
+    assert_eq!(square_contents[0].head().expect("Inner head").0, "Inner");
+
+    assert_eq!(body[1].shape, Shape::DottedSquareBracketed);
+    assert_eq!(body[1].head().expect("Tail head").0, "Tail");
+    let tail_contents = body[1].body.blocks().expect("tail contents");
+    assert_eq!(tail_contents[0].shape, Shape::Braced);
+    assert_eq!(tail_contents[0].head(), None);
+}
+
+#[test]
 fn structural_blocks_keep_escaped_unbalanced_parentheses_inside_strings() {
     let source = SourceText("Group.{ remark.(a lone \\( remains text) }".into());
     let group = source.blocks().expect("Group").remove(0);

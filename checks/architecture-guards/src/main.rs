@@ -78,6 +78,8 @@ struct Corpus {
     units: Vec<Unit>,
     sources: BTreeMap<PathBuf, String>,
     loaded_files: HashSet<PathBuf>,
+    loaded_modules: HashSet<(PathBuf, Vec<String>)>,
+    active_files: HashSet<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -136,7 +138,11 @@ impl Corpus {
         let path = path
             .canonicalize()
             .map_err(|error| format!("{}: {error}", path.display()))?;
-        if !self.loaded_files.insert(path.clone()) {
+        if !self.loaded_modules.insert((path.clone(), module.clone())) {
+            return Ok(());
+        }
+        self.loaded_files.insert(path.clone());
+        if !self.active_files.insert(path.clone()) {
             return Ok(());
         }
         let source =
@@ -144,7 +150,9 @@ impl Corpus {
         let syntax =
             syn::parse_file(&source).map_err(|error| format!("{}: {error}", path.display()))?;
         self.sources.insert(path.clone(), source);
-        self.add_items(path, module, syntax.items)
+        let result = self.add_items(path.clone(), module, syntax.items);
+        self.active_files.remove(&path);
+        result
     }
 
     fn add_items(&mut self, file: PathBuf, module: Vec<String>, items: Vec<Item>) -> Result<()> {
@@ -547,12 +555,18 @@ impl<'a> Resolver<'a> {
             visiting.remove(&key);
             return result;
         }
+        // A local item binding wins over a glob import, even when the local
+        // item is data and therefore cannot itself resolve to a ZST.
+        if self.local_item_names(module).contains(name) {
+            visiting.remove(&key);
+            return None;
+        }
         let glob_paths = self.globs.get(module).cloned().unwrap_or_default();
         for glob in glob_paths {
             let Some(target_module) = self.resolve_module_path(module, &glob) else {
                 continue;
             };
-            if !self.public_names(&target_module).contains(name) {
+            if !self.public_names(&target_module, module).contains(name) {
                 continue;
             }
             if let Some(result) = self.resolve_binding(&target_module, name, visiting) {
@@ -615,18 +629,73 @@ impl<'a> Resolver<'a> {
         None
     }
 
-    fn public_names(&self, module: &[String]) -> BTreeSet<String> {
+    fn public_names(&self, module: &[String], importer: &[String]) -> BTreeSet<String> {
+        self.exported_names(module, importer, &mut BTreeSet::new())
+    }
+
+    fn exported_names(
+        &self,
+        module: &[String],
+        importer: &[String],
+        visiting: &mut BTreeSet<Vec<String>>,
+    ) -> BTreeSet<String> {
+        if !visiting.insert(module.to_vec()) {
+            return BTreeSet::new();
+        }
+        let mut names = BTreeSet::new();
+        for unit in self
+            .corpus
+            .units
+            .iter()
+            .filter(|unit| unit.module == module)
+        {
+            for item in &unit.items {
+                match item {
+                    Item::Struct(item_struct)
+                        if is_visible_from(&item_struct.vis, module, importer) =>
+                    {
+                        names.insert(ident_name(&item_struct.ident));
+                    }
+                    Item::Type(item_type) if is_visible_from(&item_type.vis, module, importer) => {
+                        names.insert(ident_name(&item_type.ident));
+                    }
+                    Item::Use(item_use) if is_visible_from(&item_use.vis, module, importer) => {
+                        let mut named = Vec::new();
+                        let mut globs = Vec::new();
+                        collect_use_tree(&item_use.tree, &mut Vec::new(), &mut named, &mut globs);
+                        names.extend(named.into_iter().map(|(name, _)| name));
+                        for glob in globs {
+                            if let Some(target) = self.resolve_module_path(module, &glob) {
+                                names.extend(self.exported_names(&target, importer, visiting));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        visiting.remove(module);
+        names
+    }
+
+    fn local_item_names(&self, module: &[String]) -> BTreeSet<String> {
         self.corpus
             .units
             .iter()
             .filter(|unit| unit.module == module)
             .flat_map(|unit| {
                 unit.items.iter().filter_map(|item| match item {
-                    Item::Struct(item_struct) if is_public(&item_struct.vis) => {
-                        Some(ident_name(&item_struct.ident))
-                    }
-                    Item::Type(item_type) if is_public(&item_type.vis) => {
-                        Some(ident_name(&item_type.ident))
+                    Item::Enum(item) => Some(ident_name(&item.ident)),
+                    Item::Struct(item) => Some(ident_name(&item.ident)),
+                    Item::Trait(item) => Some(ident_name(&item.ident)),
+                    Item::TraitAlias(item) => Some(ident_name(&item.ident)),
+                    Item::Type(item) => Some(ident_name(&item.ident)),
+                    Item::Union(item) => Some(ident_name(&item.ident)),
+                    Item::Use(item) => {
+                        let mut named = Vec::new();
+                        let mut globs = Vec::new();
+                        collect_use_tree(&item.tree, &mut Vec::new(), &mut named, &mut globs);
+                        named.into_iter().map(|(name, _)| name).next()
                     }
                     _ => None,
                 })
@@ -672,8 +741,17 @@ fn collect_use_tree(
             named.push((ident_name(&name.ident), PathRef { segments: path }));
         }
         UseTree::Rename(rename) => {
-            let mut path = prefix.clone();
-            path.push(ident_name(&rename.ident));
+            let path = if ident_name(&rename.ident) == "self" {
+                if prefix.is_empty() {
+                    vec!["self".to_owned()]
+                } else {
+                    prefix.clone()
+                }
+            } else {
+                let mut path = prefix.clone();
+                path.push(ident_name(&rename.ident));
+                path
+            };
             named.push((ident_name(&rename.rename), PathRef { segments: path }));
         }
         UseTree::Glob(_) => globs.push(PathRef {
@@ -687,8 +765,41 @@ fn collect_use_tree(
     }
 }
 
-fn is_public(visibility: &syn::Visibility) -> bool {
-    matches!(visibility, syn::Visibility::Public(_))
+fn is_visible_from(
+    visibility: &syn::Visibility,
+    defined_module: &[String],
+    importing_module: &[String],
+) -> bool {
+    match visibility {
+        syn::Visibility::Public(_) => true,
+        syn::Visibility::Inherited => importing_module.starts_with(defined_module),
+        syn::Visibility::Restricted(restricted) => {
+            let segments = restricted
+                .path
+                .segments
+                .iter()
+                .map(|segment| ident_name(&segment.ident))
+                .collect::<Vec<_>>();
+            let first = segments.first().map(String::as_str);
+            let mut scope = match first {
+                Some("crate") => Vec::new(),
+                Some("self") => defined_module.to_vec(),
+                Some("super") => {
+                    let mut scope = defined_module.to_vec();
+                    scope.pop();
+                    scope
+                }
+                _ => return false,
+            };
+            let start = if matches!(first, Some("crate" | "self" | "super")) {
+                1
+            } else {
+                0
+            };
+            scope.extend(segments.into_iter().skip(start));
+            importing_module.starts_with(&scope)
+        }
+    }
 }
 
 fn vocabulary_issues(corpus: &Corpus) -> Vec<Issue> {
@@ -792,7 +903,7 @@ fn run_guard(production: &Corpus, fixtures: &Path, guard: Guard) -> Vec<String> 
     };
     let bad_issues = check_guard(&bad, guard);
     let minimum_bad_matches = match guard {
-        Guard::ZstBehavior => 9,
+        Guard::ZstBehavior => 14,
         _ => 1,
     };
     if bad_issues.len() < minimum_bad_matches {

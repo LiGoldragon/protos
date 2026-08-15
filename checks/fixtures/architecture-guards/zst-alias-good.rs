@@ -27,5 +27,24 @@ impl Behavior for Data {
     fn act(&self) {}
 }
 
+mod shadow_source {
+    pub struct Node;
+}
+
+use shadow_source::*;
+struct Node {
+    value: u8,
+}
+
+impl Behavior for Node {
+    fn act(&self) {}
+}
+
 #[path = "zst-alias-good-child.rs"]
 mod attributed;
+
+#[path = "zst-alias-repeated-good-child.rs"]
+mod first_instance;
+
+#[path = "zst-alias-repeated-good-child.rs"]
+mod second_instance;

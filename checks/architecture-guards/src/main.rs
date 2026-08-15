@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use syn::{Item, ItemStruct, Type};
+use syn::{Expr, ExprLit, Item, ItemStruct, Lit, Meta, Type, UseTree};
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -50,6 +50,21 @@ impl Guard {
 struct TypeKey {
     module: Vec<String>,
     name: String,
+}
+
+#[derive(Clone, Debug)]
+struct PathRef {
+    segments: Vec<String>,
+}
+
+struct Resolver<'a> {
+    corpus: &'a Corpus,
+    zsts: BTreeSet<TypeKey>,
+    aliases: BTreeMap<TypeKey, PathRef>,
+    imports: BTreeMap<TypeKey, PathRef>,
+    module_aliases: BTreeMap<TypeKey, PathRef>,
+    globs: BTreeMap<Vec<String>, Vec<PathRef>>,
+    modules: BTreeSet<Vec<String>>,
 }
 
 struct Unit {
@@ -173,18 +188,28 @@ fn module_children(
         if let Some((_, inline_items)) = &item_mod.content {
             children.push((child_module, ModuleChild::Inline(inline_items.clone())));
         } else {
-            let path = external_module_file(file, &item_mod.ident)?;
+            let path = external_module_file(file, item_mod)?;
             children.push((child_module, ModuleChild::External(path)));
         }
     }
     Ok(children)
 }
 
-fn external_module_file(parent: &Path, ident: &syn::Ident) -> Result<PathBuf> {
-    let name = ident_name(ident);
+fn external_module_file(parent: &Path, item_mod: &syn::ItemMod) -> Result<PathBuf> {
+    let name = ident_name(&item_mod.ident);
     let parent_directory = parent
         .parent()
         .ok_or_else(|| format!("{} has no parent directory", parent.display()))?;
+    if let Some(path) = module_path_attribute(item_mod) {
+        let attributed = parent_directory.join(path);
+        if attributed.is_file() {
+            return Ok(attributed);
+        }
+        return Err(format!(
+            "{} attributes module `{name}` with missing path",
+            parent.display()
+        ));
+    }
     let parent_stem = parent.file_stem().and_then(|stem| stem.to_str());
     let directory = match parent_stem {
         Some("lib") | Some("main") | Some("mod") | None => parent_directory.to_path_buf(),
@@ -202,6 +227,25 @@ fn external_module_file(parent: &Path, ident: &syn::Ident) -> Result<PathBuf> {
         "{} declares missing module `{name}`",
         parent.display()
     ))
+}
+
+fn module_path_attribute(item_mod: &syn::ItemMod) -> Option<String> {
+    item_mod.attrs.iter().find_map(|attribute| {
+        if !attribute.path().is_ident("path") {
+            return None;
+        }
+        let Meta::NameValue(name_value) = &attribute.meta else {
+            return None;
+        };
+        let Expr::Lit(ExprLit {
+            lit: Lit::Str(path),
+            ..
+        }) = &name_value.value
+        else {
+            return None;
+        };
+        Some(path.value())
+    })
 }
 
 fn rust_files(root: &Path) -> Result<Vec<PathBuf>> {
@@ -304,22 +348,7 @@ fn inherent_impl_issues(corpus: &Corpus) -> Vec<Issue> {
 }
 
 fn zst_issues(corpus: &Corpus) -> Vec<Issue> {
-    let zsts = corpus
-        .units
-        .iter()
-        .flat_map(|unit| {
-            unit.items.iter().filter_map(|item| {
-                let Item::Struct(item_struct) = item else {
-                    return None;
-                };
-                is_zero_sized(item_struct).then(|| TypeKey {
-                    module: unit.module.clone(),
-                    name: ident_name(&item_struct.ident),
-                })
-            })
-        })
-        .collect::<BTreeSet<_>>();
-
+    let resolver = Resolver::new(corpus);
     corpus
         .units
         .iter()
@@ -328,7 +357,7 @@ fn zst_issues(corpus: &Corpus) -> Vec<Issue> {
                 let Item::Impl(item_impl) = item else {
                     return None;
                 };
-                let key = resolve_self_type(&unit.module, &item_impl.self_ty, &zsts)?;
+                let key = resolver.resolve_self_type(&unit.module, &item_impl.self_ty)?;
                 Some(Issue::new(
                     &unit.file,
                     format!("behavior attached to zero-sized `{}`", qualified_name(&key)),
@@ -346,68 +375,320 @@ fn is_zero_sized(item: &ItemStruct) -> bool {
     }
 }
 
-fn resolve_self_type(module: &[String], ty: &Type, zsts: &BTreeSet<TypeKey>) -> Option<TypeKey> {
-    match ty {
-        Type::Path(type_path) if type_path.qself.is_none() => {
-            resolve_path(module, &type_path.path, zsts)
+impl<'a> Resolver<'a> {
+    fn new(corpus: &'a Corpus) -> Self {
+        let modules = corpus
+            .units
+            .iter()
+            .map(|unit| unit.module.clone())
+            .collect::<BTreeSet<_>>();
+        let zsts = corpus
+            .units
+            .iter()
+            .flat_map(|unit| {
+                unit.items.iter().filter_map(|item| {
+                    let Item::Struct(item_struct) = item else {
+                        return None;
+                    };
+                    is_zero_sized(item_struct).then(|| TypeKey {
+                        module: unit.module.clone(),
+                        name: ident_name(&item_struct.ident),
+                    })
+                })
+            })
+            .collect::<BTreeSet<_>>();
+        let mut resolver = Self {
+            corpus,
+            zsts,
+            aliases: BTreeMap::new(),
+            imports: BTreeMap::new(),
+            module_aliases: BTreeMap::new(),
+            globs: BTreeMap::new(),
+            modules,
+        };
+
+        for unit in &corpus.units {
+            for item in &unit.items {
+                match item {
+                    Item::Type(item_type) if item_type.generics.params.is_empty() => {
+                        if let Some(path) = type_path_ref(&item_type.ty) {
+                            resolver.aliases.insert(
+                                TypeKey {
+                                    module: unit.module.clone(),
+                                    name: ident_name(&item_type.ident),
+                                },
+                                path,
+                            );
+                        }
+                    }
+                    Item::Use(item_use) => {
+                        let mut named = Vec::new();
+                        let mut globs = Vec::new();
+                        collect_use_tree(&item_use.tree, &mut Vec::new(), &mut named, &mut globs);
+                        for (local, path) in named {
+                            let key = TypeKey {
+                                module: unit.module.clone(),
+                                name: local,
+                            };
+                            if resolver.resolve_module_path(&unit.module, &path).is_some() {
+                                resolver.module_aliases.insert(key.clone(), path.clone());
+                            }
+                            resolver.imports.insert(key, path);
+                        }
+                        resolver
+                            .globs
+                            .entry(unit.module.clone())
+                            .or_default()
+                            .extend(globs);
+                    }
+                    _ => {}
+                }
+            }
         }
-        Type::Paren(paren) => resolve_self_type(module, &paren.elem, zsts),
-        Type::Group(group) => resolve_self_type(module, &group.elem, zsts),
+        resolver
+    }
+
+    fn resolve_self_type(&self, module: &[String], ty: &Type) -> Option<TypeKey> {
+        match ty {
+            Type::Path(type_path) if type_path.qself.is_none() => {
+                self.resolve_path(module, &path_ref(&type_path.path), &mut BTreeSet::new())
+            }
+            Type::Paren(paren) => self.resolve_self_type(module, &paren.elem),
+            Type::Group(group) => self.resolve_self_type(module, &group.elem),
+            _ => None,
+        }
+    }
+
+    fn resolve_path(
+        &self,
+        module: &[String],
+        path: &PathRef,
+        visiting: &mut BTreeSet<TypeKey>,
+    ) -> Option<TypeKey> {
+        let first = path.segments.first()?.as_str();
+        let start = match first {
+            "crate" | "self" | "super" => 1,
+            _ => 0,
+        };
+        let bases = match first {
+            "crate" => vec![Vec::new()],
+            "self" => vec![module.to_vec()],
+            "super" => {
+                let mut base = module.to_vec();
+                let mut index = 0;
+                while path
+                    .segments
+                    .get(index)
+                    .is_some_and(|segment| segment == "super")
+                {
+                    base.pop();
+                    index += 1;
+                }
+                vec![base]
+            }
+            _ => (0..=module.len())
+                .rev()
+                .map(|prefix_len| module[..prefix_len].to_vec())
+                .collect(),
+        };
+        let tail = &path.segments[start..];
+        let name = tail.last()?.clone();
+        let module_tail = &tail[..tail.len() - 1];
+
+        for base in bases {
+            if let Some(alias_path) = self.module_aliases.get(&TypeKey {
+                module: base.clone(),
+                name: module_tail.first().cloned().unwrap_or_default(),
+            }) {
+                if !module_tail.is_empty() {
+                    if let Some(mut aliased_module) = self.resolve_module_path(&base, alias_path) {
+                        aliased_module.extend(module_tail.iter().skip(1).cloned());
+                        if let Some(result) = self.resolve_binding(&aliased_module, &name, visiting)
+                        {
+                            return Some(result);
+                        }
+                    }
+                }
+            }
+            let mut candidate_module = base;
+            candidate_module.extend(module_tail.iter().cloned());
+            if self.modules.contains(&candidate_module) {
+                if let Some(result) = self.resolve_binding(&candidate_module, &name, visiting) {
+                    return Some(result);
+                }
+            }
+        }
+        None
+    }
+
+    fn resolve_binding(
+        &self,
+        module: &[String],
+        name: &str,
+        visiting: &mut BTreeSet<TypeKey>,
+    ) -> Option<TypeKey> {
+        let key = TypeKey {
+            module: module.to_vec(),
+            name: name.to_owned(),
+        };
+        if self.zsts.contains(&key) {
+            return Some(key);
+        }
+        if !visiting.insert(key.clone()) {
+            return None;
+        }
+        let target = self
+            .aliases
+            .get(&key)
+            .or_else(|| self.imports.get(&key))
+            .cloned();
+        if let Some(target) = target {
+            let result = self.resolve_path(module, &target, visiting);
+            visiting.remove(&key);
+            return result;
+        }
+        let glob_paths = self.globs.get(module).cloned().unwrap_or_default();
+        for glob in glob_paths {
+            let Some(target_module) = self.resolve_module_path(module, &glob) else {
+                continue;
+            };
+            if !self.public_names(&target_module).contains(name) {
+                continue;
+            }
+            if let Some(result) = self.resolve_binding(&target_module, name, visiting) {
+                visiting.remove(&key);
+                return Some(result);
+            }
+        }
+        visiting.remove(&key);
+        None
+    }
+
+    fn resolve_module_path(&self, module: &[String], path: &PathRef) -> Option<Vec<String>> {
+        let first = path.segments.first()?.as_str();
+        let start = match first {
+            "crate" | "self" | "super" => 1,
+            _ => 0,
+        };
+        let bases = match first {
+            "crate" => vec![Vec::new()],
+            "self" => vec![module.to_vec()],
+            "super" => {
+                let mut base = module.to_vec();
+                let mut index = 0;
+                while path
+                    .segments
+                    .get(index)
+                    .is_some_and(|segment| segment == "super")
+                {
+                    base.pop();
+                    index += 1;
+                }
+                vec![base]
+            }
+            _ => (0..=module.len())
+                .rev()
+                .map(|prefix_len| module[..prefix_len].to_vec())
+                .collect(),
+        };
+        let tail = &path.segments[start..];
+        for base in bases {
+            let mut candidate = base.clone();
+            candidate.extend(tail.iter().cloned());
+            if self.modules.contains(&candidate) {
+                return Some(candidate);
+            }
+            if let Some(first_segment) = tail.first() {
+                if let Some(alias) = self.module_aliases.get(&TypeKey {
+                    module: base.clone(),
+                    name: first_segment.clone(),
+                }) {
+                    if let Some(mut aliased) = self.resolve_module_path(&base, alias) {
+                        aliased.extend(tail.iter().skip(1).cloned());
+                        if self.modules.contains(&aliased) {
+                            return Some(aliased);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn public_names(&self, module: &[String]) -> BTreeSet<String> {
+        self.corpus
+            .units
+            .iter()
+            .filter(|unit| unit.module == module)
+            .flat_map(|unit| {
+                unit.items.iter().filter_map(|item| match item {
+                    Item::Struct(item_struct) if is_public(&item_struct.vis) => {
+                        Some(ident_name(&item_struct.ident))
+                    }
+                    Item::Type(item_type) if is_public(&item_type.vis) => {
+                        Some(ident_name(&item_type.ident))
+                    }
+                    _ => None,
+                })
+            })
+            .collect()
+    }
+}
+
+fn path_ref(path: &syn::Path) -> PathRef {
+    PathRef {
+        segments: path
+            .segments
+            .iter()
+            .map(|segment| ident_name(&segment.ident))
+            .collect(),
+    }
+}
+
+fn type_path_ref(ty: &Type) -> Option<PathRef> {
+    match ty {
+        Type::Path(type_path) if type_path.qself.is_none() => Some(path_ref(&type_path.path)),
+        Type::Paren(paren) => type_path_ref(&paren.elem),
+        Type::Group(group) => type_path_ref(&group.elem),
         _ => None,
     }
 }
 
-fn resolve_path(module: &[String], path: &syn::Path, zsts: &BTreeSet<TypeKey>) -> Option<TypeKey> {
-    let segments = path
-        .segments
-        .iter()
-        .map(|segment| ident_name(&segment.ident))
-        .collect::<Vec<_>>();
-    let first = segments.first()?.as_str();
-    let (base, tail) = match first {
-        "crate" => (Vec::new(), &segments[1..]),
-        "self" => (module.to_vec(), &segments[1..]),
-        "super" => {
-            let mut index = 0;
-            let mut base = module.to_vec();
-            while segments
-                .get(index)
-                .is_some_and(|segment| segment == "super")
-            {
-                base.pop();
-                index += 1;
+fn collect_use_tree(
+    tree: &UseTree,
+    prefix: &mut Vec<String>,
+    named: &mut Vec<(String, PathRef)>,
+    globs: &mut Vec<PathRef>,
+) {
+    match tree {
+        UseTree::Path(path) => {
+            prefix.push(ident_name(&path.ident));
+            collect_use_tree(&path.tree, prefix, named, globs);
+            prefix.pop();
+        }
+        UseTree::Name(name) => {
+            let mut path = prefix.clone();
+            path.push(ident_name(&name.ident));
+            named.push((ident_name(&name.ident), PathRef { segments: path }));
+        }
+        UseTree::Rename(rename) => {
+            let mut path = prefix.clone();
+            path.push(ident_name(&rename.ident));
+            named.push((ident_name(&rename.rename), PathRef { segments: path }));
+        }
+        UseTree::Glob(_) => globs.push(PathRef {
+            segments: prefix.clone(),
+        }),
+        UseTree::Group(group) => {
+            for item in &group.items {
+                collect_use_tree(item, prefix, named, globs);
             }
-            (base, &segments[index..])
-        }
-        _ => (module.to_vec(), segments.as_slice()),
-    };
-    let name = tail.last()?.clone();
-    let module_tail = &tail[..tail.len() - 1];
-
-    if first == "crate" || first == "self" || first == "super" {
-        let mut candidate_module = base;
-        candidate_module.extend(module_tail.iter().cloned());
-        return zsts
-            .get(&TypeKey {
-                module: candidate_module,
-                name,
-            })
-            .cloned();
-    }
-
-    // Relative paths first search the current module, then its ancestors.
-    for prefix_len in (0..=module.len()).rev() {
-        let mut candidate_module = module[..prefix_len].to_vec();
-        candidate_module.extend(module_tail.iter().cloned());
-        let candidate = TypeKey {
-            module: candidate_module,
-            name: name.clone(),
-        };
-        if zsts.contains(&candidate) {
-            return Some(candidate);
         }
     }
-    None
+}
+
+fn is_public(visibility: &syn::Visibility) -> bool {
+    matches!(visibility, syn::Visibility::Public(_))
 }
 
 fn vocabulary_issues(corpus: &Corpus) -> Vec<Issue> {
@@ -474,12 +755,13 @@ fn fixture_paths(root: &Path, guard: Guard, good: bool) -> Vec<PathBuf> {
         (Guard::FreeFunctions, false) => &["free-functions-bad.rs"],
         (Guard::InherentMethods, true) => &["inherent-methods-good.rs"],
         (Guard::InherentMethods, false) => &["inherent-methods-bad.rs"],
-        (Guard::ZstBehavior, true) => &["zst-good.rs"],
         (Guard::ZstBehavior, false) => &[
             "zst-bad.rs",
             "zst-cross-file-decl.rs",
             "zst-cross-file-impl.rs",
+            "zst-alias-bad.rs",
         ],
+        (Guard::ZstBehavior, true) => &["zst-good.rs", "zst-alias-good.rs"],
         (Guard::ForbiddenVocabulary, true) => &["vocabulary-good.rs"],
         (Guard::ForbiddenVocabulary, false) => &["vocabulary-bad.rs"],
     };
@@ -509,8 +791,17 @@ fn run_guard(production: &Corpus, fixtures: &Path, guard: Guard) -> Vec<String> 
         }
     };
     let bad_issues = check_guard(&bad, guard);
-    if bad_issues.is_empty() {
-        failures.push(format!("{} bad fixture produced no witness", guard.name()));
+    let minimum_bad_matches = match guard {
+        Guard::ZstBehavior => 9,
+        _ => 1,
+    };
+    if bad_issues.len() < minimum_bad_matches {
+        failures.push(format!(
+            "{} bad fixture reported {} matches; expected at least {}",
+            guard.name(),
+            bad_issues.len(),
+            minimum_bad_matches
+        ));
     }
     let good_issues = check_guard(&good, guard);
     failures.extend(

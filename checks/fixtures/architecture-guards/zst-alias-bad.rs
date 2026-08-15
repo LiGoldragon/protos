@@ -19,6 +19,16 @@ mod module_exports {
     pub use crate::module_source as alias;
 }
 
+pub mod restricted_parent {
+    mod restricted_source {
+        pub(in super::super) struct GrandparentZst;
+    }
+
+    pub mod nested {
+        pub use super::restricted_source::*;
+    }
+}
+
 mod exports {
     pub(crate) struct CrateZst;
     pub(crate) use self::CrateZst as First;
@@ -83,6 +93,12 @@ impl Behavior for nested::Unit {
 use module_exports::*;
 
 impl Behavior for alias::Unit {
+    fn act(&self) {}
+}
+
+use restricted_parent::nested::*;
+
+impl Behavior for GrandparentZst {
     fn act(&self) {}
 }
 

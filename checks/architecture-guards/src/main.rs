@@ -883,13 +883,27 @@ fn is_visible_from(
                 Some("self") => defined_module.to_vec(),
                 Some("super") => {
                     let mut scope = defined_module.to_vec();
-                    scope.pop();
+                    let mut index = 0;
+                    while segments
+                        .get(index)
+                        .is_some_and(|segment| segment == "super")
+                    {
+                        scope.pop();
+                        index += 1;
+                    }
                     scope
                 }
                 _ => return false,
             };
             let start = if matches!(first, Some("crate" | "self" | "super")) {
-                1
+                if first == Some("super") {
+                    segments
+                        .iter()
+                        .take_while(|segment| *segment == "super")
+                        .count()
+                } else {
+                    1
+                }
             } else {
                 0
             };
@@ -1000,7 +1014,7 @@ fn run_guard(production: &Corpus, fixtures: &Path, guard: Guard) -> Vec<String> 
     };
     let bad_issues = check_guard(&bad, guard);
     let minimum_bad_matches = match guard {
-        Guard::ZstBehavior => 20,
+        Guard::ZstBehavior => 21,
         _ => 1,
     };
     if bad_issues.len() < minimum_bad_matches {

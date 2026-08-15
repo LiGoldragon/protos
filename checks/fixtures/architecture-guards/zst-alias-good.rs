@@ -85,6 +85,18 @@ mod module_exports {
     pub use crate::module_source as alias;
 }
 
+pub mod restricted_parent {
+    mod restricted_source {
+        pub(in super::super) struct GrandparentData {
+            value: u8,
+        }
+    }
+
+    pub mod nested {
+        pub use super::restricted_source::*;
+    }
+}
+
 use module_exports::*;
 mod alias {
     pub struct Unit {
@@ -93,6 +105,12 @@ mod alias {
 }
 
 impl Behavior for alias::Unit {
+    fn act(&self) {}
+}
+
+use restricted_parent::nested::*;
+
+impl Behavior for GrandparentData {
     fn act(&self) {}
 }
 

@@ -12,3 +12,9 @@ where
 }
 
 trait Bound<'a> {}
+
+struct r#for;
+
+impl r#for {
+    fn raw_identifier_method(&self) {}
+}

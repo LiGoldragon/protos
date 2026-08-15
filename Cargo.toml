@@ -8,6 +8,10 @@ repository = "https://github.com/LiGoldragon/protos"
 description = "Universal structural substrate for the Protos family."
 publish = false
 
+[workspace]
+members = ["checks/architecture-guards"]
+resolver = "2"
+
 [lib]
 name = "protos"
 path = "src/lib.rs"

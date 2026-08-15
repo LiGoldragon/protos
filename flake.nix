@@ -16,27 +16,29 @@
         pkgs = import nixpkgs { inherit system; };
         rust = rust-build.lib.${system}.fromPkgs pkgs;
         inherit (rust) craneLib toolchain;
-        src = rust.cleanSource { root = ./.; };
+        src = rust.cleanSource {
+          root = ./.;
+          extraFilters = [
+            (path: type: pkgs.lib.hasInfix "/checks" (toString path))
+          ];
+        };
         common = { inherit src; strictDeps = true; cargoArtifacts = null; doInstallCargoArtifacts = false; };
-        guardScript = ./checks/architecture-guards.py;
-        guardFixtures = ./checks/fixtures/architecture-guards;
-        guardCheck = guard: name: pkgs.runCommand name { nativeBuildInputs = [ pkgs.python3 ]; } ''
-          ${pkgs.python3}/bin/python ${guardScript} ${src}/src ${guardFixtures} --guard ${guard}
-          touch $out
-        '';
+        guardManifest = "checks/architecture-guards/Cargo.toml";
+        guardTest = testName: craneLib.cargoTest (common // {
+          cargoTestExtraArgs = "--manifest-path ${guardManifest} --test guards ${testName} -- --exact";
+        });
       in {
         packages.default = craneLib.buildPackage common;
         checks = {
           build = craneLib.cargoBuild common;
           test = craneLib.cargoTest common;
-          architecture-guards = pkgs.runCommand "protos-architecture-guards" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-            ${pkgs.python3}/bin/python ${guardScript} ${src}/src ${guardFixtures}
-            touch $out
-          '';
-          no-production-free-functions = guardCheck "free-functions" "protos-no-production-free-functions";
-          no-production-inherent-methods = guardCheck "inherent-methods" "protos-no-production-inherent-methods";
-          no-zst-behavior = guardCheck "zst-behavior" "protos-no-zst-behavior";
-          no-forbidden-vocabulary = guardCheck "forbidden-vocabulary" "protos-no-forbidden-vocabulary";
+          architecture-guards = craneLib.cargoTest (common // {
+            cargoTestExtraArgs = "--manifest-path ${guardManifest} --test guards";
+          });
+          no-production-free-functions = guardTest "no_production_free_functions_fixture";
+          no-production-inherent-methods = guardTest "no_production_inherent_methods_fixture";
+          no-zst-behavior = guardTest "no_zst_behavior_fixture";
+          no-forbidden-vocabulary = guardTest "no_forbidden_vocabulary_fixture";
           doc = craneLib.cargoDoc (common // { RUSTDOCFLAGS = "-D warnings"; });
           fmt = craneLib.cargoFmt { inherit src; doInstallCargoArtifacts = false; };
           clippy = craneLib.cargoClippy (common // { cargoClippyExtraArgs = "--all-targets -- -D warnings"; });

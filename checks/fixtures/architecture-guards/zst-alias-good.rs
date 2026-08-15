@@ -97,6 +97,45 @@ pub mod restricted_parent {
     }
 }
 
+pub mod path_forms {
+    pub struct CratePathData {
+        value: u8,
+    }
+    pub struct SuperPathData {
+        value: u8,
+    }
+
+    pub mod source {
+        pub struct MultiSuperData {
+            value: u8,
+        }
+    }
+
+    pub mod branch {
+        pub struct SelfPathData {
+            value: u8,
+        }
+
+        impl Behavior for self::SelfPathData {
+            fn act(&self) {}
+        }
+
+        impl Behavior for super::SuperPathData {
+            fn act(&self) {}
+        }
+
+        pub mod leaf {
+            impl Behavior for super::super::source::MultiSuperData {
+                fn act(&self) {}
+            }
+
+            impl Behavior for crate::path_forms::CratePathData {
+                fn act(&self) {}
+            }
+        }
+    }
+}
+
 use module_exports::*;
 mod alias {
     pub struct Unit {

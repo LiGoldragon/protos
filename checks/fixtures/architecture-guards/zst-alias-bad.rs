@@ -29,6 +29,37 @@ pub mod restricted_parent {
     }
 }
 
+pub mod path_forms {
+    pub struct CratePathZst;
+    pub struct SuperPathZst;
+
+    pub mod source {
+        pub struct MultiSuperZst;
+    }
+
+    pub mod branch {
+        pub struct SelfPathZst;
+
+        impl Behavior for self::SelfPathZst {
+            fn act(&self) {}
+        }
+
+        impl Behavior for super::SuperPathZst {
+            fn act(&self) {}
+        }
+
+        pub mod leaf {
+            impl Behavior for super::super::source::MultiSuperZst {
+                fn act(&self) {}
+            }
+
+            impl Behavior for crate::path_forms::CratePathZst {
+                fn act(&self) {}
+            }
+        }
+    }
+}
+
 mod exports {
     pub(crate) struct CrateZst;
     pub(crate) use self::CrateZst as First;

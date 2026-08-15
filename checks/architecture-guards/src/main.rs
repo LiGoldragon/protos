@@ -57,6 +57,11 @@ struct PathRef {
     segments: Vec<String>,
 }
 
+struct RelativePath {
+    bases: Vec<Vec<String>>,
+    tail_start: usize,
+}
+
 struct Resolver<'a> {
     corpus: &'a Corpus,
     zsts: BTreeSet<TypeKey>,
@@ -471,12 +476,8 @@ impl<'a> Resolver<'a> {
         path: &PathRef,
         visiting: &mut BTreeSet<TypeKey>,
     ) -> Option<TypeKey> {
-        let first = path.segments.first()?.as_str();
-        let start = match first {
-            "crate" | "self" | "super" => 1,
-            _ => 0,
-        };
-        let tail = &path.segments[start..];
+        let relative = self.relative_module_bases(module, path)?;
+        let tail = &path.segments[relative.tail_start..];
         let name = tail.last()?.clone();
         let module_tail = &tail[..tail.len() - 1];
         if !module_tail.is_empty() {
@@ -489,8 +490,7 @@ impl<'a> Resolver<'a> {
             return self.resolve_binding(&target_module, &name, visiting);
         }
 
-        let bases = self.relative_module_bases(module, first, path);
-        for base in bases {
+        for base in relative.bases {
             if let Some(result) = self.resolve_binding(&base, &name, visiting) {
                 return Some(result);
             }
@@ -557,34 +557,9 @@ impl<'a> Resolver<'a> {
         path: &PathRef,
         visiting: &mut BTreeSet<TypeKey>,
     ) -> Option<Vec<String>> {
-        let first = path.segments.first()?.as_str();
-        let start = match first {
-            "crate" | "self" | "super" => 1,
-            _ => 0,
-        };
-        let bases = match first {
-            "crate" => vec![Vec::new()],
-            "self" => vec![module.to_vec()],
-            "super" => {
-                let mut base = module.to_vec();
-                let mut index = 0;
-                while path
-                    .segments
-                    .get(index)
-                    .is_some_and(|segment| segment == "super")
-                {
-                    base.pop();
-                    index += 1;
-                }
-                vec![base]
-            }
-            _ => (0..=module.len())
-                .rev()
-                .map(|prefix_len| module[..prefix_len].to_vec())
-                .collect(),
-        };
-        let tail = &path.segments[start..];
-        for base in bases {
+        let relative = self.relative_module_bases(module, path)?;
+        let tail = &path.segments[relative.tail_start..];
+        for base in relative.bases {
             let mut candidate = base;
             let mut resolved = true;
             for segment in tail {
@@ -646,15 +621,11 @@ impl<'a> Resolver<'a> {
         None
     }
 
-    fn relative_module_bases(
-        &self,
-        module: &[String],
-        first: &str,
-        path: &PathRef,
-    ) -> Vec<Vec<String>> {
-        match first {
-            "crate" => vec![Vec::new()],
-            "self" => vec![module.to_vec()],
+    fn relative_module_bases(&self, module: &[String], path: &PathRef) -> Option<RelativePath> {
+        let first = path.segments.first()?.as_str();
+        let (bases, tail_start) = match first {
+            "crate" => (vec![Vec::new()], 1),
+            "self" => (vec![module.to_vec()], 1),
             "super" => {
                 let mut base = module.to_vec();
                 let mut count = 0;
@@ -666,13 +637,17 @@ impl<'a> Resolver<'a> {
                     base.pop();
                     count += 1;
                 }
-                vec![base]
+                (vec![base], count)
             }
-            _ => (0..=module.len())
-                .rev()
-                .map(|prefix_len| module[..prefix_len].to_vec())
-                .collect(),
-        }
+            _ => (
+                (0..=module.len())
+                    .rev()
+                    .map(|prefix_len| module[..prefix_len].to_vec())
+                    .collect(),
+                0,
+            ),
+        };
+        Some(RelativePath { bases, tail_start })
     }
 
     fn public_names(&self, module: &[String], importer: &[String]) -> BTreeSet<String> {
@@ -1014,7 +989,7 @@ fn run_guard(production: &Corpus, fixtures: &Path, guard: Guard) -> Vec<String> 
     };
     let bad_issues = check_guard(&bad, guard);
     let minimum_bad_matches = match guard {
-        Guard::ZstBehavior => 21,
+        Guard::ZstBehavior => 25,
         _ => 1,
     };
     if bad_issues.len() < minimum_bad_matches {

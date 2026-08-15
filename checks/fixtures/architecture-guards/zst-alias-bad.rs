@@ -5,6 +5,18 @@ trait Behavior {
 mod source {
     pub struct AliasZst;
     pub struct GlobZst;
+
+    pub mod nested {
+        pub struct Unit;
+    }
+}
+
+pub mod module_source {
+    pub struct Unit;
+}
+
+mod module_exports {
+    pub use crate::module_source as alias;
 }
 
 mod exports {
@@ -61,6 +73,16 @@ use exports::*;
 use transitive::*;
 
 impl Behavior for GlobZst {
+    fn act(&self) {}
+}
+
+impl Behavior for nested::Unit {
+    fn act(&self) {}
+}
+
+use module_exports::*;
+
+impl Behavior for alias::Unit {
     fn act(&self) {}
 }
 

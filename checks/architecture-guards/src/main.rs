@@ -599,6 +599,12 @@ impl<'a> Resolver<'a> {
                     name: segment.clone(),
                 };
                 let Some(alias) = self.module_bindings.get(&key).cloned() else {
+                    if let Some(glob_module) =
+                        self.resolve_glob_module_component(&candidate, segment)
+                    {
+                        candidate = glob_module;
+                        continue;
+                    }
                     resolved = false;
                     break;
                 };
@@ -617,6 +623,24 @@ impl<'a> Resolver<'a> {
             }
             if resolved {
                 return Some(candidate);
+            }
+        }
+        None
+    }
+
+    fn resolve_glob_module_component(
+        &self,
+        importer: &[String],
+        name: &str,
+    ) -> Option<Vec<String>> {
+        let glob_paths = self.globs.get(importer).cloned().unwrap_or_default();
+        for glob in glob_paths {
+            let Some(target_module) = self.resolve_module_path(importer, &glob) else {
+                continue;
+            };
+            let exported = self.exported_modules(&target_module, importer, &mut BTreeSet::new());
+            if let Some(module) = exported.get(name) {
+                return Some(module.clone());
             }
         }
         None
@@ -681,6 +705,9 @@ impl<'a> Resolver<'a> {
                     Item::Type(item_type) if is_visible_from(&item_type.vis, module, importer) => {
                         names.insert(ident_name(&item_type.ident));
                     }
+                    Item::Mod(item_mod) if is_visible_from(&item_mod.vis, module, importer) => {
+                        names.insert(ident_name(&item_mod.ident));
+                    }
                     Item::Use(item_use) if is_visible_from(&item_use.vis, module, importer) => {
                         let mut named = Vec::new();
                         let mut globs = Vec::new();
@@ -698,6 +725,54 @@ impl<'a> Resolver<'a> {
         }
         visiting.remove(module);
         names
+    }
+
+    fn exported_modules(
+        &self,
+        module: &[String],
+        importer: &[String],
+        visiting: &mut BTreeSet<Vec<String>>,
+    ) -> BTreeMap<String, Vec<String>> {
+        if !visiting.insert(module.to_vec()) {
+            return BTreeMap::new();
+        }
+        let mut modules = BTreeMap::new();
+        for unit in self
+            .corpus
+            .units
+            .iter()
+            .filter(|unit| unit.module == module)
+        {
+            for item in &unit.items {
+                match item {
+                    Item::Mod(item_mod) if is_visible_from(&item_mod.vis, module, importer) => {
+                        let mut child = module.to_vec();
+                        child.push(ident_name(&item_mod.ident));
+                        if self.modules.contains(&child) {
+                            modules.insert(ident_name(&item_mod.ident), child);
+                        }
+                    }
+                    Item::Use(item_use) if is_visible_from(&item_use.vis, module, importer) => {
+                        let mut named = Vec::new();
+                        let mut globs = Vec::new();
+                        collect_use_tree(&item_use.tree, &mut Vec::new(), &mut named, &mut globs);
+                        for (name, path) in named {
+                            if let Some(target) = self.resolve_module_path(module, &path) {
+                                modules.insert(name, target);
+                            }
+                        }
+                        for glob in globs {
+                            if let Some(target) = self.resolve_module_path(module, &glob) {
+                                modules.extend(self.exported_modules(&target, importer, visiting));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        visiting.remove(module);
+        modules
     }
 
     fn local_item_names(&self, module: &[String]) -> BTreeSet<String> {
@@ -925,7 +1000,7 @@ fn run_guard(production: &Corpus, fixtures: &Path, guard: Guard) -> Vec<String> 
     };
     let bad_issues = check_guard(&bad, guard);
     let minimum_bad_matches = match guard {
-        Guard::ZstBehavior => 18,
+        Guard::ZstBehavior => 20,
         _ => 1,
     };
     if bad_issues.len() < minimum_bad_matches {

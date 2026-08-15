@@ -6,6 +6,12 @@ mod source {
     pub struct Data {
         value: u8,
     }
+
+    pub mod nested {
+        pub struct Unit {
+            value: u8,
+        }
+    }
 }
 
 use source::Data as ImportedData;
@@ -24,6 +30,16 @@ impl Behavior for SecondAlias {
 use source::*;
 
 impl Behavior for Data {
+    fn act(&self) {}
+}
+
+mod nested {
+    pub struct Unit {
+        value: u8,
+    }
+}
+
+impl Behavior for nested::Unit {
     fn act(&self) {}
 }
 
@@ -56,6 +72,27 @@ impl Behavior for data_exports::alias::Data {
 use data_exports::alias as ImportedDataNamespace;
 
 impl Behavior for ImportedDataNamespace::Data {
+    fn act(&self) {}
+}
+
+pub mod module_source {
+    pub struct Unit {
+        value: u8,
+    }
+}
+
+mod module_exports {
+    pub use crate::module_source as alias;
+}
+
+use module_exports::*;
+mod alias {
+    pub struct Unit {
+        value: u8,
+    }
+}
+
+impl Behavior for alias::Unit {
     fn act(&self) {}
 }
 

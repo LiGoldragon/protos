@@ -62,7 +62,7 @@ struct Resolver<'a> {
     zsts: BTreeSet<TypeKey>,
     aliases: BTreeMap<TypeKey, PathRef>,
     imports: BTreeMap<TypeKey, PathRef>,
-    module_aliases: BTreeMap<TypeKey, PathRef>,
+    module_bindings: BTreeMap<TypeKey, PathRef>,
     globs: BTreeMap<Vec<String>, Vec<PathRef>>,
     modules: BTreeSet<Vec<String>>,
 }
@@ -410,7 +410,7 @@ impl<'a> Resolver<'a> {
             zsts,
             aliases: BTreeMap::new(),
             imports: BTreeMap::new(),
-            module_aliases: BTreeMap::new(),
+            module_bindings: BTreeMap::new(),
             globs: BTreeMap::new(),
             modules,
         };
@@ -438,10 +438,8 @@ impl<'a> Resolver<'a> {
                                 module: unit.module.clone(),
                                 name: local,
                             };
-                            if resolver.resolve_module_path(&unit.module, &path).is_some() {
-                                resolver.module_aliases.insert(key.clone(), path.clone());
-                            }
-                            resolver.imports.insert(key, path);
+                            resolver.imports.insert(key.clone(), path.clone());
+                            resolver.module_bindings.insert(key, path);
                         }
                         resolver
                             .globs
@@ -478,52 +476,23 @@ impl<'a> Resolver<'a> {
             "crate" | "self" | "super" => 1,
             _ => 0,
         };
-        let bases = match first {
-            "crate" => vec![Vec::new()],
-            "self" => vec![module.to_vec()],
-            "super" => {
-                let mut base = module.to_vec();
-                let mut index = 0;
-                while path
-                    .segments
-                    .get(index)
-                    .is_some_and(|segment| segment == "super")
-                {
-                    base.pop();
-                    index += 1;
-                }
-                vec![base]
-            }
-            _ => (0..=module.len())
-                .rev()
-                .map(|prefix_len| module[..prefix_len].to_vec())
-                .collect(),
-        };
         let tail = &path.segments[start..];
         let name = tail.last()?.clone();
         let module_tail = &tail[..tail.len() - 1];
+        if !module_tail.is_empty() {
+            let target_module = self.resolve_module_path(
+                module,
+                &PathRef {
+                    segments: path.segments[..path.segments.len() - 1].to_vec(),
+                },
+            )?;
+            return self.resolve_binding(&target_module, &name, visiting);
+        }
 
+        let bases = self.relative_module_bases(module, first, path);
         for base in bases {
-            if let Some(alias_path) = self.module_aliases.get(&TypeKey {
-                module: base.clone(),
-                name: module_tail.first().cloned().unwrap_or_default(),
-            }) {
-                if !module_tail.is_empty() {
-                    if let Some(mut aliased_module) = self.resolve_module_path(&base, alias_path) {
-                        aliased_module.extend(module_tail.iter().skip(1).cloned());
-                        if let Some(result) = self.resolve_binding(&aliased_module, &name, visiting)
-                        {
-                            return Some(result);
-                        }
-                    }
-                }
-            }
-            let mut candidate_module = base;
-            candidate_module.extend(module_tail.iter().cloned());
-            if self.modules.contains(&candidate_module) {
-                if let Some(result) = self.resolve_binding(&candidate_module, &name, visiting) {
-                    return Some(result);
-                }
+            if let Some(result) = self.resolve_binding(&base, &name, visiting) {
+                return Some(result);
             }
         }
         None
@@ -579,6 +548,15 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_module_path(&self, module: &[String], path: &PathRef) -> Option<Vec<String>> {
+        self.resolve_module_path_inner(module, path, &mut BTreeSet::new())
+    }
+
+    fn resolve_module_path_inner(
+        &self,
+        module: &[String],
+        path: &PathRef,
+        visiting: &mut BTreeSet<TypeKey>,
+    ) -> Option<Vec<String>> {
         let first = path.segments.first()?.as_str();
         let start = match first {
             "crate" | "self" | "super" => 1,
@@ -607,26 +585,70 @@ impl<'a> Resolver<'a> {
         };
         let tail = &path.segments[start..];
         for base in bases {
-            let mut candidate = base.clone();
-            candidate.extend(tail.iter().cloned());
-            if self.modules.contains(&candidate) {
-                return Some(candidate);
-            }
-            if let Some(first_segment) = tail.first() {
-                if let Some(alias) = self.module_aliases.get(&TypeKey {
-                    module: base.clone(),
-                    name: first_segment.clone(),
-                }) {
-                    if let Some(mut aliased) = self.resolve_module_path(&base, alias) {
-                        aliased.extend(tail.iter().skip(1).cloned());
-                        if self.modules.contains(&aliased) {
-                            return Some(aliased);
-                        }
-                    }
+            let mut candidate = base;
+            let mut resolved = true;
+            for segment in tail {
+                let mut direct = candidate.clone();
+                direct.push(segment.clone());
+                if self.modules.contains(&direct) {
+                    candidate = direct;
+                    continue;
                 }
+                let key = TypeKey {
+                    module: candidate.clone(),
+                    name: segment.clone(),
+                };
+                let Some(alias) = self.module_bindings.get(&key).cloned() else {
+                    resolved = false;
+                    break;
+                };
+                if !visiting.insert(key.clone()) {
+                    resolved = false;
+                    break;
+                }
+                let Some(aliased) = self.resolve_module_path_inner(&candidate, &alias, visiting)
+                else {
+                    visiting.remove(&key);
+                    resolved = false;
+                    break;
+                };
+                visiting.remove(&key);
+                candidate = aliased;
+            }
+            if resolved {
+                return Some(candidate);
             }
         }
         None
+    }
+
+    fn relative_module_bases(
+        &self,
+        module: &[String],
+        first: &str,
+        path: &PathRef,
+    ) -> Vec<Vec<String>> {
+        match first {
+            "crate" => vec![Vec::new()],
+            "self" => vec![module.to_vec()],
+            "super" => {
+                let mut base = module.to_vec();
+                let mut count = 0;
+                while path
+                    .segments
+                    .get(count)
+                    .is_some_and(|segment| segment == "super")
+                {
+                    base.pop();
+                    count += 1;
+                }
+                vec![base]
+            }
+            _ => (0..=module.len())
+                .rev()
+                .map(|prefix_len| module[..prefix_len].to_vec())
+                .collect(),
+        }
     }
 
     fn public_names(&self, module: &[String], importer: &[String]) -> BTreeSet<String> {
@@ -903,7 +925,7 @@ fn run_guard(production: &Corpus, fixtures: &Path, guard: Guard) -> Vec<String> 
     };
     let bad_issues = check_guard(&bad, guard);
     let minimum_bad_matches = match guard {
-        Guard::ZstBehavior => 14,
+        Guard::ZstBehavior => 18,
         _ => 1,
     };
     if bad_issues.len() < minimum_bad_matches {

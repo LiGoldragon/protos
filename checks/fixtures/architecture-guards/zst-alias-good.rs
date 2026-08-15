@@ -31,12 +31,31 @@ mod shadow_source {
     pub struct Node;
 }
 
+mod data_exports {
+    pub mod alias_source {
+        pub struct Data {
+            value: u8,
+        }
+    }
+    pub use crate::data_exports::alias_source as alias;
+}
+
 use shadow_source::*;
 struct Node {
     value: u8,
 }
 
 impl Behavior for Node {
+    fn act(&self) {}
+}
+
+impl Behavior for data_exports::alias::Data {
+    fn act(&self) {}
+}
+
+use data_exports::alias as ImportedDataNamespace;
+
+impl Behavior for ImportedDataNamespace::Data {
     fn act(&self) {}
 }
 

@@ -19,6 +19,15 @@ mod transitive {
     pub use self::First as Second;
 }
 
+mod alias_exports {
+    pub use crate::source as alias;
+}
+
+mod forward_exports {
+    pub use First as Second;
+    pub use crate::source as First;
+}
+
 // This same-name data type must not be confused with source::AliasZst.
 struct AliasZst {
     value: u8,
@@ -60,6 +69,26 @@ impl Behavior for Second {
 }
 
 impl Behavior for transitive::Second {
+    fn act(&self) {}
+}
+
+impl Behavior for alias_exports::alias::AliasZst {
+    fn act(&self) {}
+}
+
+use alias_exports::alias as ImportedNamespace;
+
+impl Behavior for ImportedNamespace::AliasZst {
+    fn act(&self) {}
+}
+
+impl Behavior for forward_exports::Second::AliasZst {
+    fn act(&self) {}
+}
+
+use forward_exports::Second as ForwardNamespace;
+
+impl Behavior for ForwardNamespace::AliasZst {
     fn act(&self) {}
 }
 

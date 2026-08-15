@@ -808,9 +808,18 @@ fn collect_use_tree(
             prefix.pop();
         }
         UseTree::Name(name) => {
-            let mut path = prefix.clone();
-            path.push(ident_name(&name.ident));
-            named.push((ident_name(&name.ident), PathRef { segments: path }));
+            if ident_name(&name.ident) == "self" && !prefix.is_empty() {
+                named.push((
+                    prefix.last().cloned().expect("nonempty use prefix"),
+                    PathRef {
+                        segments: prefix.clone(),
+                    },
+                ));
+            } else {
+                let mut path = prefix.clone();
+                path.push(ident_name(&name.ident));
+                named.push((ident_name(&name.ident), PathRef { segments: path }));
+            }
         }
         UseTree::Rename(rename) => {
             let path = if ident_name(&rename.ident) == "self" {
@@ -989,7 +998,7 @@ fn run_guard(production: &Corpus, fixtures: &Path, guard: Guard) -> Vec<String> 
     };
     let bad_issues = check_guard(&bad, guard);
     let minimum_bad_matches = match guard {
-        Guard::ZstBehavior => 25,
+        Guard::ZstBehavior => 27,
         _ => 1,
     };
     if bad_issues.len() < minimum_bad_matches {

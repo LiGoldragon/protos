@@ -136,6 +136,24 @@ pub mod path_forms {
     }
 }
 
+mod grouped_reexports {
+    pub use crate::source::{self};
+}
+
+mod grouped_reexport_collision {
+    use crate::grouped_reexports::*;
+
+    mod source {
+        pub struct AliasZst {
+            value: u8,
+        }
+    }
+
+    impl Behavior for source::AliasZst {
+        fn act(&self) {}
+    }
+}
+
 use module_exports::*;
 mod alias {
     pub struct Unit {

@@ -60,6 +60,26 @@ pub mod path_forms {
     }
 }
 
+mod grouped_import_consumer {
+    use crate::source::{self};
+
+    impl Behavior for source::AliasZst {
+        fn act(&self) {}
+    }
+}
+
+mod grouped_reexports {
+    pub use crate::source::{self};
+}
+
+mod grouped_reexport_consumer {
+    use crate::grouped_reexports::*;
+
+    impl Behavior for source::AliasZst {
+        fn act(&self) {}
+    }
+}
+
 mod exports {
     pub(crate) struct CrateZst;
     pub(crate) use self::CrateZst as First;

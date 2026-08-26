@@ -2,8 +2,9 @@
 
 `protos` is the universal structural substrate shared by Protos-family
 dialects. It owns universal text shapes, the first lexical block pass, text
-carriers, the Head carried by dotted blocks, and the one frame discipline used
-when text becomes real values or real values become text.
+carriers, the Head carried by dotted blocks, headless guillemet structural
+blocks, and the one frame discipline used when text becomes real values or real
+values become text.
 
 ## Trait roster
 
@@ -28,7 +29,8 @@ Meaning, Signal, storage, a daemon, or a component vocabulary.
 
 The first pass retains block bodies and UTF-8 byte extents, not inter-block
 trivia. Parenthesis and curly-quote strings remain opaque inside every
-brace/square structural block until their own balance-aware close.
+brace, square, or guillemet structural block until their own balance-aware
+close.
 `TextualizeWalk` emits one space between adjacent blocks: its result is
 canonical block projection, not a byte-identical source formatter.
 

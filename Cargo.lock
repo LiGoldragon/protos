@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "protos"
-version = "0.6.0"
+version = "0.7.0"
 
 [[package]]
 name = "quote"

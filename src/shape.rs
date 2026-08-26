@@ -6,6 +6,7 @@ pub enum Shape {
     DottedCurlyQuoted,
     Parenthesized,
     SquareBracketed,
+    Guillemeted,
     Braced,
     DottedParenthesized,
     DottedSquareBracketed,

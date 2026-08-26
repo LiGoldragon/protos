@@ -58,6 +58,7 @@ impl BlockRendering for Block {
             Shape::CurlyQuoted | Shape::DottedCurlyQuoted => (Some('“'), Some('”')),
             Shape::Parenthesized | Shape::DottedParenthesized => (Some('('), Some(')')),
             Shape::SquareBracketed | Shape::DottedSquareBracketed => (Some('['), Some(']')),
+            Shape::Guillemeted => (Some('«'), Some('»')),
             Shape::Braced | Shape::DottedBraced => (Some('{'), Some('}')),
         }
     }
@@ -145,7 +146,7 @@ impl Scanning for BlockScanner {
                 && !characters[index].is_whitespace()
                 && !matches!(
                     characters[index],
-                    '(' | ')' | '“' | '”' | '[' | ']' | '{' | '}'
+                    '(' | ')' | '“' | '”' | '[' | ']' | '«' | '»' | '{' | '}'
                 )
             {
                 index += 1;
@@ -221,6 +222,25 @@ impl Scanning for BlockScanner {
                     });
                     index = next;
                 }
+                Some('«') => {
+                    self.require_delimited_prefix(&prefix, dotted)?;
+                    if dotted {
+                        return Err(WalkFault::InvalidHead);
+                    }
+                    index += 1;
+                    let body_start = index;
+                    let (body, next) =
+                        self.structural(&characters, index, '«', '»', Shape::Guillemeted)?;
+                    blocks.push(Block {
+                        head: None,
+                        shape: Shape::Guillemeted,
+                        body: SourceText(body),
+                        string_carrier: None,
+                        body_span: byte_offsets[body_start]..byte_offsets[next - 1],
+                        span: byte_offsets[start]..byte_offsets[next],
+                    });
+                    index = next;
+                }
                 Some('{') => {
                     self.require_delimited_prefix(&prefix, dotted)?;
                     index += 1;
@@ -241,7 +261,7 @@ impl Scanning for BlockScanner {
                     });
                     index = next;
                 }
-                Some(')') | Some('”') | Some(']') | Some('}') => {
+                Some(')') | Some('”') | Some(']') | Some('»') | Some('}') => {
                     return Err(WalkFault::UnexpectedCloser(characters[index]));
                 }
                 Some(_) | None => {
@@ -390,6 +410,10 @@ impl DelimiterScanning for BlockScanner {
                 '[' => {
                     closers.push(']');
                     body.push('[');
+                }
+                '«' => {
+                    closers.push('»');
+                    body.push('«');
                 }
                 character if closers.last() == Some(&character) => {
                     closers.pop();

@@ -6,8 +6,9 @@
 or build edge to legacy or frozen Protos-family repositories. Its only product
 surface is the Rust standard library.
 
-It supplies the fixed `Shape` vocabulary, `ShapeDefined`, `Head`, lexical
-`Block` scanning, `SourceText` and `StringCarrier`, the form directions
+It supplies the fixed `Shape` vocabulary, including headless guillemet
+structural blocks, `ShapeDefined`, `Head`, lexical `Block` scanning,
+`SourceText` and `StringCarrier`, the form directions
 `Realize` and `Textualize`, and the single neutral `StructuralWalk` behind
 `RealizeWalk` and `TextualizeWalk`.
 
@@ -49,7 +50,9 @@ and the driver is faulted rather than silently reused.
 The first pass is lexical. All block and body extents and driver cursors are UTF-8 byte
 offsets; `SourceSlicing` is the safe access capability. Parenthesized and curly-quoted string carriers keep
 their interiors opaque to other delimiters; parentheses balance until their
-final unbalanced closer. Interpretation of those interiors is a dialect seam.
+final unbalanced closer. Braced, square, and guillemet structural blocks balance
+their own delimiters and nest each other. Interpretation of those interiors is a
+dialect seam.
 
 Inter-block trivia is not a block. The substrate therefore provides canonical
 block projection with one space between blocks, not byte-identical preservation

@@ -249,6 +249,22 @@ fn first_pass_recognises_ruled_structural_blocks_and_heads() {
 }
 
 #[test]
+fn guillemet_blocks_are_headless_structural_blocks() {
+    let source = SourceText("« north.[ { child } ] south.(text) »".into());
+    let map = source.blocks().expect("guillemet block").remove(0);
+    assert_eq!(map.shape, Shape::Guillemeted);
+    assert_eq!(map.head(), None);
+    assert_eq!(map.textualize(), source);
+
+    let entries = map.body.blocks().expect("guillemet contents");
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].shape, Shape::DottedSquareBracketed);
+    assert_eq!(entries[0].head().expect("north head").0, "north");
+    assert_eq!(entries[1].shape, Shape::DottedParenthesized);
+    assert_eq!(entries[1].head().expect("south head").0, "south");
+}
+
+#[test]
 fn structural_blocks_keep_nested_ruled_parenthesis_strings_opaque() {
     let source = SourceText(
         "Group.{ (Deep } ] “quote) [ Note.tail ] Map.[ remark.(child sees } ] and (nested markup) only as text) ] }".into(),

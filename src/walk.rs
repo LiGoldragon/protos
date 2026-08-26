@@ -477,6 +477,7 @@ impl ShapeHeading for Shape {
                 | Shape::CurlyQuoted
                 | Shape::Parenthesized
                 | Shape::SquareBracketed
+                | Shape::Guillemeted
                 | Shape::Braced,
                 None,
             ) => true,
@@ -751,6 +752,7 @@ impl TextualizeScoping for TextualizeScope<'_> {
             Shape::CurlyQuoted | Shape::DottedCurlyQuoted => (Some('“'), Some('”')),
             Shape::Parenthesized | Shape::DottedParenthesized => (Some('('), Some(')')),
             Shape::SquareBracketed | Shape::DottedSquareBracketed => (Some('['), Some(']')),
+            Shape::Guillemeted => (Some('«'), Some('»')),
             Shape::Braced | Shape::DottedBraced => (Some('{'), Some('}')),
         };
         if let Some(opening) = delimiters.0 {

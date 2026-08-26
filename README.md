@@ -2,9 +2,9 @@
 
 `protos` is the universal structural substrate shared by Protos-family
 dialects. It owns universal text shapes, the first lexical block pass, text
-carriers, the Head carried by dotted blocks, headless guillemet structural
-blocks, and the one frame discipline used when text becomes real values or real
-values become text.
+carriers, the Head carried by dotted blocks (including headed bare units such
+as `Observe.Locks`), headless guillemet structural blocks, and the one frame
+discipline used when text becomes real values or real values become text.
 
 ## Trait roster
 

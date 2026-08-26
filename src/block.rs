@@ -54,7 +54,7 @@ trait BlockRendering {
 impl BlockRendering for Block {
     fn delimiters(&self) -> (Option<char>, Option<char>) {
         match self.shape {
-            Shape::Bare => (None, None),
+            Shape::Bare | Shape::DottedBare => (None, None),
             Shape::CurlyQuoted | Shape::DottedCurlyQuoted => (Some('“'), Some('”')),
             Shape::Parenthesized | Shape::DottedParenthesized => (Some('('), Some(')')),
             Shape::SquareBracketed | Shape::DottedSquareBracketed => (Some('['), Some(']')),
@@ -268,12 +268,27 @@ impl Scanning for BlockScanner {
                     if prefix.is_empty() || dotted {
                         return Err(WalkFault::InvalidHead);
                     }
+                    let unit = prefix.split_once('.').and_then(|(head, body)| {
+                        (!head.is_empty() && !body.is_empty()).then_some((head, body))
+                    });
+                    let (head, body, body_start) = match unit {
+                        Some((head, body)) => (
+                            Some(Head(head.to_owned())),
+                            body.to_owned(),
+                            start + head.chars().count() + 1,
+                        ),
+                        None => (None, prefix.clone(), start),
+                    };
                     blocks.push(Block {
-                        head: None,
-                        shape: Shape::Bare,
-                        body: SourceText(prefix.clone()),
+                        head,
+                        shape: if unit.is_some() {
+                            Shape::DottedBare
+                        } else {
+                            Shape::Bare
+                        },
+                        body: SourceText(body),
                         string_carrier: Some(StringCarrier::Bare(prefix)),
-                        body_span: byte_offsets[start]..byte_offsets[index],
+                        body_span: byte_offsets[body_start]..byte_offsets[index],
                         span: byte_offsets[start]..byte_offsets[index],
                     });
                 }

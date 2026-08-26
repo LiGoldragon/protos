@@ -233,6 +233,16 @@ fn first_pass_keeps_string_interior_opaque_and_carries_head() {
 }
 
 #[test]
+fn headed_bare_block_carries_a_unit_selection() {
+    let source = SourceText("Observe.Locks".into());
+    let blocks = source.blocks().expect("headed bare block");
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].head().expect("Observe head").0, "Observe");
+    assert_eq!(blocks[0].body, SourceText("Locks".into()));
+    assert_eq!(blocks[0].textualize(), source);
+}
+
+#[test]
 fn first_pass_recognises_ruled_structural_blocks_and_heads() {
     let source = SourceText("Report.{Map.[x] Tags.[y] {bare}}".into());
     let report = source.blocks().expect("report block").remove(0);

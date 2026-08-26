@@ -2,6 +2,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Shape {
     Bare,
+    DottedBare,
     CurlyQuoted,
     DottedCurlyQuoted,
     Parenthesized,

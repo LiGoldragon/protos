@@ -467,6 +467,7 @@ impl ShapeHeading for Shape {
         match (self, head) {
             (
                 Shape::DottedCurlyQuoted
+                | Shape::DottedBare
                 | Shape::DottedParenthesized
                 | Shape::DottedSquareBracketed
                 | Shape::DottedBraced,
@@ -748,7 +749,7 @@ impl TextualizeScoping for TextualizeScope<'_> {
             self.emit_scalar(".");
         }
         let delimiters = match shape {
-            Shape::Bare => (None, None),
+            Shape::Bare | Shape::DottedBare => (None, None),
             Shape::CurlyQuoted | Shape::DottedCurlyQuoted => (Some('“'), Some('”')),
             Shape::Parenthesized | Shape::DottedParenthesized => (Some('('), Some(')')),
             Shape::SquareBracketed | Shape::DottedSquareBracketed => (Some('['), Some(']')),

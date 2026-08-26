@@ -6,8 +6,8 @@
 or build edge to legacy or frozen Protos-family repositories. Its only product
 surface is the Rust standard library.
 
-It supplies the fixed `Shape` vocabulary, including headless guillemet
-structural blocks, `ShapeDefined`, `Head`, lexical `Block` scanning,
+It supplies the fixed `Shape` vocabulary, including headed bare units and
+headless guillemet structural blocks, `ShapeDefined`, `Head`, lexical `Block` scanning,
 `SourceText` and `StringCarrier`, the form directions
 `Realize` and `Textualize`, and the single neutral `StructuralWalk` behind
 `RealizeWalk` and `TextualizeWalk`.

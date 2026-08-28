@@ -33,5 +33,9 @@ delineation reports a precise fault.
 Dialects see no character-level API. They implement `Embodied` from received
 `Portion` anatomy and `Textualizable` to produce a valid `Portion`. `Text<T>`
 implements `Embodiable` when `T: Embodied`; `Prospective<T>` names the same
-association. `BareSafe` answers whether a complete `Text` is one bare value,
-and `ShapeDefined` is only a structural predicate.
+association. `BareSafe` answers with the expected context: `Symbol` requires
+one `Bare` Portion, while `String` requires exactly one Portion and therefore
+retains load-bearing separators. `PortionText::canonical_text` recovers that
+Portion's canonical text through the writer, not a dialect character scan.
+Multiple root siblings are unsafe in either context. `ShapeDefined` is only a
+structural predicate.

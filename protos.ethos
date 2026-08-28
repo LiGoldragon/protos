@@ -7,6 +7,7 @@ Types.[
   Symbol.String
   Extent.{Start.ByteOffset End.ByteOffset}
   Separator.[Period Exclamation Colon]
+  BareExpectation.[Symbol String]
   Enclosure.[Braced Bracketed Guillemets Angled CurlyQuote]
   StructuralEnclosure.[Braced Bracketed Guillemets Angled]
   DialectBoundary.[Parentheses]
@@ -36,7 +37,8 @@ Kinds.[
   Textualizable.{toPortion.[Portion] textualize.[Text]}
   ShapeDefined.{matches.[Boolean]}
   ContentHashable.{contentHash.[ContentHash]}
-  BareSafe.{isBareSafe.[Boolean]}
+  BareSafe.{isBareSafeFor.[BareExpectation Boolean]}
+  PortionText.{canonicalText.[Text]}
   EnclosedArity.{arity.[Natural]}
   EnclosedAnatomy.{structuralEnclosure.[Optional<StructuralEnclosure>] opaqueBoundary.[Optional<OpaqueBoundary>] portions.[Optional<[Portion]>] opaqueContent.[Optional<String>]}
   Printing.{print.[Text]}
@@ -48,7 +50,7 @@ Associations.[
   Prospective<T>.[Delineatable Embodiable]
   Embodied.[Textualizable]
   Delineation.[Printing]
-  Portion.[Printing]
+  Portion.[Printing PortionText]
 ]
 
 ;; Structural enclosures own Portion children. Curly quotes and dialect
@@ -58,3 +60,6 @@ Associations.[
 ;; quotes balance asymmetrically without escapes.
 ;; Comments and whitespace are non-structural trivia, dropped by canonical
 ;; delineation then printing. Parentheses are intentionally not an Enclosure.
+;; A Symbol expects one Bare Portion. A String expects exactly one Portion and
+;; recovers its canonical text through PortionText; multiple root siblings are
+;; not bare-safe for either expectation.

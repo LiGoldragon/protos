@@ -1,9 +1,9 @@
 use proptest::prelude::*;
 use protos::{
-    Bare, BareSafe, ContentHashable, Delineatable, DialectBoundary, Embodiable, Embodied, Enclosed,
-    EnclosedAnatomy, EnclosedArity, Extent, Fault, FaultProblem, Headed, Layout, OpaqueBoundary,
-    OpaqueEnclosed, Portion, Printing, Separator, ShapeDefined, StructuralEnclosed,
-    StructuralEnclosure, Symbol, Text, Textualizable,
+    Bare, BareExpectation, BareSafe, ContentHashable, Delineatable, DialectBoundary, Embodiable,
+    Embodied, Enclosed, EnclosedAnatomy, EnclosedArity, Extent, Fault, FaultProblem, Headed,
+    Layout, OpaqueBoundary, OpaqueEnclosed, Portion, PortionText, Printing, Separator,
+    ShapeDefined, StructuralEnclosed, StructuralEnclosure, Symbol, Text, Textualizable,
 };
 use std::fmt;
 
@@ -183,12 +183,55 @@ fn faults_report_half_open_utf8_extents() {
 
 #[test]
 fn bare_safety_and_symbol_construction_are_protos_anatomy_questions() {
-    assert!(text("alpha").is_bare_safe());
-    assert!(!text("alpha beta").is_bare_safe());
-    assert!(!text("[alpha]").is_bare_safe());
-    assert!(!text("alpha.beta").is_bare_safe());
+    assert!(text("alpha").is_bare_safe_for(BareExpectation::Symbol));
+    assert!(!text("alpha beta").is_bare_safe_for(BareExpectation::Symbol));
+    assert!(!text("[alpha]").is_bare_safe_for(BareExpectation::Symbol));
+    assert!(!text("alpha.beta").is_bare_safe_for(BareExpectation::Symbol));
     assert!(Symbol::try_from("alpha beta").is_err());
     assert!(Symbol::try_from("alpha]").is_err());
+}
+
+#[test]
+fn string_bare_safety_preserves_one_load_bearing_portion_without_dialect_scanning() {
+    for source in ["alpha.beta", "alpha!beta", "alpha:beta"] {
+        let value = text(source);
+        assert!(value.is_bare_safe_for(BareExpectation::String));
+        let delineation = value.delineate().unwrap();
+        assert_eq!(delineation.portions.len(), 1);
+        assert_eq!(delineation.portions[0].canonical_text().as_ref(), source);
+        assert_eq!(
+            delineation.portions[0]
+                .canonical_text()
+                .delineate()
+                .unwrap(),
+            delineation
+        );
+    }
+    assert!(!text("alpha beta").is_bare_safe_for(BareExpectation::String));
+}
+
+struct ToyString(String);
+
+impl Embodied for ToyString {
+    fn from_portion(portion: &Portion) -> Result<Self, Fault> {
+        Ok(Self(portion.canonical_text().as_ref().to_owned()))
+    }
+}
+
+impl Textualizable for ToyString {
+    fn to_portion(&self) -> Portion {
+        let text = Text::<()>::from(self.0.as_str());
+        assert!(text.is_bare_safe_for(BareExpectation::String));
+        text.delineate().unwrap().portions.remove(0)
+    }
+}
+
+#[test]
+fn toy_string_dialect_embodies_and_reemits_load_bearing_portions_without_scanning() {
+    let incoming: Text<ToyString> = Text::from("alpha.beta");
+    let value = incoming.embody().unwrap();
+    assert_eq!(value.0, "alpha.beta");
+    assert_eq!(value.textualize().as_ref(), "alpha.beta");
 }
 
 #[test]

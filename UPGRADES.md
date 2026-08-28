@@ -1,5 +1,15 @@
 # Upgrades
 
+## 0.12.0
+
+`BareSafe::is_bare_safe()` is replaced by
+`is_bare_safe_for(BareExpectation)`. Use `BareExpectation::Symbol` for the
+former one-`Bare` rule. A dialect expecting a String uses
+`BareExpectation::String`, which permits any exactly-one canonical `Portion`,
+including headed forms such as `a.b`, `a!b`, and `a:b`, but rejects sibling text
+such as `a b`. `PortionText::canonical_text()` recovers a delineated Portion's
+canonical content without a dialect character scan.
+
 ## 0.11.0
 
 `Text` is now `Text<T = ()>` and itself implements `Embodiable` for its typed
@@ -14,10 +24,10 @@ single `Boundary`/contents construction path is gone. `EnclosedArity::arity()`
 is computed from structural children, and opaque values have arity zero.
 
 `Symbol` construction is fallible (`Symbol::try_from`), and public `Portion`
-construction materializes its UTF-8 extents through the printer. Use
-`Text::is_bare_safe()` for a dialect's bare-safety question instead of scanning
-characters. `Text::from` now projects valid input canonically: it drops `;;`
-comments and spaces adjacent sibling Portions.
+construction materializes its UTF-8 extents through the printer. This release
+introduced Protos-owned bare-safety; 0.12 names its current context-aware API.
+`Text::from` now projects valid input canonically: it drops `;;` comments and
+spaces adjacent sibling Portions.
 
 ## 0.10.0
 

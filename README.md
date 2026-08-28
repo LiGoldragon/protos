@@ -26,8 +26,13 @@ becoming a sixth `Enclosure`. Parenthetical content has canonical escapes:
 and `\)` is an unmatched literal closing parenthesis. Curly quotes balance
 asymmetrically and have no escapes.
 
-Dialects never rescan strings to decide whether something is a bare value:
-ask `Text::is_bare_safe`. `ShapeDefined` is a predicate over received anatomy,
+Dialects never rescan strings to decide whether something is a bare value. Ask
+`Text::is_bare_safe_for(BareExpectation::Symbol)` for a symbol, or
+`BareExpectation::String` for any text that delineates to exactly one canonical
+`Portion`. The latter accepts load-bearing separators such as `a.b`, `a!b`, and
+`a:b`; it rejects multiple sibling portions such as `a b`. Given a delineated
+portion, `PortionText::canonical_text` returns its canonical text without a
+dialect character scan. `ShapeDefined` is a predicate over received anatomy,
 not another parser. `Textualizable` owns infallible outbound `Portion` anatomy;
 Protos owns its printing.
 

@@ -28,6 +28,12 @@ pub enum Separator {
     Colon,
 }
 
+/// The anatomy a dialect expects when it considers emitting text unquoted.
+pub enum BareExpectation {
+    Symbol,
+    String,
+}
+
 pub enum Enclosure {
     Braced,
     Bracketed,
@@ -155,7 +161,12 @@ pub trait ContentHashable {
 
 /// The universal anatomy question a dialect asks before it chooses Bare.
 pub trait BareSafe {
-    fn is_bare_safe(&self) -> bool;
+    fn is_bare_safe_for(&self, expectation: BareExpectation) -> bool;
+}
+
+/// Canonical text recovered from one already-delineated Portion.
+pub trait PortionText {
+    fn canonical_text(&self) -> Text;
 }
 
 pub trait EnclosedArity {
@@ -445,10 +456,20 @@ impl<T> ContentHashable for Text<T> {
 }
 
 impl<T> BareSafe for Text<T> {
-    fn is_bare_safe(&self) -> bool {
-        self.delineate().is_ok_and(|delineation| {
-            matches!(delineation.portions.as_slice(), [Portion::Bare(extent, _)] if extent.start == 0 && extent.end == self.as_ref().len())
+    fn is_bare_safe_for(&self, expectation: BareExpectation) -> bool {
+        self.delineate().is_ok_and(|delineation| match expectation {
+            BareExpectation::Symbol => matches!(
+                delineation.portions.as_slice(),
+                [Portion::Bare(extent, _)] if extent.start == 0 && extent.end == self.as_ref().len()
+            ),
+            BareExpectation::String => delineation.portions.len() == 1,
         })
+    }
+}
+
+impl PortionText for Portion {
+    fn canonical_text(&self) -> Text {
+        self.print(Layout::Flat)
     }
 }
 
@@ -1035,6 +1056,14 @@ impl Clone for Separator {
     }
 }
 
+impl Copy for BareExpectation {}
+
+impl Clone for BareExpectation {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 impl Copy for Enclosure {}
 
 impl Clone for Enclosure {
@@ -1119,6 +1148,17 @@ impl PartialEq for Separator {
 }
 
 impl Eq for Separator {}
+
+impl PartialEq for BareExpectation {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::Symbol, Self::Symbol) | (Self::String, Self::String)
+        )
+    }
+}
+
+impl Eq for BareExpectation {}
 
 impl PartialEq for Enclosure {
     fn eq(&self, other: &Self) -> bool {
@@ -1300,6 +1340,7 @@ debug_as_display!(
     Symbol,
     Extent,
     Separator,
+    BareExpectation,
     Enclosure,
     StructuralEnclosure,
     OpaqueBoundary,

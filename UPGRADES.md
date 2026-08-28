@@ -1,5 +1,14 @@
 # Upgrades
 
+## 0.13.0
+
+`Portion` implements `ScalarAnatomy`: `signed_i64()` accepts one canonical
+signed-integer `Bare` Portion, while `decimal_f64()` accepts one finite,
+point-mandatory Period-headed decimal. The methods return extent-bearing
+`Fault`s for invalid spelling, integer range, and non-finite decimal values.
+Use these rather than reading symbols in a dialect. `DelineatedText::retag()`
+changes a writer-produced `Text` target type without re-delineating it.
+
 ## 0.12.0
 
 `BareSafe::is_bare_safe()` is replaced by

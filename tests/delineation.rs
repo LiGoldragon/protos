@@ -1,9 +1,10 @@
 use proptest::prelude::*;
 use protos::{
-    Bare, BareExpectation, BareSafe, ContentHashable, Delineatable, DialectBoundary, Embodiable,
-    Embodied, Enclosed, EnclosedAnatomy, EnclosedArity, Extent, Fault, FaultProblem, Headed,
-    Layout, OpaqueBoundary, OpaqueEnclosed, Portion, PortionText, Printing, Separator,
-    ShapeDefined, StructuralEnclosed, StructuralEnclosure, Symbol, Text, Textualizable,
+    Bare, BareExpectation, BareSafe, ContentHashable, Delineatable, DelineatedText,
+    DialectBoundary, Embodiable, Embodied, Enclosed, EnclosedAnatomy, EnclosedArity, Extent, Fault,
+    FaultProblem, Headed, Layout, OpaqueBoundary, OpaqueEnclosed, Portion, PortionText, Printing,
+    ScalarAnatomy, Separator, ShapeDefined, StructuralEnclosed, StructuralEnclosure, Symbol, Text,
+    Textualizable,
 };
 use std::fmt;
 
@@ -232,6 +233,60 @@ fn toy_string_dialect_embodies_and_reemits_load_bearing_portions_without_scannin
     let value = incoming.embody().unwrap();
     assert_eq!(value.0, "alpha.beta");
     assert_eq!(value.textualize().as_ref(), "alpha.beta");
+}
+
+fn one_portion(source: &str) -> Portion {
+    text(source).delineate().unwrap().portions.remove(0)
+}
+
+#[test]
+fn scalar_anatomy_answers_canonical_integer_and_decimal_questions() {
+    assert_eq!(
+        one_portion("9223372036854775807").signed_i64().unwrap(),
+        i64::MAX
+    );
+    assert_eq!(
+        one_portion("-9223372036854775808").signed_i64().unwrap(),
+        i64::MIN
+    );
+    assert_eq!(
+        one_portion("9223372036854775808")
+            .signed_i64()
+            .unwrap_err()
+            .problem,
+        FaultProblem::IntegerOutOfRange
+    );
+    for source in ["+1", "01", "-0"] {
+        assert_eq!(
+            one_portion(source).signed_i64().unwrap_err().problem,
+            FaultProblem::InvalidSignedInteger
+        );
+    }
+
+    assert_eq!(one_portion("-0.5").decimal_f64().unwrap(), -0.5);
+    for source in ["1", "+1.0", "01.0", "1e3"] {
+        assert_eq!(
+            one_portion(source).decimal_f64().unwrap_err().problem,
+            FaultProblem::InvalidDecimal
+        );
+    }
+    let nonfinite = format!("{}.0", "9".repeat(400));
+    assert_eq!(
+        one_portion(&nonfinite).decimal_f64().unwrap_err().problem,
+        FaultProblem::NonFiniteDecimal
+    );
+
+    let fault = one_portion("α").signed_i64().unwrap_err();
+    assert_eq!(fault.extent, Extent { start: 0, end: 2 });
+}
+
+#[test]
+fn retag_preserves_printer_computed_delineation_without_a_read() {
+    let printed = one_portion("alpha.beta").print(Layout::Flat);
+    assert!(printed.delineation().is_some());
+    let retagged: Text<ToyString> = printed.retag();
+    assert!(retagged.delineation().is_some());
+    assert_eq!(retagged.as_ref(), "alpha.beta");
 }
 
 #[test]

@@ -39,3 +39,12 @@ retains load-bearing separators. `PortionText::canonical_text` recovers that
 Portion's canonical text through the writer, not a dialect character scan.
 Multiple root siblings are unsafe in either context. `ShapeDefined` is only a
 structural predicate.
+
+`ScalarAnatomy` answers numeric expectations from existing Portion anatomy:
+a signed integer is one `Bare` Portion, and a decimal is a Period-headed
+Portion with a bare fractional body. The universal question checks canonical
+sign/zero spelling, range, finite value, mandatory point, and absence of an
+exponent; failure carries the Portion's computed UTF-8 extent. Dialects do not
+read a `Symbol` or reconstruct a headed body. `DelineatedText::retag` moves a
+printer-produced canonical `Text` to a dialect target type while retaining its
+already-computed delineation, without a read.

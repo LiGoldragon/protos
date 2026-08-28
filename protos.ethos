@@ -25,7 +25,7 @@ Types.[
   Bare.{Symbol.Symbol}
   Delineation.{Root.Portions}
   Fault.{Extent.Extent Problem.FaultProblem}
-  FaultProblem.[UnexpectedCloser UnclosedDelimiter MissingHead MissingBody ExpectedOnePortion ExpectedShape ExpectedBareSymbol]
+  FaultProblem.[UnexpectedCloser UnclosedDelimiter MissingHead MissingBody ExpectedOnePortion ExpectedShape ExpectedBareSymbol InvalidSignedInteger IntegerOutOfRange InvalidDecimal NonFiniteDecimal]
   Layout.[Flat]
   Prospective<T>.{Text.Text<T>}
 ]
@@ -42,7 +42,8 @@ Kinds.[
   EnclosedArity.{arity.[Natural]}
   EnclosedAnatomy.{structuralEnclosure.[Optional<StructuralEnclosure>] opaqueBoundary.[Optional<OpaqueBoundary>] portions.[Optional<[Portion]>] opaqueContent.[Optional<String>]}
   Printing.{print.[Text]}
-  DelineatedText.{delineation.[Optional<Delineation>]}
+  ScalarAnatomy.{signedI64.[Result<Signed64 Fault>] decimalF64.[Result<Float64 Fault>]}
+  DelineatedText.{delineation.[Optional<Delineation>] retag<T>.[Text<T>]}
 ]
 
 Associations.[
@@ -50,7 +51,7 @@ Associations.[
   Prospective<T>.[Delineatable Embodiable]
   Embodied.[Textualizable]
   Delineation.[Printing]
-  Portion.[Printing PortionText]
+  Portion.[Printing PortionText ScalarAnatomy]
 ]
 
 ;; Structural enclosures own Portion children. Curly quotes and dialect
@@ -63,3 +64,8 @@ Associations.[
 ;; A Symbol expects one Bare Portion. A String expects exactly one Portion and
 ;; recovers its canonical text through PortionText; multiple root siblings are
 ;; not bare-safe for either expectation.
+;; ScalarAnatomy answers signed 64-bit integers from one Bare Portion and
+;; finite decimals from Period-headed Portion anatomy. Scalar spelling is
+;; canonical: no plus, leading zero, integer negative zero, or exponent; a
+;; decimal always has its point. DelineatedText.retag changes Text's target
+;; type while preserving printer-computed canonical text and delineation.

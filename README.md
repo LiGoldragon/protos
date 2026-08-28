@@ -36,6 +36,14 @@ dialect character scan. `ShapeDefined` is a predicate over received anatomy,
 not another parser. `Textualizable` owns infallible outbound `Portion` anatomy;
 Protos owns its printing.
 
+`ScalarAnatomy` is the corresponding universal numeric question over an
+already delineated Portion: `signed_i64` accepts canonical signed integers;
+`decimal_f64` accepts finite, point-mandatory Period-headed decimals without an
+exponent. It returns an extent-bearing Protos `Fault` for malformed, out-of-
+range, or non-finite input. A printer result can be retagged as `Text<T>` via
+`DelineatedText::retag` without another delineator pass; it preserves the
+writer-computed delineation.
+
 ## Validation
 
 ```sh

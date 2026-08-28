@@ -118,6 +118,10 @@ pub enum FaultProblem {
     ExpectedOnePortion,
     ExpectedShape,
     ExpectedBareSymbol,
+    InvalidSignedInteger,
+    IntegerOutOfRange,
+    InvalidDecimal,
+    NonFiniteDecimal,
 }
 
 pub enum Layout {
@@ -169,6 +173,12 @@ pub trait PortionText {
     fn canonical_text(&self) -> Text;
 }
 
+/// Universal scalar questions over anatomy already produced by the delineator.
+pub trait ScalarAnatomy {
+    fn signed_i64(&self) -> Result<i64, Fault>;
+    fn decimal_f64(&self) -> Result<f64, Fault>;
+}
+
 pub trait EnclosedArity {
     fn arity(&self) -> usize;
 }
@@ -189,6 +199,9 @@ pub trait Printing {
 /// the text it just wrote.
 pub trait DelineatedText {
     fn delineation(&self) -> Option<&Delineation>;
+    fn retag<U>(self) -> Text<U>
+    where
+        Self: Sized;
 }
 
 impl<T> From<&str> for Text<T> {
@@ -473,9 +486,80 @@ impl PortionText for Portion {
     }
 }
 
+impl ScalarAnatomy for Portion {
+    fn signed_i64(&self) -> Result<i64, Fault> {
+        let Portion::Bare(_, bare) = self else {
+            return Err(scalar_fault(self, FaultProblem::InvalidSignedInteger));
+        };
+        let source = bare.symbol.as_ref();
+        if !canonical_signed_integer(source, true) {
+            return Err(scalar_fault(self, FaultProblem::InvalidSignedInteger));
+        }
+        source
+            .parse()
+            .map_err(|_| scalar_fault(self, FaultProblem::IntegerOutOfRange))
+    }
+
+    fn decimal_f64(&self) -> Result<f64, Fault> {
+        let Portion::Headed(_, headed) = self else {
+            return Err(scalar_fault(self, FaultProblem::InvalidDecimal));
+        };
+        if headed.separator != Separator::Period {
+            return Err(scalar_fault(self, FaultProblem::InvalidDecimal));
+        }
+        let Portion::Bare(_, fraction) = headed.body.as_ref() else {
+            return Err(scalar_fault(self, FaultProblem::InvalidDecimal));
+        };
+        let integer = headed.head.as_ref();
+        let fraction = fraction.symbol.as_ref();
+        if !canonical_signed_integer(integer, false)
+            || fraction.is_empty()
+            || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err(scalar_fault(self, FaultProblem::InvalidDecimal));
+        }
+        let source = format!("{integer}.{fraction}");
+        let value = source
+            .parse::<f64>()
+            .map_err(|_| scalar_fault(self, FaultProblem::InvalidDecimal))?;
+        if value.is_finite() {
+            Ok(value)
+        } else {
+            Err(scalar_fault(self, FaultProblem::NonFiniteDecimal))
+        }
+    }
+}
+
+fn scalar_fault(portion: &Portion, problem: FaultProblem) -> Fault {
+    Fault {
+        extent: Extent {
+            start: portion.as_ref().start,
+            end: portion.as_ref().end,
+        },
+        problem,
+    }
+}
+
+fn canonical_signed_integer(source: &str, reject_negative_zero: bool) -> bool {
+    let digits = source.strip_prefix('-').unwrap_or(source);
+    !digits.is_empty()
+        && digits.bytes().all(|byte| byte.is_ascii_digit())
+        && (digits == "0" || !digits.starts_with('0'))
+        && (!reject_negative_zero || source != "-0")
+}
+
 impl<T> DelineatedText for Text<T> {
     fn delineation(&self) -> Option<&Delineation> {
         self.delineation.as_ref()
+    }
+
+    fn retag<U>(self) -> Text<U> {
+        Text {
+            normalized: self.normalized,
+            content_hash: self.content_hash,
+            delineation: self.delineation,
+            target: std::marker::PhantomData,
+        }
     }
 }
 
@@ -1319,6 +1403,10 @@ impl PartialEq for FaultProblem {
                 | (Self::ExpectedOnePortion, Self::ExpectedOnePortion)
                 | (Self::ExpectedShape, Self::ExpectedShape)
                 | (Self::ExpectedBareSymbol, Self::ExpectedBareSymbol)
+                | (Self::InvalidSignedInteger, Self::InvalidSignedInteger)
+                | (Self::IntegerOutOfRange, Self::IntegerOutOfRange)
+                | (Self::InvalidDecimal, Self::InvalidDecimal)
+                | (Self::NonFiniteDecimal, Self::NonFiniteDecimal)
         )
     }
 }

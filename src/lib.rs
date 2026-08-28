@@ -8,8 +8,11 @@ use std::fmt;
 
 pub struct Text {
     normalized: String,
+    content_hash: ContentHash,
     delineation: Option<Delineation>,
 }
+
+pub struct ContentHash(u64);
 
 pub struct Symbol(String);
 
@@ -75,6 +78,11 @@ pub struct Delineation {
     pub portions: Vec<Portion>,
 }
 
+pub struct Prospective<T> {
+    pub text: Text,
+    target: std::marker::PhantomData<fn() -> T>,
+}
+
 pub struct Fault {
     pub extent: Extent,
     pub problem: FaultProblem,
@@ -85,6 +93,8 @@ pub enum FaultProblem {
     UnclosedDelimiter,
     MissingHead,
     MissingBody,
+    ExpectedOnePortion,
+    ExpectedShape,
 }
 
 pub enum Layout {
@@ -95,6 +105,35 @@ pub trait Delineatable {
     type Delineation;
 
     fn delineate(&self) -> Result<Self::Delineation, Fault>;
+}
+
+pub trait Embodiable {
+    type Embodied: Embodied;
+
+    fn embody(&self) -> Result<Self::Embodied, Fault>;
+}
+
+/// A final Rust type owns its inbound Portion anatomy.
+pub trait Embodied: Sized {
+    fn from_portion(portion: &Portion) -> Result<Self, Fault>;
+}
+
+/// A final Rust type owns its outbound Portion anatomy; Protos prints it.
+pub trait Textualizable: Embodied {
+    fn to_portion(&self) -> Portion;
+
+    fn textualize(&self) -> Text {
+        self.to_portion().print(Layout::Flat)
+    }
+}
+
+/// A shape predicate used by a dialect to select an anatomy, never a parser.
+pub trait ShapeDefined: Embodied {
+    fn matches(portion: &Portion) -> bool;
+}
+
+pub trait ContentHashable {
+    fn content_hash(&self) -> ContentHash;
 }
 
 /// The only Protos capability which writes structural characters.
@@ -110,8 +149,16 @@ pub trait DelineatedText {
 
 impl From<&str> for Text {
     fn from(value: &str) -> Self {
+        let mut normalizer = Normalizer {
+            input: value,
+            cursor: 0,
+            output: String::new(),
+        };
+        let normalized = normalizer.normalize();
+        let content_hash = TextHasher.hash(&normalized);
         Self {
-            normalized: value.to_owned(),
+            normalized,
+            content_hash,
             delineation: None,
         }
     }
@@ -119,10 +166,7 @@ impl From<&str> for Text {
 
 impl From<String> for Text {
     fn from(value: String) -> Self {
-        Self {
-            normalized: value,
-            delineation: None,
-        }
+        Self::from(value.as_str())
     }
 }
 
@@ -156,6 +200,47 @@ impl Delineatable for Text {
     }
 }
 
+impl<T> From<Text> for Prospective<T> {
+    fn from(text: Text) -> Self {
+        Self {
+            text,
+            target: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T> Delineatable for Prospective<T> {
+    type Delineation = Delineation;
+
+    fn delineate(&self) -> Result<Self::Delineation, Fault> {
+        self.text.delineate()
+    }
+}
+
+impl<T: Embodied> Embodiable for Prospective<T> {
+    type Embodied = T;
+
+    fn embody(&self) -> Result<Self::Embodied, Fault> {
+        let delineation = self.delineate()?;
+        if delineation.portions.len() != 1 {
+            return Err(Fault {
+                extent: Extent {
+                    start: 0,
+                    end: self.text.as_ref().len(),
+                },
+                problem: FaultProblem::ExpectedOnePortion,
+            });
+        }
+        T::from_portion(&delineation.portions[0])
+    }
+}
+
+impl ContentHashable for Text {
+    fn content_hash(&self) -> ContentHash {
+        ContentHash(self.content_hash.0)
+    }
+}
+
 impl DelineatedText for Text {
     fn delineation(&self) -> Option<&Delineation> {
         self.delineation.as_ref()
@@ -168,8 +253,10 @@ impl Printing for Delineation {
             output: String::new(),
         };
         let delineation = printer.delineation(self, layout);
+        let content_hash = TextHasher.hash(&printer.output);
         Text {
             normalized: printer.output,
+            content_hash,
             delineation: Some(delineation),
         }
     }
@@ -181,8 +268,10 @@ impl Printing for Portion {
             output: String::new(),
         };
         let portion = printer.portion(self, layout);
+        let content_hash = TextHasher.hash(&printer.output);
         Text {
             normalized: printer.output,
+            content_hash,
             delineation: Some(Delineation {
                 portions: vec![portion],
             }),
@@ -349,6 +438,144 @@ static DELIMITERS: [DelimiterSpec; 6] = [
         handling: DelimiterHandling::BalancedOpaque,
     },
 ];
+
+struct TextHasher;
+
+trait Hashing {
+    fn hash(&self, text: &str) -> ContentHash;
+}
+
+impl Hashing for TextHasher {
+    fn hash(&self, text: &str) -> ContentHash {
+        let mut value = 0xcbf29ce484222325_u64;
+        for byte in text.bytes() {
+            value ^= u64::from(byte);
+            value = value.wrapping_mul(0x100000001b3);
+        }
+        ContentHash(value)
+    }
+}
+
+struct Normalizer<'input> {
+    input: &'input str,
+    cursor: usize,
+    output: String,
+}
+
+trait Normalizing {
+    fn normalize(&mut self) -> String;
+    fn copy_opaque(&mut self, delimiter: &DelimiterSpec);
+    fn copy_balanced_opaque(&mut self, delimiter: &DelimiterSpec);
+    fn skip_whitespace(&mut self);
+    fn needs_structural_space(&self) -> bool;
+    fn opening(&self) -> Option<&'static DelimiterSpec>;
+    fn next_character(&self) -> Option<char>;
+    fn advance_character(&mut self);
+    fn emit(&mut self, text: &str);
+}
+
+impl Normalizing for Normalizer<'_> {
+    fn normalize(&mut self) -> String {
+        let mut pending_whitespace = false;
+        while self.cursor < self.input.len() {
+            if self.next_character().is_some_and(char::is_whitespace) {
+                self.skip_whitespace();
+                pending_whitespace = true;
+                continue;
+            }
+            if pending_whitespace && self.needs_structural_space() {
+                self.emit(" ");
+            }
+            pending_whitespace = false;
+            if let Some(delimiter) = self.opening() {
+                match delimiter.handling {
+                    DelimiterHandling::Structural => {
+                        self.emit(delimiter.opening);
+                        self.cursor += delimiter.opening.len();
+                    }
+                    DelimiterHandling::Opaque => self.copy_opaque(delimiter),
+                    DelimiterHandling::BalancedOpaque => self.copy_balanced_opaque(delimiter),
+                }
+            } else if let Some(character) = self.next_character() {
+                self.emit(&self.input[self.cursor..self.cursor + character.len_utf8()]);
+                self.advance_character();
+            }
+        }
+        self.output.to_owned()
+    }
+
+    fn copy_opaque(&mut self, delimiter: &DelimiterSpec) {
+        self.emit(delimiter.opening);
+        self.cursor += delimiter.opening.len();
+        let content_start = self.cursor;
+        while self.cursor < self.input.len()
+            && !self.input[self.cursor..].starts_with(delimiter.closing)
+        {
+            self.advance_character();
+        }
+        self.emit(&self.input[content_start..self.cursor]);
+        if self.cursor < self.input.len() {
+            self.emit(delimiter.closing);
+            self.cursor += delimiter.closing.len();
+        }
+    }
+
+    fn copy_balanced_opaque(&mut self, delimiter: &DelimiterSpec) {
+        let opaque_start = self.cursor;
+        self.cursor += delimiter.opening.len();
+        let mut depth = 1_usize;
+        while self.cursor < self.input.len() && depth > 0 {
+            if self.input[self.cursor..].starts_with(delimiter.opening) {
+                depth += 1;
+                self.cursor += delimiter.opening.len();
+            } else if self.input[self.cursor..].starts_with(delimiter.closing) {
+                depth -= 1;
+                self.cursor += delimiter.closing.len();
+            } else {
+                self.advance_character();
+            }
+        }
+        self.emit(&self.input[opaque_start..self.cursor]);
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self.next_character().is_some_and(char::is_whitespace) {
+            self.advance_character();
+        }
+    }
+
+    fn needs_structural_space(&self) -> bool {
+        let previous = self.output.chars().last();
+        let following = self.next_character();
+        match (previous, following) {
+            (Some(previous), Some(following)) => {
+                !matches!(previous, '{' | '[' | '«' | '<' | '(' | '.' | '!' | ':')
+                    && !matches!(following, '}' | ']' | '»' | '>' | ')' | '.' | '!' | ':')
+            }
+            _ => false,
+        }
+    }
+
+    fn opening(&self) -> Option<&'static DelimiterSpec> {
+        DELIMITERS
+            .iter()
+            .find(|delimiter| self.input[self.cursor..].starts_with(delimiter.opening))
+    }
+
+    fn next_character(&self) -> Option<char> {
+        self.input[self.cursor..].chars().next()
+    }
+
+    fn advance_character(&mut self) {
+        if let Some(character) = self.next_character() {
+            self.cursor += character.len_utf8();
+        }
+    }
+
+    fn emit(&mut self, text: &str) {
+        self.output.push_str(text);
+    }
+}
 
 struct Parser<'input> {
     input: &'input str,
@@ -641,6 +868,14 @@ impl PartialEq for Text {
 
 impl Eq for Text {}
 
+impl PartialEq for ContentHash {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for ContentHash {}
+
 impl PartialEq for Symbol {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
@@ -780,6 +1015,8 @@ impl PartialEq for FaultProblem {
                 | (Self::UnclosedDelimiter, Self::UnclosedDelimiter)
                 | (Self::MissingHead, Self::MissingHead)
                 | (Self::MissingBody, Self::MissingBody)
+                | (Self::ExpectedOnePortion, Self::ExpectedOnePortion)
+                | (Self::ExpectedShape, Self::ExpectedShape)
         )
     }
 }
@@ -798,6 +1035,7 @@ macro_rules! debug_as_display {
 
 debug_as_display!(
     Text,
+    ContentHash,
     Symbol,
     Extent,
     Separator,

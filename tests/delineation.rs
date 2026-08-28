@@ -1,16 +1,39 @@
 use proptest::prelude::*;
 use protos::{
-    Bare, Boundary, Delineatable, Delineation, Enclosed, EnclosedContents, Enclosure, Extent,
-    Headed, Layout, Portion, PortionForm, Printing, Separator, Symbol, Text,
+    Bare, Boundary, ContentHashable, Delineatable, Delineation, Embodiable, Embodied, Enclosed,
+    EnclosedContents, Enclosure, Extent, Fault, FaultProblem, Headed, Layout, Portion, PortionForm,
+    Printing, Prospective, Separator, ShapeDefined, Symbol, Text, Textualizable,
 };
+use std::fmt;
 
-#[derive(Clone, Debug)]
 enum Spec {
     Bare(String),
     Headed(String, Separator, Box<Spec>),
     Enclosed(Enclosure, Vec<Spec>),
     Curly(String),
     Parentheses(String),
+}
+
+impl Clone for Spec {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Bare(value) => Self::Bare(value.to_owned()),
+            Self::Headed(head, separator, body) => {
+                Self::Headed(head.to_owned(), *separator, Box::new((**body).clone()))
+            }
+            Self::Enclosed(enclosure, children) => {
+                Self::Enclosed(*enclosure, children.iter().map(Clone::clone).collect())
+            }
+            Self::Curly(value) => Self::Curly(value.to_owned()),
+            Self::Parentheses(value) => Self::Parentheses(value.to_owned()),
+        }
+    }
+}
+
+impl fmt::Debug for Spec {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "throwaway Portion specification")
+    }
 }
 
 fn render(spec: &Spec) -> String {
@@ -162,4 +185,124 @@ fn printer_canonicalizes_non_structural_whitespace() {
     let source = Text::from("  { alpha   [ beta gamma ] }  ");
     let printed = source.delineate().unwrap().print(Layout::Flat);
     assert_eq!(printed.as_ref(), "{alpha [beta gamma]}");
+}
+
+#[test]
+fn text_normalizes_only_non_structural_whitespace_and_hashes_the_normalized_content() {
+    let normalized = Text::from("  { alpha   [ beta gamma ] }  ");
+    let canonical = Text::from("{alpha [beta gamma]}");
+    let opaque = Text::from("“ keep   these spaces ”");
+    assert_eq!(normalized.as_ref(), canonical.as_ref());
+    assert_eq!(normalized.content_hash(), canonical.content_hash());
+    assert_eq!(opaque.as_ref(), "“ keep   these spaces ”");
+}
+
+struct ToyRecord {
+    name: String,
+    count: String,
+}
+
+impl Embodied for ToyRecord {
+    fn from_portion(portion: &Portion) -> Result<Self, Fault> {
+        let enclosed = match &portion.form {
+            PortionForm::Enclosed(enclosed)
+                if enclosed.boundary == Boundary::Universal(Enclosure::Braced) =>
+            {
+                enclosed
+            }
+            _ => {
+                return Err(Fault {
+                    extent: Extent {
+                        start: portion.extent.start,
+                        end: portion.extent.end,
+                    },
+                    problem: FaultProblem::ExpectedShape,
+                });
+            }
+        };
+        let fields = match &enclosed.contents {
+            EnclosedContents::Portions(fields) if fields.len() == 2 => fields,
+            _ => {
+                return Err(Fault {
+                    extent: Extent {
+                        start: portion.extent.start,
+                        end: portion.extent.end,
+                    },
+                    problem: FaultProblem::ExpectedShape,
+                });
+            }
+        };
+        let name = match &fields[0].form {
+            PortionForm::Bare(bare) => bare.symbol.as_ref().to_owned(),
+            _ => {
+                return Err(Fault {
+                    extent: Extent {
+                        start: fields[0].extent.start,
+                        end: fields[0].extent.end,
+                    },
+                    problem: FaultProblem::ExpectedShape,
+                });
+            }
+        };
+        let count = match &fields[1].form {
+            PortionForm::Bare(bare) => bare.symbol.as_ref().to_owned(),
+            _ => {
+                return Err(Fault {
+                    extent: Extent {
+                        start: fields[1].extent.start,
+                        end: fields[1].extent.end,
+                    },
+                    problem: FaultProblem::ExpectedShape,
+                });
+            }
+        };
+        Ok(Self { name, count })
+    }
+}
+
+impl Textualizable for ToyRecord {
+    fn to_portion(&self) -> Portion {
+        Portion {
+            extent: Extent { start: 0, end: 0 },
+            form: PortionForm::Enclosed(Enclosed {
+                boundary: Boundary::Universal(Enclosure::Braced),
+                arity: 2,
+                contents: EnclosedContents::Portions(vec![
+                    Portion {
+                        extent: Extent { start: 0, end: 0 },
+                        form: PortionForm::Bare(Bare {
+                            symbol: Symbol::from(self.name.as_str()),
+                        }),
+                    },
+                    Portion {
+                        extent: Extent { start: 0, end: 0 },
+                        form: PortionForm::Bare(Bare {
+                            symbol: Symbol::from(self.count.as_str()),
+                        }),
+                    },
+                ]),
+            }),
+        }
+    }
+}
+
+impl ShapeDefined for ToyRecord {
+    fn matches(portion: &Portion) -> bool {
+        matches!(&portion.form, PortionForm::Enclosed(enclosed) if enclosed.boundary == Boundary::Universal(Enclosure::Braced) && enclosed.arity == 2)
+    }
+}
+
+#[test]
+fn a_dialect_embodies_and_textualizes_through_portions_without_handling_characters() {
+    let prospective: Prospective<ToyRecord> = Text::from(" { north 42 } ").into();
+    let record = prospective.embody().unwrap();
+    assert_eq!(record.name, "north");
+    assert_eq!(record.count, "42");
+    assert_eq!(record.textualize().as_ref(), "{north 42}");
+    let portion = Text::from("{north 42}")
+        .delineate()
+        .unwrap()
+        .portions
+        .remove(0);
+    assert!(<ToyRecord as ShapeDefined>::matches(&portion));
 }

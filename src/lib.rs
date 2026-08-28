@@ -6,7 +6,10 @@
 
 use std::fmt;
 
-pub struct Text(String);
+pub struct Text {
+    normalized: String,
+    delineation: Option<Delineation>,
+}
 
 pub struct Symbol(String);
 
@@ -84,27 +87,48 @@ pub enum FaultProblem {
     MissingBody,
 }
 
+pub enum Layout {
+    Flat,
+}
+
 pub trait Delineatable {
     type Delineation;
 
     fn delineate(&self) -> Result<Self::Delineation, Fault>;
 }
 
+/// The only Protos capability which writes structural characters.
+pub trait Printing {
+    fn print(&self, layout: Layout) -> Text;
+}
+
+/// Lets callers retain the extents computed by the writer without re-reading
+/// the text it just wrote.
+pub trait DelineatedText {
+    fn delineation(&self) -> Option<&Delineation>;
+}
+
 impl From<&str> for Text {
     fn from(value: &str) -> Self {
-        Self(value.to_owned())
+        Self {
+            normalized: value.to_owned(),
+            delineation: None,
+        }
     }
 }
 
 impl From<String> for Text {
     fn from(value: String) -> Self {
-        Self(value)
+        Self {
+            normalized: value,
+            delineation: None,
+        }
     }
 }
 
 impl AsRef<str> for Text {
     fn as_ref(&self) -> &str {
-        &self.0
+        &self.normalized
     }
 }
 
@@ -129,6 +153,148 @@ impl Delineatable for Text {
             cursor: 0,
         };
         parser.delineate_document()
+    }
+}
+
+impl DelineatedText for Text {
+    fn delineation(&self) -> Option<&Delineation> {
+        self.delineation.as_ref()
+    }
+}
+
+impl Printing for Delineation {
+    fn print(&self, layout: Layout) -> Text {
+        let mut printer = Printer {
+            output: String::new(),
+        };
+        let delineation = printer.delineation(self, layout);
+        Text {
+            normalized: printer.output,
+            delineation: Some(delineation),
+        }
+    }
+}
+
+impl Printing for Portion {
+    fn print(&self, layout: Layout) -> Text {
+        let mut printer = Printer {
+            output: String::new(),
+        };
+        let portion = printer.portion(self, layout);
+        Text {
+            normalized: printer.output,
+            delineation: Some(Delineation {
+                portions: vec![portion],
+            }),
+        }
+    }
+}
+
+struct Printer {
+    output: String,
+}
+
+trait Rendering {
+    fn delineation(&mut self, delineation: &Delineation, layout: Layout) -> Delineation;
+    fn portion(&mut self, portion: &Portion, layout: Layout) -> Portion;
+    fn headed(&mut self, headed: &Headed, layout: Layout) -> Headed;
+    fn enclosed(&mut self, enclosed: &Enclosed, layout: Layout) -> Enclosed;
+    fn bare(&mut self, bare: &Bare) -> Bare;
+    fn delimiter(&self, boundary: Boundary) -> &'static DelimiterSpec;
+    fn emit(&mut self, text: &str);
+}
+
+impl Rendering for Printer {
+    fn delineation(&mut self, delineation: &Delineation, layout: Layout) -> Delineation {
+        let mut portions = Vec::with_capacity(delineation.portions.len());
+        for portion in &delineation.portions {
+            if !self.output.is_empty() {
+                match layout {
+                    Layout::Flat => self.emit(" "),
+                }
+            }
+            portions.push(self.portion(portion, layout));
+        }
+        Delineation { portions }
+    }
+
+    fn portion(&mut self, portion: &Portion, layout: Layout) -> Portion {
+        let start = self.output.len();
+        let form = match &portion.form {
+            PortionForm::Headed(headed) => PortionForm::Headed(self.headed(headed, layout)),
+            PortionForm::Enclosed(enclosed) => {
+                PortionForm::Enclosed(self.enclosed(enclosed, layout))
+            }
+            PortionForm::Bare(bare) => PortionForm::Bare(self.bare(bare)),
+        };
+        Portion {
+            extent: Extent {
+                start,
+                end: self.output.len(),
+            },
+            form,
+        }
+    }
+
+    fn headed(&mut self, headed: &Headed, layout: Layout) -> Headed {
+        self.emit(headed.head.as_ref());
+        self.emit(match headed.separator {
+            Separator::Period => ".",
+            Separator::Exclamation => "!",
+            Separator::Colon => ":",
+        });
+        Headed {
+            head: Symbol::from(headed.head.as_ref()),
+            separator: headed.separator,
+            body: Box::new(self.portion(&headed.body, layout)),
+        }
+    }
+
+    fn enclosed(&mut self, enclosed: &Enclosed, layout: Layout) -> Enclosed {
+        let delimiter = self.delimiter(enclosed.boundary);
+        self.emit(delimiter.opening);
+        let contents = match &enclosed.contents {
+            EnclosedContents::Portions(portions) => {
+                let mut printed = Vec::with_capacity(portions.len());
+                for portion in portions {
+                    if !printed.is_empty() {
+                        match layout {
+                            Layout::Flat => self.emit(" "),
+                        }
+                    }
+                    printed.push(self.portion(portion, layout));
+                }
+                EnclosedContents::Portions(printed)
+            }
+            EnclosedContents::Opaque(value) => {
+                self.emit(value);
+                EnclosedContents::Opaque(value.to_owned())
+            }
+        };
+        self.emit(delimiter.closing);
+        Enclosed {
+            boundary: enclosed.boundary,
+            arity: enclosed.arity,
+            contents,
+        }
+    }
+
+    fn bare(&mut self, bare: &Bare) -> Bare {
+        self.emit(bare.symbol.as_ref());
+        Bare {
+            symbol: Symbol::from(bare.symbol.as_ref()),
+        }
+    }
+
+    fn delimiter(&self, boundary: Boundary) -> &'static DelimiterSpec {
+        DELIMITERS
+            .iter()
+            .find(|delimiter| delimiter.boundary == boundary)
+            .expect("every parsed boundary has one universal delimiter specification")
+    }
+
+    fn emit(&mut self, text: &str) {
+        self.output.push_str(text);
     }
 }
 
@@ -459,9 +625,17 @@ impl Clone for Boundary {
     }
 }
 
+impl Copy for Layout {}
+
+impl Clone for Layout {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 impl PartialEq for Text {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        self.normalized == other.normalized
     }
 }
 
@@ -638,4 +812,5 @@ debug_as_display!(
     Delineation,
     Fault,
     FaultProblem,
+    Layout,
 );

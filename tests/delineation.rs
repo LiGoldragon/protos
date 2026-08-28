@@ -1,7 +1,7 @@
 use proptest::prelude::*;
 use protos::{
     Bare, Boundary, Delineatable, Delineation, Enclosed, EnclosedContents, Enclosure, Extent,
-    Headed, Portion, PortionForm, Separator, Symbol, Text,
+    Headed, Layout, Portion, PortionForm, Printing, Separator, Symbol, Text,
 };
 
 #[derive(Clone, Debug)]
@@ -139,6 +139,15 @@ proptest! {
         let expected = Delineation { portions: vec![expected(&spec, 0)] };
         prop_assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn printing_and_delineation_are_identical_on_every_portion_tree(spec in spec_strategy()) {
+        let source = render(&spec);
+        let delineation = Text::from(source.as_str()).delineate().unwrap();
+        let printed = delineation.print(Layout::Flat);
+        prop_assert_eq!(printed.as_ref(), source.as_str());
+        prop_assert_eq!(printed.delineate().unwrap(), delineation);
+    }
 }
 
 #[test]
@@ -146,4 +155,11 @@ fn faults_report_half_open_utf8_extents() {
     let fault = Text::from("«α").delineate().unwrap_err();
     assert_eq!(fault.extent.start, 0);
     assert_eq!(fault.extent.end, 4);
+}
+
+#[test]
+fn printer_canonicalizes_non_structural_whitespace() {
+    let source = Text::from("  { alpha   [ beta gamma ] }  ");
+    let printed = source.delineate().unwrap().print(Layout::Flat);
+    assert_eq!(printed.as_ref(), "{alpha [beta gamma]}");
 }

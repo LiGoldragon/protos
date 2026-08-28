@@ -1,3 +1,6 @@
+Schema.{0 1 0}
+[]
+
 ;; Protos is the universal structural substrate.  A dialect supplies the
 ;; Portion <-> embodied-type anatomy; Protos alone reads and writes characters.
 

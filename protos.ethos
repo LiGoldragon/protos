@@ -5,7 +5,7 @@ Schema.{0 1 0}
 ;; Portion <-> embodied-type anatomy; Protos alone reads and writes characters.
 
 Types.[
-  Text<T>.{Normalized.String ContentHash.ContentHash}
+  Text.{Normalized.String ContentHash.ContentHash}
   ContentHash.UnsignedInteger
   Symbol.String
   Extent.{Start.ByteOffset End.ByteOffset}
@@ -33,7 +33,7 @@ Types.[
   Fault.{Extent.Extent Problem.FaultProblem}
   FaultProblem.[UnexpectedCloser UnclosedDelimiter MissingHead MissingBody ExpectedOnePortion ExpectedShape ExpectedBareSymbol InvalidSignedInteger IntegerOutOfRange InvalidDecimal NonFiniteDecimal]
   Layout.[Flat]
-  Prospective<T>.{Text.Text<T>}
+  Prospective.{Text.Text<T>}
 ]
 
 Kinds.[
@@ -49,12 +49,12 @@ Kinds.[
   EnclosedAnatomy.{structuralEnclosure.[Optional<StructuralEnclosure>] opaqueBoundary.[Optional<OpaqueBoundary>] portions.[Optional<[Portion]>] opaqueContent.[Optional<String>]}
   Printing.{print.[Text]}
   ScalarAnatomy.{signedI64.[Result<Signed64 Fault>] decimalF64.[Result<Float64 Fault>]}
-  DelineatedText.{delineation.[Optional<Delineation>] retag<T>.[Text<T>]}
+  DelineatedText.{delineation.[Optional<Delineation>] retag.[Text<T>]}
 ]
 
 Associations.[
-  Text<T>.[Delineatable Embodiable ContentHashable BareSafe DelineatedText]
-  Prospective<T>.[Delineatable Embodiable]
+  Text.[Delineatable Embodiable ContentHashable BareSafe DelineatedText]
+  Prospective.[Delineatable Embodiable]
   Embodied.[Textualizable]
   Delineation.[Printing]
   Portion.[Printing PortionText ScalarAnatomy]

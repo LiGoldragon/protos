@@ -39,15 +39,15 @@ Types.[
 Kinds.[
   Delineatable.{delineate.[Result<Delineation Fault>]}
   Embodiable.{embody.[Result<Self.Embodied Fault>]}
-  Embodied.{Sized fromPortion.[Result<Self Fault>]}
+  Embodied.{Sized fromPortion.{[Portion] [Result<Self Fault>]}}
   Textualizable.{Embodied toPortion.[Portion] textualize.[Text]}
-  ShapeDefined.{matches.[Boolean]}
+  ShapeDefined.{Embodied matches.{[Portion] [Boolean]}}
   ContentHashable.{contentHash.[ContentHash]}
   BareSafe.{isBareSafeFor.{[BareExpectation] [Boolean]}}
   PortionText.{canonicalText.[Text]}
   EnclosedArity.{arity.[Natural]}
   EnclosedAnatomy.{structuralEnclosure.[Optional<StructuralEnclosure>] opaqueBoundary.[Optional<OpaqueBoundary>] portions.[Optional<[Portion]>] opaqueContent.[Optional<String>]}
-  Printing.{print.[Text]}
+  Printing.{print.{[Layout] [Text]}}
   ScalarAnatomy.{signedI64.[Result<Signed64 Fault>] decimalF64.[Result<Float64 Fault>]}
   DelineatedText.{delineation.[Optional<Delineation>] retag.[Text<T>]}
 ]

@@ -44,6 +44,16 @@ range, or non-finite input. A printer result can be retagged as `Text<T>` via
 `DelineatedText::retag` without another delineator pass; it preserves the
 writer-computed delineation.
 
+For outbound values, `Portion::from_signed_i64`, `from_decimal_f64`, and
+`from_expected_string` are the sole Protos constructors for these universal
+forms. Decimal construction rejects non-finite values and writes a finite,
+point-mandatory, exponent-free form; expected String content is emitted as one
+unquoted Portion when possible, otherwise as validated balanced curly opaque
+content. `Portion` and its nested anatomy implement `Clone`, so a dialect may
+retain a validated inbound Portion for generic or container projection without
+reading it again. Cloned inbound extents are retained; the writer computes new
+outbound extents.
+
 ## Validation
 
 ```sh

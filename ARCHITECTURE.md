@@ -48,3 +48,10 @@ exponent; failure carries the Portion's computed UTF-8 extent. Dialects do not
 read a `Symbol` or reconstruct a headed body. `DelineatedText::retag` moves a
 printer-produced canonical `Text` to a dialect target type while retaining its
 already-computed delineation, without a read.
+
+Outbound scalar and String construction also belongs to Protos. `Portion` owns
+the numeric formatting and the decision between a one-Portion String and
+validated balanced-curly opaque content; dialects do not format numbers or add
+quotes. A Portion tree can be cloned purely, retaining its validated inbound
+extents for later generic/container projection. Printing that clone is still a
+new projection and computes its own output extents.

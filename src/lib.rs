@@ -432,6 +432,43 @@ impl From<Enclosed> for Portion {
     }
 }
 
+impl Portion {
+    /// Materialize a canonical signed integer through the sole writer.
+    pub fn from_signed_i64(value: i64) -> Self {
+        Self::from(Bare::from(Symbol(value.to_string())))
+    }
+
+    /// Materialize a finite, point-mandatory decimal through the sole writer.
+    pub fn from_decimal_f64(value: f64) -> Result<Self, Fault> {
+        let source = canonical_decimal_f64(value)?;
+        let (integer, fraction) = source
+            .split_once('.')
+            .expect("a canonical Protos decimal always has a point");
+        Ok(Self::from(Headed::from((
+            Symbol(integer.to_owned()),
+            Separator::Period,
+            Self::from(Bare::from(Symbol(fraction.to_owned()))),
+        ))))
+    }
+
+    /// Materialize expected String content as one unquoted Portion or a
+    /// validated balanced-curly opaque Portion.
+    pub fn from_expected_string(content: &str) -> Result<Self, Fault> {
+        let text = Text::<()>::from(content);
+        if text.is_bare_safe_for(BareExpectation::String) {
+            return Ok(text
+                .delineate()
+                .expect("bare safety proved delineation succeeds")
+                .portions
+                .into_iter()
+                .next()
+                .expect("String bare safety proved exactly one Portion"));
+        }
+        let opaque = OpaqueEnclosed::try_from((OpaqueBoundary::CurlyQuote, content.to_owned()))?;
+        Ok(Self::from(Enclosed::from(opaque)))
+    }
+}
+
 impl<T> Delineatable for Text<T> {
     type Delineation = Delineation;
 
@@ -546,6 +583,60 @@ fn canonical_signed_integer(source: &str, reject_negative_zero: bool) -> bool {
         && digits.bytes().all(|byte| byte.is_ascii_digit())
         && (digits == "0" || !digits.starts_with('0'))
         && (!reject_negative_zero || source != "-0")
+}
+
+fn canonical_decimal_f64(value: f64) -> Result<String, Fault> {
+    if !value.is_finite() {
+        return Err(construction_fault(FaultProblem::NonFiniteDecimal));
+    }
+    let source = value.to_string();
+    let Some(index) = source.find('e').or_else(|| source.find('E')) else {
+        return Ok(if source.contains('.') {
+            source
+        } else {
+            format!("{source}.0")
+        });
+    };
+    let mantissa = &source[..index];
+    let exponent = source[index + 1..]
+        .parse::<i32>()
+        .expect("Rust f64 formatting emits an integer exponent");
+    let (negative, unsigned) = match mantissa.strip_prefix('-') {
+        Some(unsigned) => (true, unsigned),
+        None => (false, mantissa),
+    };
+    let (whole, fractional) = unsigned.split_once('.').unwrap_or((unsigned, ""));
+    let digits = format!("{whole}{fractional}");
+    let point = whole.len() as i32 + exponent;
+    let mut expanded = String::new();
+    if negative {
+        expanded.push('-');
+    }
+    if point <= 0 {
+        expanded.push_str("0.");
+        for _ in point..0 {
+            expanded.push('0');
+        }
+        expanded.push_str(&digits);
+    } else if point as usize >= digits.len() {
+        expanded.push_str(&digits);
+        for _ in digits.len()..point as usize {
+            expanded.push('0');
+        }
+        expanded.push_str(".0");
+    } else {
+        expanded.push_str(&digits[..point as usize]);
+        expanded.push('.');
+        expanded.push_str(&digits[point as usize..]);
+    }
+    Ok(expanded)
+}
+
+fn construction_fault(problem: FaultProblem) -> Fault {
+    Fault {
+        extent: Extent { start: 0, end: 0 },
+        problem,
+    }
 }
 
 impl<T> DelineatedText for Text<T> {
@@ -1137,6 +1228,84 @@ impl Copy for Separator {}
 impl Clone for Separator {
     fn clone(&self) -> Self {
         *self
+    }
+}
+
+impl Clone for Symbol {
+    fn clone(&self) -> Self {
+        Self(self.0.to_owned())
+    }
+}
+
+impl Clone for Extent {
+    fn clone(&self) -> Self {
+        Self {
+            start: self.start,
+            end: self.end,
+        }
+    }
+}
+
+impl Clone for Bare {
+    fn clone(&self) -> Self {
+        Self {
+            symbol: self.symbol.clone(),
+        }
+    }
+}
+
+impl Clone for Headed {
+    fn clone(&self) -> Self {
+        Self {
+            head: self.head.clone(),
+            separator: self.separator,
+            body: Box::new((*self.body).clone()),
+        }
+    }
+}
+
+impl Clone for StructuralEnclosed {
+    fn clone(&self) -> Self {
+        Self {
+            enclosure: self.enclosure,
+            portions: self.portions.iter().map(Clone::clone).collect(),
+        }
+    }
+}
+
+impl Clone for OpaqueEnclosed {
+    fn clone(&self) -> Self {
+        Self {
+            boundary: self.boundary,
+            content: self.content.to_owned(),
+        }
+    }
+}
+
+impl Clone for Enclosed {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Structural(enclosed) => Self::Structural(enclosed.clone()),
+            Self::Opaque(enclosed) => Self::Opaque(enclosed.clone()),
+        }
+    }
+}
+
+impl Clone for Portion {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Headed(extent, headed) => Self::Headed(extent.clone(), headed.clone()),
+            Self::Enclosed(extent, enclosed) => Self::Enclosed(extent.clone(), enclosed.clone()),
+            Self::Bare(extent, bare) => Self::Bare(extent.clone(), bare.clone()),
+        }
+    }
+}
+
+impl Clone for Delineation {
+    fn clone(&self) -> Self {
+        Self {
+            portions: self.portions.iter().map(Clone::clone).collect(),
+        }
     }
 }
 

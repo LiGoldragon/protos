@@ -1,5 +1,14 @@
 # Upgrades
 
+## 0.14.0
+
+`Portion` and its nested anatomy now implement `Clone`. Retained inbound
+extents are valid provenance; a later writer projection recomputes output
+extents. Use `Portion::from_signed_i64`, `from_decimal_f64`, and
+`from_expected_string` for infallible integer or fallible decimal/String
+outbound construction. The String constructor chooses one unquoted Portion or
+validated balanced-curly opaque content; unbalanced curly content is rejected.
+
 ## 0.13.0
 
 `Portion` implements `ScalarAnatomy`: `signed_i64()` accepts one canonical

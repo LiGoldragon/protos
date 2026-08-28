@@ -290,6 +290,39 @@ fn retag_preserves_printer_computed_delineation_without_a_read() {
 }
 
 #[test]
+fn protos_constructs_and_clones_outbound_scalar_string_and_container_portions() {
+    let signed = Portion::from_signed_i64(i64::MIN);
+    assert_eq!(signed.signed_i64().unwrap(), i64::MIN);
+
+    let decimal = Portion::from_decimal_f64(-0.5).unwrap();
+    assert_eq!(decimal.decimal_f64().unwrap(), -0.5);
+    assert_eq!(decimal.print(Layout::Flat).as_ref(), "-0.5");
+    let small_decimal = Portion::from_decimal_f64(0.0000001).unwrap();
+    assert_eq!(small_decimal.print(Layout::Flat).as_ref(), "0.0000001");
+    assert_eq!(
+        Portion::from_decimal_f64(f64::INFINITY)
+            .unwrap_err()
+            .problem,
+        FaultProblem::NonFiniteDecimal
+    );
+
+    let bare = Portion::from_expected_string("alpha.beta").unwrap();
+    assert_eq!(bare.print(Layout::Flat).as_ref(), "alpha.beta");
+    let opaque = Portion::from_expected_string("alpha beta").unwrap();
+    assert_eq!(opaque.print(Layout::Flat).as_ref(), "“alpha beta”");
+    assert!(Portion::from_expected_string("alpha “beta").is_err());
+
+    let container = Portion::from(Enclosed::from(StructuralEnclosed::from((
+        StructuralEnclosure::Braced,
+        vec![signed, decimal, bare, opaque],
+    ))));
+    let cloned = container.clone();
+    assert_eq!(cloned, container);
+    let printed = cloned.print(Layout::Flat);
+    assert_eq!(printed.delineate().unwrap().portions.as_slice(), &[cloned]);
+}
+
+#[test]
 fn hashes_distinguish_distinct_normalized_content() {
     assert_ne!(text("alpha").content_hash(), text("beta").content_hash());
     assert_eq!(text(" alpha ").content_hash(), text("alpha").content_hash());

@@ -17,6 +17,9 @@ Types.[
     Headed.{Extent.Extent Content.Headed}
     Enclosed.{Extent.Extent Content.Enclosed}
     Bare.{Extent.Extent Content.Bare}
+    FromSignedI64.[Portion]
+    FromDecimalF64.[Result<Portion Fault>]
+    FromExpectedString.[Result<Portion Fault>]
   ]
   Headed.{Head.Symbol Separator.Separator Body.Portion}
   Enclosed.[Structural.StructuralEnclosed Opaque.OpaqueEnclosed]
@@ -69,3 +72,7 @@ Associations.[
 ;; canonical: no plus, leading zero, integer negative zero, or exponent; a
 ;; decimal always has its point. DelineatedText.retag changes Text's target
 ;; type while preserving printer-computed canonical text and delineation.
+;; Portion duplication is pure anatomy duplication: it retains validated inbound
+;; extents, while every writer projection computes fresh outbound extents.
+;; Portion construction owns signed integer/decimal formatting and String's
+;; unquoted-one-Portion or validated balanced-curly opaque choice.

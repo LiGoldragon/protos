@@ -20,7 +20,8 @@ Structural enclosure and opaque content are distinct anatomy. `{}`, `[]`,
 asymmetric opaque content with no escapes. Parentheses are represented as
 `OpaqueBoundary::Dialect(DialectBoundary::Parentheses)`: their content is
 opaque and balanced by the universal delimiter machinery, with canonical
-escaping for literal backslash and unmatched closing parenthesis. This keeps
+escaping: `\\` for a literal backslash, `\(` for an unmatched opening
+parenthesis, and `\)` for an unmatched closing parenthesis. This keeps
 parentheses dialect-owned without creating a sixth universal `Enclosure`.
 
 The shared delimiter and separator tables are read by both delineator and

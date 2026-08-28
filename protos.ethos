@@ -24,6 +24,8 @@ Types.[
   Bare.{Symbol.Symbol}
   Delineation.{Root.Portions}
   Fault.{Extent.Extent Problem.FaultProblem}
+  FaultProblem.[UnexpectedCloser UnclosedDelimiter MissingHead MissingBody ExpectedOnePortion ExpectedShape ExpectedBareSymbol]
+  Layout.[Flat]
   Prospective<T>.{Text.Text<T>}
 ]
 
@@ -37,17 +39,22 @@ Kinds.[
   BareSafe.{isBareSafe.[Boolean]}
   EnclosedArity.{arity.[Natural]}
   EnclosedAnatomy.{structuralEnclosure.[Optional<StructuralEnclosure>] opaqueBoundary.[Optional<OpaqueBoundary>] portions.[Optional<[Portion]>] opaqueContent.[Optional<String>]}
+  Printing.{print.[Text]}
+  DelineatedText.{delineation.[Optional<Delineation>]}
 ]
 
 Associations.[
-  Text<T>.[Delineatable Embodiable ContentHashable BareSafe]
+  Text<T>.[Delineatable Embodiable ContentHashable BareSafe DelineatedText]
   Prospective<T>.[Delineatable Embodiable]
   Embodied.[Textualizable]
+  Delineation.[Printing]
+  Portion.[Printing]
 ]
 
 ;; Structural enclosures own Portion children. Curly quotes and dialect
 ;; parentheses own opaque content. Parentheses are balanced through the sole
-;; delimiter machinery; `\\` and `\)` encode literal backslash and unmatched
-;; closing parentheses. Curly quotes balance asymmetrically without escapes.
+;; delimiter machinery; `\\`, `\(`, and `\)` encode a literal backslash,
+;; unmatched opening parenthesis, and unmatched closing parenthesis. Curly
+;; quotes balance asymmetrically without escapes.
 ;; Comments and whitespace are non-structural trivia, dropped by canonical
 ;; delineation then printing. Parentheses are intentionally not an Enclosure.

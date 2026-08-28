@@ -22,8 +22,9 @@ The universal structural enclosures are `{}`, `[]`, `«»`, and `<>`; curly
 quotes `“”` are opaque, balanced universal content. Parentheses are the
 dialect-owned opaque boundary, handled by the same delimiter table rather than
 becoming a sixth `Enclosure`. Parenthetical content has canonical escapes:
-`\\` is a literal backslash and `\)` is an unmatched literal close. Curly
-quotes balance asymmetrically and have no escapes.
+`\\` is a literal backslash, `\(` is an unmatched literal opening parenthesis,
+and `\)` is an unmatched literal closing parenthesis. Curly quotes balance
+asymmetrically and have no escapes.
 
 Dialects never rescan strings to decide whether something is a bare value:
 ask `Text::is_bare_safe`. `ShapeDefined` is a predicate over received anatomy,

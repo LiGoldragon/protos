@@ -39,18 +39,19 @@ pub enum Enclosure {
 /// one of Protos's five universal enclosures.
 pub enum Boundary {
     Universal(Enclosure),
+    Dialect(DialectBoundary),
+}
+
+pub enum DialectBoundary {
     Parentheses,
 }
 
-pub struct Portion {
-    pub extent: Extent,
-    pub form: PortionForm,
-}
-
-pub enum PortionForm {
-    Headed(Headed),
-    Enclosed(Enclosed),
-    Bare(Bare),
+/// One structural value. Its variant is its inline anatomy and carries the
+/// value's one half-open UTF-8 byte extent.
+pub enum Portion {
+    Headed(Extent, Headed),
+    Enclosed(Extent, Enclosed),
+    Bare(Extent, Bare),
 }
 
 pub struct Headed {
@@ -188,6 +189,14 @@ impl AsRef<str> for Symbol {
     }
 }
 
+impl AsRef<Extent> for Portion {
+    fn as_ref(&self) -> &Extent {
+        match self {
+            Self::Headed(extent, _) | Self::Enclosed(extent, _) | Self::Bare(extent, _) => extent,
+        }
+    }
+}
+
 impl Delineatable for Text {
     type Delineation = Delineation;
 
@@ -289,6 +298,7 @@ trait Rendering {
     fn headed(&mut self, headed: &Headed, layout: Layout) -> Headed;
     fn enclosed(&mut self, enclosed: &Enclosed, layout: Layout) -> Enclosed;
     fn bare(&mut self, bare: &Bare) -> Bare;
+    fn emit_parenthetical_payload(&mut self, payload: &str);
     fn delimiter(&self, boundary: Boundary) -> &'static DelimiterSpec;
     fn emit(&mut self, text: &str);
 }
@@ -309,19 +319,37 @@ impl Rendering for Printer {
 
     fn portion(&mut self, portion: &Portion, layout: Layout) -> Portion {
         let start = self.output.len();
-        let form = match &portion.form {
-            PortionForm::Headed(headed) => PortionForm::Headed(self.headed(headed, layout)),
-            PortionForm::Enclosed(enclosed) => {
-                PortionForm::Enclosed(self.enclosed(enclosed, layout))
+        match portion {
+            Portion::Headed(_, headed) => {
+                let anatomy = self.headed(headed, layout);
+                Portion::Headed(
+                    Extent {
+                        start,
+                        end: self.output.len(),
+                    },
+                    anatomy,
+                )
             }
-            PortionForm::Bare(bare) => PortionForm::Bare(self.bare(bare)),
-        };
-        Portion {
-            extent: Extent {
-                start,
-                end: self.output.len(),
-            },
-            form,
+            Portion::Enclosed(_, enclosed) => {
+                let anatomy = self.enclosed(enclosed, layout);
+                Portion::Enclosed(
+                    Extent {
+                        start,
+                        end: self.output.len(),
+                    },
+                    anatomy,
+                )
+            }
+            Portion::Bare(_, bare) => {
+                let anatomy = self.bare(bare);
+                Portion::Bare(
+                    Extent {
+                        start,
+                        end: self.output.len(),
+                    },
+                    anatomy,
+                )
+            }
         }
     }
 
@@ -356,7 +384,12 @@ impl Rendering for Printer {
                 EnclosedContents::Portions(printed)
             }
             EnclosedContents::Opaque(value) => {
-                self.emit(value);
+                match enclosed.boundary {
+                    Boundary::Dialect(DialectBoundary::Parentheses) => {
+                        self.emit_parenthetical_payload(value)
+                    }
+                    Boundary::Universal(_) => self.emit(value),
+                }
                 EnclosedContents::Opaque(value.to_owned())
             }
         };
@@ -372,6 +405,30 @@ impl Rendering for Printer {
         self.emit(bare.symbol.as_ref());
         Bare {
             symbol: Symbol::from(bare.symbol.as_ref()),
+        }
+    }
+
+    fn emit_parenthetical_payload(&mut self, payload: &str) {
+        let mut unmatched_openings = Vec::new();
+        for character in payload.chars() {
+            match character {
+                '\\' => self.emit("\\\\"),
+                '(' => {
+                    unmatched_openings.push(self.output.len());
+                    self.emit("(");
+                }
+                ')' => {
+                    if unmatched_openings.pop().is_some() {
+                        self.emit(")");
+                    } else {
+                        self.emit("\\)");
+                    }
+                }
+                _ => self.emit(&character.to_string()),
+            }
+        }
+        for position in unmatched_openings.into_iter().rev() {
+            self.output.insert(position, '\\');
         }
     }
 
@@ -432,7 +489,7 @@ static DELIMITERS: [DelimiterSpec; 6] = [
         handling: DelimiterHandling::Opaque,
     },
     DelimiterSpec {
-        boundary: Boundary::Parentheses,
+        boundary: Boundary::Dialect(DialectBoundary::Parentheses),
         opening: "(",
         closing: ")",
         handling: DelimiterHandling::BalancedOpaque,
@@ -631,8 +688,14 @@ impl Parsing for Parser<'_> {
                     None => Ok(portions),
                 };
             }
-            if self.matching_closer().is_some() {
-                return Err(self.fault(self.cursor, FaultProblem::UnexpectedCloser));
+            if let Some(closer) = self.matching_closer() {
+                return Err(Fault {
+                    extent: Extent {
+                        start: self.cursor,
+                        end: self.cursor + closer.closing.len(),
+                    },
+                    problem: FaultProblem::UnexpectedCloser,
+                });
             }
             portions.push(self.portion()?);
         }
@@ -656,17 +719,17 @@ impl Parsing for Parser<'_> {
     fn enclosed(&mut self, start: usize, delimiter: &DelimiterSpec) -> Result<Portion, Fault> {
         let portions = self.portions_until(Some((delimiter.closing, start)))?;
         let arity = portions.len();
-        Ok(Portion {
-            extent: Extent {
+        Ok(Portion::Enclosed(
+            Extent {
                 start,
                 end: self.cursor,
             },
-            form: PortionForm::Enclosed(Enclosed {
+            Enclosed {
                 boundary: delimiter.boundary,
                 arity,
                 contents: EnclosedContents::Portions(portions),
-            }),
-        })
+            },
+        ))
     }
 
     fn opaque(&mut self, start: usize, delimiter: &DelimiterSpec) -> Result<Portion, Fault> {
@@ -681,17 +744,17 @@ impl Parsing for Parser<'_> {
         }
         let content = self.input[content_start..self.cursor].to_owned();
         self.cursor += delimiter.closing.len();
-        Ok(Portion {
-            extent: Extent {
+        Ok(Portion::Enclosed(
+            Extent {
                 start,
                 end: self.cursor,
             },
-            form: PortionForm::Enclosed(Enclosed {
+            Enclosed {
                 boundary: delimiter.boundary,
                 arity: 0,
                 contents: EnclosedContents::Opaque(content),
-            }),
-        })
+            },
+        ))
     }
 
     fn balanced_opaque(
@@ -699,31 +762,41 @@ impl Parsing for Parser<'_> {
         start: usize,
         delimiter: &DelimiterSpec,
     ) -> Result<Portion, Fault> {
-        let content_start = self.cursor;
+        let mut content = String::new();
         let mut depth = 1_usize;
         while self.cursor < self.input.len() {
-            if self.input[self.cursor..].starts_with(delimiter.opening) {
+            if self.input[self.cursor..].starts_with('\\') {
+                self.cursor += 1;
+                if let Some(character) = self.next_character() {
+                    content.push(character);
+                    self.advance_character();
+                } else {
+                    return Err(self.fault(start, FaultProblem::UnclosedDelimiter));
+                }
+            } else if self.input[self.cursor..].starts_with(delimiter.opening) {
                 depth += 1;
+                content.push_str(delimiter.opening);
                 self.cursor += delimiter.opening.len();
             } else if self.input[self.cursor..].starts_with(delimiter.closing) {
                 depth -= 1;
                 if depth == 0 {
-                    let content = self.input[content_start..self.cursor].to_owned();
                     self.cursor += delimiter.closing.len();
-                    return Ok(Portion {
-                        extent: Extent {
+                    return Ok(Portion::Enclosed(
+                        Extent {
                             start,
                             end: self.cursor,
                         },
-                        form: PortionForm::Enclosed(Enclosed {
+                        Enclosed {
                             boundary: delimiter.boundary,
                             arity: 0,
                             contents: EnclosedContents::Opaque(content),
-                        }),
-                    });
+                        },
+                    ));
                 }
+                content.push_str(delimiter.closing);
                 self.cursor += delimiter.closing.len();
             } else {
+                content.push(self.next_character().expect("cursor is in bounds"));
                 self.advance_character();
             }
         }
@@ -747,7 +820,13 @@ impl Parsing for Parser<'_> {
             self.advance_character();
         }
         if self.cursor == start {
-            return Err(self.fault(start, FaultProblem::MissingHead));
+            let end = self
+                .next_character()
+                .map_or(start, |character| start + character.len_utf8());
+            return Err(Fault {
+                extent: Extent { start, end },
+                problem: FaultProblem::MissingHead,
+            });
         }
         let symbol = Symbol::from(&self.input[start..self.cursor]);
         match separator {
@@ -760,23 +839,23 @@ impl Parsing for Parser<'_> {
                     return Err(self.fault(self.cursor, FaultProblem::MissingBody));
                 }
                 let body = self.portion()?;
-                let end = body.extent.end;
-                Ok(Portion {
-                    extent: Extent { start, end },
-                    form: PortionForm::Headed(Headed {
+                let end = body.as_ref().end;
+                Ok(Portion::Headed(
+                    Extent { start, end },
+                    Headed {
                         head: symbol,
                         separator,
                         body: Box::new(body),
-                    }),
-                })
+                    },
+                ))
             }
-            None => Ok(Portion {
-                extent: Extent {
+            None => Ok(Portion::Bare(
+                Extent {
                     start,
                     end: self.cursor,
                 },
-                form: PortionForm::Bare(Bare { symbol }),
-            }),
+                Bare { symbol },
+            )),
         }
     }
 
@@ -924,7 +1003,7 @@ impl PartialEq for Boundary {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Universal(left), Self::Universal(right)) => left == right,
-            (Self::Parentheses, Self::Parentheses) => true,
+            (Self::Dialect(left), Self::Dialect(right)) => left == right,
             _ => false,
         }
     }
@@ -932,26 +1011,40 @@ impl PartialEq for Boundary {
 
 impl Eq for Boundary {}
 
-impl PartialEq for Portion {
-    fn eq(&self, other: &Self) -> bool {
-        self.extent == other.extent && self.form == other.form
+impl Copy for DialectBoundary {}
+
+impl Clone for DialectBoundary {
+    fn clone(&self) -> Self {
+        *self
     }
 }
 
-impl Eq for Portion {}
+impl PartialEq for DialectBoundary {
+    fn eq(&self, other: &Self) -> bool {
+        matches!((self, other), (Self::Parentheses, Self::Parentheses))
+    }
+}
 
-impl PartialEq for PortionForm {
+impl Eq for DialectBoundary {}
+
+impl PartialEq for Portion {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Headed(left), Self::Headed(right)) => left == right,
-            (Self::Enclosed(left), Self::Enclosed(right)) => left == right,
-            (Self::Bare(left), Self::Bare(right)) => left == right,
+            (Self::Headed(left_extent, left), Self::Headed(right_extent, right)) => {
+                left_extent == right_extent && left == right
+            }
+            (Self::Enclosed(left_extent, left), Self::Enclosed(right_extent, right)) => {
+                left_extent == right_extent && left == right
+            }
+            (Self::Bare(left_extent, left), Self::Bare(right_extent, right)) => {
+                left_extent == right_extent && left == right
+            }
             _ => false,
         }
     }
 }
 
-impl Eq for PortionForm {}
+impl Eq for Portion {}
 
 impl PartialEq for Headed {
     fn eq(&self, other: &Self) -> bool {
@@ -1041,8 +1134,8 @@ debug_as_display!(
     Separator,
     Enclosure,
     Boundary,
+    DialectBoundary,
     Portion,
-    PortionForm,
     Headed,
     Enclosed,
     EnclosedContents,

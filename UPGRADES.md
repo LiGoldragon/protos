@@ -1,5 +1,18 @@
 # Upgrades
 
+## 0.10.0
+
+`Portion` is now the `Headed` / `Enclosed` / `Bare` union directly; each
+variant carries its one `Extent`. Replace `Portion { extent, form }` and
+`PortionForm` matches with `Portion::{Headed, Enclosed, Bare}` matches, and use
+`AsRef<Extent>` where a common extent is needed.
+
+`Boundary::Parentheses` is replaced by
+`Boundary::Dialect(DialectBoundary::Parentheses)`. Parentheses remain
+dialect-owned, and are not a sixth universal `Enclosure`. Parenthetical opaque
+payloads use balanced parentheses; `\\` is a literal backslash and `\)` is an
+unmatched literal close. Printing emits that canonical escaping.
+
 ## 0.8.0
 
 `Shape` now includes `DottedBare`, written `Head.Unit` (for example,

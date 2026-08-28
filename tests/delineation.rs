@@ -1,8 +1,8 @@
 use proptest::prelude::*;
 use protos::{
-    Bare, Boundary, ContentHashable, Delineatable, Delineation, Embodiable, Embodied, Enclosed,
-    EnclosedContents, Enclosure, Extent, Fault, FaultProblem, Headed, Layout, Portion, PortionForm,
-    Printing, Prospective, Separator, ShapeDefined, Symbol, Text, Textualizable,
+    Bare, Boundary, ContentHashable, Delineatable, Delineation, DialectBoundary, Embodiable,
+    Embodied, Enclosed, EnclosedContents, Enclosure, Extent, Fault, FaultProblem, Headed, Layout,
+    Portion, Printing, Prospective, Separator, ShapeDefined, Symbol, Text, Textualizable,
 };
 use std::fmt;
 
@@ -60,17 +60,23 @@ fn expected(spec: &Spec, start: usize) -> Portion {
         start,
         end: start + rendered.len(),
     };
-    let form = match spec {
-        Spec::Bare(value) => PortionForm::Bare(Bare {
-            symbol: Symbol::from(value.as_str()),
-        }),
+    match spec {
+        Spec::Bare(value) => Portion::Bare(
+            extent,
+            Bare {
+                symbol: Symbol::from(value.as_str()),
+            },
+        ),
         Spec::Headed(head, separator, body) => {
             let body_start = start + head.len() + separator_text(*separator).len();
-            PortionForm::Headed(Headed {
-                head: Symbol::from(head.as_str()),
-                separator: *separator,
-                body: Box::new(expected(body, body_start)),
-            })
+            Portion::Headed(
+                extent,
+                Headed {
+                    head: Symbol::from(head.as_str()),
+                    separator: *separator,
+                    body: Box::new(expected(body, body_start)),
+                },
+            )
         }
         Spec::Enclosed(enclosure, children) => {
             let mut cursor = start + enclosure_text(*enclosure).0.len();
@@ -78,28 +84,36 @@ fn expected(spec: &Spec, start: usize) -> Portion {
                 .iter()
                 .map(|child| {
                     let portion = expected(child, cursor);
-                    cursor = portion.extent.end + 1;
+                    cursor = portion.as_ref().end + 1;
                     portion
                 })
                 .collect::<Vec<_>>();
-            PortionForm::Enclosed(Enclosed {
-                boundary: Boundary::Universal(*enclosure),
-                arity: portions.len(),
-                contents: EnclosedContents::Portions(portions),
-            })
+            Portion::Enclosed(
+                extent,
+                Enclosed {
+                    boundary: Boundary::Universal(*enclosure),
+                    arity: portions.len(),
+                    contents: EnclosedContents::Portions(portions),
+                },
+            )
         }
-        Spec::Curly(value) => PortionForm::Enclosed(Enclosed {
-            boundary: Boundary::Universal(Enclosure::CurlyQuote),
-            arity: 0,
-            contents: EnclosedContents::Opaque(value.clone()),
-        }),
-        Spec::Parentheses(value) => PortionForm::Enclosed(Enclosed {
-            boundary: Boundary::Parentheses,
-            arity: 0,
-            contents: EnclosedContents::Opaque(value.clone()),
-        }),
-    };
-    Portion { extent, form }
+        Spec::Curly(value) => Portion::Enclosed(
+            extent,
+            Enclosed {
+                boundary: Boundary::Universal(Enclosure::CurlyQuote),
+                arity: 0,
+                contents: EnclosedContents::Opaque(value.clone()),
+            },
+        ),
+        Spec::Parentheses(value) => Portion::Enclosed(
+            extent,
+            Enclosed {
+                boundary: Boundary::Dialect(DialectBoundary::Parentheses),
+                arity: 0,
+                contents: EnclosedContents::Opaque(value.clone()),
+            },
+        ),
+    }
 }
 
 fn separator_text(separator: Separator) -> &'static str {
@@ -181,6 +195,52 @@ fn faults_report_half_open_utf8_extents() {
 }
 
 #[test]
+fn parentheses_balance_and_escape_opaque_content_with_utf8_extents() {
+    let source = "(α(β)γ\\))";
+    let delineation = Text::from(source).delineate().unwrap();
+    let portion = &delineation.portions[0];
+    match portion {
+        Portion::Enclosed(extent, enclosed) => {
+            assert_eq!(extent.start, 0);
+            assert_eq!(extent.end, source.len());
+            assert_eq!(
+                enclosed.boundary,
+                Boundary::Dialect(DialectBoundary::Parentheses)
+            );
+            assert_eq!(
+                enclosed.contents,
+                EnclosedContents::Opaque("α(β)γ)".to_owned())
+            );
+        }
+        _ => panic!("parenthetical text must delineate as an enclosed Portion"),
+    }
+    assert_eq!(portion.print(Layout::Flat).as_ref(), source);
+}
+
+#[test]
+fn structural_faults_locate_closers_openers_and_malformed_heads() {
+    let mismatched = Text::from("{alpha]").delineate().unwrap_err();
+    assert_eq!(mismatched.problem, FaultProblem::UnexpectedCloser);
+    assert_eq!(mismatched.extent.start, 6);
+    assert_eq!(mismatched.extent.end, 7);
+
+    let curly = Text::from("“α").delineate().unwrap_err();
+    assert_eq!(curly.problem, FaultProblem::UnclosedDelimiter);
+    assert_eq!(curly.extent.start, 0);
+    assert_eq!(curly.extent.end, 5);
+
+    let parentheses = Text::from("(α").delineate().unwrap_err();
+    assert_eq!(parentheses.problem, FaultProblem::UnclosedDelimiter);
+    assert_eq!(parentheses.extent.start, 0);
+    assert_eq!(parentheses.extent.end, 3);
+
+    let head = Text::from(".alpha").delineate().unwrap_err();
+    assert_eq!(head.problem, FaultProblem::MissingHead);
+    assert_eq!(head.extent.start, 0);
+    assert_eq!(head.extent.end, 1);
+}
+
+#[test]
 fn printer_canonicalizes_non_structural_whitespace() {
     let source = Text::from("  { alpha   [ beta gamma ] }  ");
     let printed = source.delineate().unwrap().print(Layout::Flat);
@@ -204,8 +264,8 @@ struct ToyRecord {
 
 impl Embodied for ToyRecord {
     fn from_portion(portion: &Portion) -> Result<Self, Fault> {
-        let enclosed = match &portion.form {
-            PortionForm::Enclosed(enclosed)
+        let enclosed = match portion {
+            Portion::Enclosed(_, enclosed)
                 if enclosed.boundary == Boundary::Universal(Enclosure::Braced) =>
             {
                 enclosed
@@ -213,8 +273,8 @@ impl Embodied for ToyRecord {
             _ => {
                 return Err(Fault {
                     extent: Extent {
-                        start: portion.extent.start,
-                        end: portion.extent.end,
+                        start: portion.as_ref().start,
+                        end: portion.as_ref().end,
                     },
                     problem: FaultProblem::ExpectedShape,
                 });
@@ -225,32 +285,32 @@ impl Embodied for ToyRecord {
             _ => {
                 return Err(Fault {
                     extent: Extent {
-                        start: portion.extent.start,
-                        end: portion.extent.end,
+                        start: portion.as_ref().start,
+                        end: portion.as_ref().end,
                     },
                     problem: FaultProblem::ExpectedShape,
                 });
             }
         };
-        let name = match &fields[0].form {
-            PortionForm::Bare(bare) => bare.symbol.as_ref().to_owned(),
+        let name = match &fields[0] {
+            Portion::Bare(_, bare) => bare.symbol.as_ref().to_owned(),
             _ => {
                 return Err(Fault {
                     extent: Extent {
-                        start: fields[0].extent.start,
-                        end: fields[0].extent.end,
+                        start: fields[0].as_ref().start,
+                        end: fields[0].as_ref().end,
                     },
                     problem: FaultProblem::ExpectedShape,
                 });
             }
         };
-        let count = match &fields[1].form {
-            PortionForm::Bare(bare) => bare.symbol.as_ref().to_owned(),
+        let count = match &fields[1] {
+            Portion::Bare(_, bare) => bare.symbol.as_ref().to_owned(),
             _ => {
                 return Err(Fault {
                     extent: Extent {
-                        start: fields[1].extent.start,
-                        end: fields[1].extent.end,
+                        start: fields[1].as_ref().start,
+                        end: fields[1].as_ref().end,
                     },
                     problem: FaultProblem::ExpectedShape,
                 });
@@ -262,33 +322,33 @@ impl Embodied for ToyRecord {
 
 impl Textualizable for ToyRecord {
     fn to_portion(&self) -> Portion {
-        Portion {
-            extent: Extent { start: 0, end: 0 },
-            form: PortionForm::Enclosed(Enclosed {
+        Portion::Enclosed(
+            Extent { start: 0, end: 0 },
+            Enclosed {
                 boundary: Boundary::Universal(Enclosure::Braced),
                 arity: 2,
                 contents: EnclosedContents::Portions(vec![
-                    Portion {
-                        extent: Extent { start: 0, end: 0 },
-                        form: PortionForm::Bare(Bare {
+                    Portion::Bare(
+                        Extent { start: 0, end: 0 },
+                        Bare {
                             symbol: Symbol::from(self.name.as_str()),
-                        }),
-                    },
-                    Portion {
-                        extent: Extent { start: 0, end: 0 },
-                        form: PortionForm::Bare(Bare {
+                        },
+                    ),
+                    Portion::Bare(
+                        Extent { start: 0, end: 0 },
+                        Bare {
                             symbol: Symbol::from(self.count.as_str()),
-                        }),
-                    },
+                        },
+                    ),
                 ]),
-            }),
-        }
+            },
+        )
     }
 }
 
 impl ShapeDefined for ToyRecord {
     fn matches(portion: &Portion) -> bool {
-        matches!(&portion.form, PortionForm::Enclosed(enclosed) if enclosed.boundary == Boundary::Universal(Enclosure::Braced) && enclosed.arity == 2)
+        matches!(portion, Portion::Enclosed(_, enclosed) if enclosed.boundary == Boundary::Universal(Enclosure::Braced) && enclosed.arity == 2)
     }
 }
 

@@ -1,0 +1,35 @@
+;; Protos is the universal structural substrate.  A dialect supplies the
+;; Portion <-> embodied-type anatomy; Protos alone reads and writes characters.
+
+Types.[
+  Text.{Normalized.String ContentHash.Hash}
+  Symbol.String
+  Extent.{Start.ByteOffset End.ByteOffset}
+  Separator.[Period Exclamation Colon]
+  Enclosure.[Braced Bracketed Guillemets Angled CurlyQuote]
+  Portion.{Extent Form.[Headed Enclosed Bare]}
+  Headed.{Head.Symbol Separator.Separator Body.Portion}
+  Enclosed.{Enclosure.Enclosure Arity.Natural Contents.[Portion]}
+  Bare.{Symbol.Symbol}
+  Delineation.{Root.Portions}
+  Fault.{Extent.Extent Problem.FaultProblem}
+  Prospective<T>.{Text.Text}
+]
+
+Kinds.[
+  Delineatable.{delineate.[Result<Delineation Fault>]}
+  Embodiable.{embody.[Result<Self.Embodied Fault>]}
+  Embodied.{fromPortion.[Result<Self Fault>]}
+  Textualizable.{toPortion.[Portion] textualize.[Text]}
+  ShapeDefined.{matches.[Boolean]}
+]
+
+Associations.[
+  Text.[Delineatable]
+  Prospective<T>.[Delineatable Embodiable]
+  Embodied.[Textualizable]
+]
+
+;; `Enclosed.Contents` is absent for CurlyQuote: its payload is opaque text.
+;; Parentheses are dialect-owned opaque, balanced payload in the sole delimiter
+;; machinery; they are intentionally not an Enclosure variant.

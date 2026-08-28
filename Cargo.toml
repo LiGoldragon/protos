@@ -12,6 +12,9 @@ publish = false
 name = "protos"
 path = "src/lib.rs"
 
+[dev-dependencies]
+proptest = "1.6"
+
 [lints.rust]
 unsafe_code = "forbid"
 unused = { level = "warn", priority = -1 }

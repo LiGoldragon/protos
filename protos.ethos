@@ -2,25 +2,29 @@
 ;; Portion <-> embodied-type anatomy; Protos alone reads and writes characters.
 
 Types.[
-  Text.{Normalized.String ContentHash.ContentHash}
+  Text<T>.{Normalized.String ContentHash.ContentHash}
   ContentHash.UnsignedInteger
   Symbol.String
   Extent.{Start.ByteOffset End.ByteOffset}
   Separator.[Period Exclamation Colon]
   Enclosure.[Braced Bracketed Guillemets Angled CurlyQuote]
+  StructuralEnclosure.[Braced Bracketed Guillemets Angled]
   DialectBoundary.[Parentheses]
-  Boundary.[Universal.Enclosure Dialect.DialectBoundary]
+  OpaqueBoundary.[CurlyQuote Dialect.DialectBoundary]
+  Boundary.[Structural.StructuralEnclosure Opaque.OpaqueBoundary]
   Portion.[
     Headed.{Extent.Extent Content.Headed}
     Enclosed.{Extent.Extent Content.Enclosed}
     Bare.{Extent.Extent Content.Bare}
   ]
   Headed.{Head.Symbol Separator.Separator Body.Portion}
-  Enclosed.{Boundary.Boundary Arity.Natural Contents.[Portion]}
+  Enclosed.[Structural.StructuralEnclosed Opaque.OpaqueEnclosed]
+  StructuralEnclosed.{Enclosure.StructuralEnclosure Portions.[Portion]}
+  OpaqueEnclosed.{Boundary.OpaqueBoundary Content.String}
   Bare.{Symbol.Symbol}
   Delineation.{Root.Portions}
   Fault.{Extent.Extent Problem.FaultProblem}
-  Prospective<T>.{Text.Text}
+  Prospective<T>.{Text.Text<T>}
 ]
 
 Kinds.[
@@ -29,15 +33,21 @@ Kinds.[
   Embodied.{fromPortion.[Result<Self Fault>]}
   Textualizable.{toPortion.[Portion] textualize.[Text]}
   ShapeDefined.{matches.[Boolean]}
+  ContentHashable.{contentHash.[ContentHash]}
+  BareSafe.{isBareSafe.[Boolean]}
+  EnclosedArity.{arity.[Natural]}
+  EnclosedAnatomy.{structuralEnclosure.[Optional<StructuralEnclosure>] opaqueBoundary.[Optional<OpaqueBoundary>] portions.[Optional<[Portion]>] opaqueContent.[Optional<String>]}
 ]
 
 Associations.[
-  Text.[Delineatable]
+  Text<T>.[Delineatable Embodiable ContentHashable BareSafe]
   Prospective<T>.[Delineatable Embodiable]
   Embodied.[Textualizable]
 ]
 
-;; `Enclosed.Contents` is absent for curly quotes and dialect parentheses: their
-;; payload is opaque text. Parentheses are a dialect boundary, balanced through
-;; the sole delimiter machinery; `\\`, `\(`, and `\)` encode literal
-;; backslash and unpaired parentheses. They are intentionally not an Enclosure.
+;; Structural enclosures own Portion children. Curly quotes and dialect
+;; parentheses own opaque content. Parentheses are balanced through the sole
+;; delimiter machinery; `\\` and `\)` encode literal backslash and unmatched
+;; closing parentheses. Curly quotes balance asymmetrically without escapes.
+;; Comments and whitespace are non-structural trivia, dropped by canonical
+;; delineation then printing. Parentheses are intentionally not an Enclosure.

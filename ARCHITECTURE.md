@@ -1,66 +1,36 @@
 # protos architecture
 
-## Repository boundary
-
-`protos` is the quick-new universal substrate. It has no Cargo, Nix, runtime,
-or build edge to legacy or frozen Protos-family repositories. Its only product
-surface is the Rust standard library.
-
-It supplies the fixed `Shape` vocabulary, including headed bare units and
-headless guillemet structural blocks, `ShapeDefined`, `Head`, lexical `Block` scanning,
-`SourceText` and `StringCarrier`, the form directions
-`Realize` and `Textualize`, and the single neutral `StructuralWalk` behind
-`RealizeWalk` and `TextualizeWalk`.
-
-## Structural division
+`Text<T>` is the canonical text carrier. The only route from characters to
+structure is `Text::delineate`; the only route from structure to characters is
+`Printing::print`.
 
 ```text
-SourceText --Realize--> lexical Blocks --dialect-owned selection/context--> real values
-real values --dialect-owned projection--> Blocks --Textualize--> SourceText
-
-                    RealizeWalk / TextualizeWalk
-                              |
-                       StructuralWalk
-                 enter · close · position · resume
+input text --delineator--> Delineation[Portion] --printer--> canonical Text<T>
+                         \                                  /
+                          \-- dialect Embodied / Textualizable --/
 ```
 
-`ShapeDefined::select` receives only a universal shape and optional Head. It
-cannot consume a block body. A selected dialect type owns the next context;
-the walk keeps the parent's frame untouched until the child closes, then
-resumes the parent exactly once.
+`Portion` is its own inline union: `Headed(Extent, Headed)`,
+`Enclosed(Extent, Enclosed)`, or `Bare(Extent, Bare)`. Extents are half-open
+UTF-8 byte offsets and are always computed by the delineator or printer.
+There is no separate form, block, shape, walk, normalizer, or second parser.
 
-`RealizeDriving::realize_source` alone opens the synthetic document frame.
-It gives dialect code a data-bearing `RealizeScope`, whose `RealizeScoping`
-capability takes only a nested callback. The driver brands each scope with its
-actual live body text and absolute extent, derives recursive source provenance
-only from that private state, and creates a fresh branded scope for every
-scanned child. The callback's separately supplied lexical `Block` is for
-Shape/Head discrimination only; it cannot be submitted as provenance. For every
-scanned child, the driver enters the neutral walk, calls the dialect with that
-lexical `Block`, then closes and resumes itself. `TextualizeDriving::textualize_source`
-likewise owns the document frame and supplies `TextualizeScope`. Its
-`TextualizeScoping::textualize_block` alone emits Head and delimiters, scopes
-the dialect body callback, records the actual output span, and closes/resumes;
-`emit_scalar` is content-only emission inside that valid scope. The scope types
-do not implement `Walk`, reveal observations, cursors, raw output, or mutable
-driver state. A mismatched Shape/Head pair fails before output or lifecycle
-mutation. On a callback failure the active scope closes without a false resume
-and the driver is faulted rather than silently reused.
+Structural enclosure and opaque content are distinct anatomy. `{}`, `[]`,
+`«»`, and `<>` contain nested `Portion` values. Curly quotes contain balanced,
+asymmetric opaque content with no escapes. Parentheses are represented as
+`OpaqueBoundary::Dialect(DialectBoundary::Parentheses)`: their content is
+opaque and balanced by the universal delimiter machinery, with canonical
+escaping for literal backslash and unmatched closing parenthesis. This keeps
+parentheses dialect-owned without creating a sixth universal `Enclosure`.
 
-The first pass is lexical. All block and body extents and driver cursors are UTF-8 byte
-offsets; `SourceSlicing` is the safe access capability. Parenthesized and curly-quoted string carriers keep
-their interiors opaque to other delimiters; parentheses balance until their
-final unbalanced closer. Braced, square, and guillemet structural blocks balance
-their own delimiters and nest each other. Interpretation of those interiors is a
-dialect seam.
+The shared delimiter and separator tables are read by both delineator and
+printer. Comments and whitespace are non-structural trivia. Valid text is
+canonically projected by delineation then printing, including a single space
+between adjacent siblings. Invalid `Text` retains its source spelling so its
+delineation reports a precise fault.
 
-Inter-block trivia is not a block. The substrate therefore provides canonical
-block projection with one space between blocks, not byte-identical preservation
-of a source document's formatting. Dialects that require source fidelity own a
-separate textual concern.
-
-## Out of scope
-
-This crate does not add Meaning, Signal, archive identity, numeric registries,
-Capsules, component contracts, a parser for any dialect, or a daemon. It does
-not depend on Datom; Datom's earlier walk is read-only donor evidence.
+Dialects see no character-level API. They implement `Embodied` from received
+`Portion` anatomy and `Textualizable` to produce a valid `Portion`. `Text<T>`
+implements `Embodiable` when `T: Embodied`; `Prospective<T>` names the same
+association. `BareSafe` answers whether a complete `Text` is one bare value,
+and `ShapeDefined` is only a structural predicate.

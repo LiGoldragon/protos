@@ -1,5 +1,24 @@
 # Upgrades
 
+## 0.11.0
+
+`Text` is now `Text<T = ()>` and itself implements `Embodiable` for its typed
+target; `Prospective<T>` is an alias for `Text<T>`. Replace a separate
+prospective carrier with a typed `Text<T>` where the inbound type association
+is useful.
+
+`Enclosed` now separates `StructuralEnclosed` from `OpaqueEnclosed`. Structural
+construction uses `(StructuralEnclosure, Vec<Portion>)`; opaque construction is
+fallible through `OpaqueEnclosed::try_from((OpaqueBoundary, String))`. The old
+single `Boundary`/contents construction path is gone. `EnclosedArity::arity()`
+is computed from structural children, and opaque values have arity zero.
+
+`Symbol` construction is fallible (`Symbol::try_from`), and public `Portion`
+construction materializes its UTF-8 extents through the printer. Use
+`Text::is_bare_safe()` for a dialect's bare-safety question instead of scanning
+characters. `Text::from` now projects valid input canonically: it drops `;;`
+comments and spaces adjacent sibling Portions.
+
 ## 0.10.0
 
 `Portion` is now the `Headed` / `Enclosed` / `Bare` union directly; each

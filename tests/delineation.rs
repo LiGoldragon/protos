@@ -1,17 +1,24 @@
 use proptest::prelude::*;
 use protos::{
-    Bare, Boundary, ContentHashable, Delineatable, Delineation, DialectBoundary, Embodiable,
-    Embodied, Enclosed, EnclosedContents, Enclosure, Extent, Fault, FaultProblem, Headed, Layout,
-    Portion, Printing, Prospective, Separator, ShapeDefined, Symbol, Text, Textualizable,
+    Bare, BareSafe, ContentHashable, Delineatable, DialectBoundary, Embodiable, Embodied, Enclosed,
+    EnclosedAnatomy, EnclosedArity, Extent, Fault, FaultProblem, Headed, Layout, OpaqueBoundary,
+    OpaqueEnclosed, Portion, Printing, Separator, ShapeDefined, StructuralEnclosed,
+    StructuralEnclosure, Symbol, Text, Textualizable,
 };
 use std::fmt;
+
+fn text(value: &str) -> Text {
+    Text::<()>::from(value)
+}
+
+fn symbol(value: &str) -> Symbol {
+    Symbol::try_from(value).expect("test symbols are Protos bare values")
+}
 
 enum Spec {
     Bare(String),
     Headed(String, Separator, Box<Spec>),
-    Enclosed(Enclosure, Vec<Spec>),
-    Curly(String),
-    Parentheses(String),
+    Structural(StructuralEnclosure, Vec<Spec>),
 }
 
 impl Clone for Spec {
@@ -21,116 +28,31 @@ impl Clone for Spec {
             Self::Headed(head, separator, body) => {
                 Self::Headed(head.to_owned(), *separator, Box::new((**body).clone()))
             }
-            Self::Enclosed(enclosure, children) => {
-                Self::Enclosed(*enclosure, children.iter().map(Clone::clone).collect())
+            Self::Structural(enclosure, children) => {
+                Self::Structural(*enclosure, children.iter().map(Clone::clone).collect())
             }
-            Self::Curly(value) => Self::Curly(value.to_owned()),
-            Self::Parentheses(value) => Self::Parentheses(value.to_owned()),
         }
     }
 }
 
 impl fmt::Debug for Spec {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "throwaway Portion specification")
+        write!(formatter, "valid public Portion specification")
     }
 }
 
-fn render(spec: &Spec) -> String {
+fn portion(spec: &Spec) -> Portion {
     match spec {
-        Spec::Bare(value) => value.clone(),
+        Spec::Bare(value) => Portion::from(Bare::from(symbol(value))),
         Spec::Headed(head, separator, body) => {
-            format!("{head}{}{}", separator_text(*separator), render(body))
+            Portion::from(Headed::from((symbol(head), *separator, portion(body))))
         }
-        Spec::Enclosed(enclosure, children) => {
-            let (open, close) = enclosure_text(*enclosure);
-            format!(
-                "{open}{}{close}",
-                children.iter().map(render).collect::<Vec<_>>().join(" ")
-            )
+        Spec::Structural(enclosure, children) => {
+            let portions = children.iter().map(portion).collect();
+            Portion::from(Enclosed::from(StructuralEnclosed::from((
+                *enclosure, portions,
+            ))))
         }
-        Spec::Curly(value) => format!("“{value}”"),
-        Spec::Parentheses(value) => format!("({value})"),
-    }
-}
-
-fn expected(spec: &Spec, start: usize) -> Portion {
-    let rendered = render(spec);
-    let extent = Extent {
-        start,
-        end: start + rendered.len(),
-    };
-    match spec {
-        Spec::Bare(value) => Portion::Bare(
-            extent,
-            Bare {
-                symbol: Symbol::from(value.as_str()),
-            },
-        ),
-        Spec::Headed(head, separator, body) => {
-            let body_start = start + head.len() + separator_text(*separator).len();
-            Portion::Headed(
-                extent,
-                Headed {
-                    head: Symbol::from(head.as_str()),
-                    separator: *separator,
-                    body: Box::new(expected(body, body_start)),
-                },
-            )
-        }
-        Spec::Enclosed(enclosure, children) => {
-            let mut cursor = start + enclosure_text(*enclosure).0.len();
-            let portions = children
-                .iter()
-                .map(|child| {
-                    let portion = expected(child, cursor);
-                    cursor = portion.as_ref().end + 1;
-                    portion
-                })
-                .collect::<Vec<_>>();
-            Portion::Enclosed(
-                extent,
-                Enclosed {
-                    boundary: Boundary::Universal(*enclosure),
-                    arity: portions.len(),
-                    contents: EnclosedContents::Portions(portions),
-                },
-            )
-        }
-        Spec::Curly(value) => Portion::Enclosed(
-            extent,
-            Enclosed {
-                boundary: Boundary::Universal(Enclosure::CurlyQuote),
-                arity: 0,
-                contents: EnclosedContents::Opaque(value.clone()),
-            },
-        ),
-        Spec::Parentheses(value) => Portion::Enclosed(
-            extent,
-            Enclosed {
-                boundary: Boundary::Dialect(DialectBoundary::Parentheses),
-                arity: 0,
-                contents: EnclosedContents::Opaque(value.clone()),
-            },
-        ),
-    }
-}
-
-fn separator_text(separator: Separator) -> &'static str {
-    match separator {
-        Separator::Period => ".",
-        Separator::Exclamation => "!",
-        Separator::Colon => ":",
-    }
-}
-
-fn enclosure_text(enclosure: Enclosure) -> (&'static str, &'static str) {
-    match enclosure {
-        Enclosure::Braced => ("{", "}"),
-        Enclosure::Bracketed => ("[", "]"),
-        Enclosure::Guillemets => ("«", "»"),
-        Enclosure::Angled => ("<", ">"),
-        Enclosure::CurlyQuote => ("“", "”"),
     }
 }
 
@@ -143,9 +65,9 @@ fn spec_strategy() -> impl Strategy<Value = Spec> {
                 prop_oneof![
                     Just(Separator::Period),
                     Just(Separator::Exclamation),
-                    Just(Separator::Colon)
+                    Just(Separator::Colon),
                 ],
-                inner.clone()
+                inner.clone(),
             )
                 .prop_map(|(head, separator, body)| Spec::Headed(
                     head,
@@ -154,107 +76,125 @@ fn spec_strategy() -> impl Strategy<Value = Spec> {
                 )),
             (
                 prop_oneof![
-                    Just(Enclosure::Braced),
-                    Just(Enclosure::Bracketed),
-                    Just(Enclosure::Guillemets),
-                    Just(Enclosure::Angled)
+                    Just(StructuralEnclosure::Braced),
+                    Just(StructuralEnclosure::Bracketed),
+                    Just(StructuralEnclosure::Guillemets),
+                    Just(StructuralEnclosure::Angled),
                 ],
-                prop::collection::vec(inner, 0..4)
+                prop::collection::vec(inner, 0..4),
             )
-                .prop_map(|(enclosure, children)| Spec::Enclosed(enclosure, children)),
-            "[a-z .!:\\[\\]{}<>]{0,12}".prop_map(Spec::Curly),
-            "[a-z{}\\[\\] ]{0,12}".prop_map(Spec::Parentheses),
+                .prop_map(|(enclosure, children)| Spec::Structural(enclosure, children)),
         ]
     })
 }
 
 proptest! {
     #[test]
-    fn delineates_every_throwaway_printed_portion_tree(spec in spec_strategy()) {
-        let source = render(&spec);
-        let actual = Text::from(source.as_str()).delineate().unwrap();
-        let expected = Delineation { portions: vec![expected(&spec, 0)] };
-        prop_assert_eq!(actual, expected);
+    fn every_publicly_constructed_portion_round_trips(spec in spec_strategy()) {
+        let portion = portion(&spec);
+        let printed = portion.print(Layout::Flat);
+        let delineated = printed.delineate().expect("the sole reader accepts the sole writer");
+        prop_assert_eq!(delineated.portions.as_slice(), &[portion]);
+        let reprinted = delineated.print(Layout::Flat);
+        prop_assert_eq!(reprinted.as_ref(), printed.as_ref());
     }
+}
 
-    #[test]
-    fn printing_and_delineation_are_identical_on_every_portion_tree(spec in spec_strategy()) {
-        let source = render(&spec);
-        let delineation = Text::from(source.as_str()).delineate().unwrap();
-        let printed = delineation.print(Layout::Flat);
-        prop_assert_eq!(printed.as_ref(), source.as_str());
-        prop_assert_eq!(printed.delineate().unwrap(), delineation);
+#[test]
+fn normalization_is_a_canonical_projection_through_reader_and_writer() {
+    let adjacent = text("{a[b]}");
+    assert_eq!(adjacent.as_ref(), "{a [b]}");
+    assert_eq!(
+        adjacent.delineate().unwrap().print(Layout::Flat).as_ref(),
+        "{a [b]}"
+    );
+
+    let roots = text("{}[]");
+    assert_eq!(roots.as_ref(), "{} []");
+    assert_eq!(
+        roots.delineate().unwrap().print(Layout::Flat).as_ref(),
+        "{} []"
+    );
+
+    let comments = text("alpha ;; dropped\nbeta");
+    assert_eq!(comments.as_ref(), "alpha beta");
+}
+
+#[test]
+fn all_delimiters_and_separators_have_external_canonical_examples() {
+    for source in [
+        "alpha.beta",
+        "alpha!beta",
+        "alpha:beta",
+        "{alpha beta}",
+        "[alpha beta]",
+        "«alpha beta»",
+        "<alpha beta>",
+        "“alpha “beta” gamma”",
+        "(alpha(β)gamma\\))",
+    ] {
+        let value = text(source);
+        assert_eq!(
+            value.delineate().unwrap().print(Layout::Flat).as_ref(),
+            source
+        );
     }
+}
+
+#[test]
+fn opaque_construction_is_boundary_specific_and_validated_by_the_pipeline() {
+    let parentheses = OpaqueEnclosed::try_from((
+        OpaqueBoundary::Dialect(DialectBoundary::Parentheses),
+        "α)β".to_owned(),
+    ))
+    .unwrap();
+    let portion = Portion::from(Enclosed::from(parentheses));
+    assert_eq!(portion.print(Layout::Flat).as_ref(), "(α\\)β)");
+    assert_eq!(
+        portion
+            .print(Layout::Flat)
+            .delineate()
+            .unwrap()
+            .portions
+            .as_slice(),
+        &[portion]
+    );
+    assert!(OpaqueEnclosed::try_from((OpaqueBoundary::CurlyQuote, "a “ b".to_owned())).is_err());
 }
 
 #[test]
 fn faults_report_half_open_utf8_extents() {
-    let fault = Text::from("«α").delineate().unwrap_err();
-    assert_eq!(fault.extent.start, 0);
-    assert_eq!(fault.extent.end, 4);
-}
-
-#[test]
-fn parentheses_balance_and_escape_opaque_content_with_utf8_extents() {
-    let source = "(α(β)γ\\))";
-    let delineation = Text::from(source).delineate().unwrap();
-    let portion = &delineation.portions[0];
-    match portion {
-        Portion::Enclosed(extent, enclosed) => {
-            assert_eq!(extent.start, 0);
-            assert_eq!(extent.end, source.len());
-            assert_eq!(
-                enclosed.boundary,
-                Boundary::Dialect(DialectBoundary::Parentheses)
-            );
-            assert_eq!(
-                enclosed.contents,
-                EnclosedContents::Opaque("α(β)γ)".to_owned())
-            );
-        }
-        _ => panic!("parenthetical text must delineate as an enclosed Portion"),
-    }
-    assert_eq!(portion.print(Layout::Flat).as_ref(), source);
-}
-
-#[test]
-fn structural_faults_locate_closers_openers_and_malformed_heads() {
-    let mismatched = Text::from("{alpha]").delineate().unwrap_err();
+    let mismatched = text("{alpha]").delineate().unwrap_err();
     assert_eq!(mismatched.problem, FaultProblem::UnexpectedCloser);
-    assert_eq!(mismatched.extent.start, 6);
-    assert_eq!(mismatched.extent.end, 7);
+    assert_eq!(mismatched.extent, Extent { start: 6, end: 7 });
 
-    let curly = Text::from("“α").delineate().unwrap_err();
+    let curly = text("“α").delineate().unwrap_err();
     assert_eq!(curly.problem, FaultProblem::UnclosedDelimiter);
-    assert_eq!(curly.extent.start, 0);
-    assert_eq!(curly.extent.end, 5);
+    assert_eq!(curly.extent, Extent { start: 0, end: 5 });
 
-    let parentheses = Text::from("(α").delineate().unwrap_err();
+    let parentheses = text("(α").delineate().unwrap_err();
     assert_eq!(parentheses.problem, FaultProblem::UnclosedDelimiter);
-    assert_eq!(parentheses.extent.start, 0);
-    assert_eq!(parentheses.extent.end, 3);
+    assert_eq!(parentheses.extent, Extent { start: 0, end: 3 });
 
-    let head = Text::from(".alpha").delineate().unwrap_err();
-    assert_eq!(head.problem, FaultProblem::MissingHead);
-    assert_eq!(head.extent.start, 0);
-    assert_eq!(head.extent.end, 1);
+    let malformed_head = text(".alpha").delineate().unwrap_err();
+    assert_eq!(malformed_head.problem, FaultProblem::MissingHead);
+    assert_eq!(malformed_head.extent, Extent { start: 0, end: 1 });
 }
 
 #[test]
-fn printer_canonicalizes_non_structural_whitespace() {
-    let source = Text::from("  { alpha   [ beta gamma ] }  ");
-    let printed = source.delineate().unwrap().print(Layout::Flat);
-    assert_eq!(printed.as_ref(), "{alpha [beta gamma]}");
+fn bare_safety_and_symbol_construction_are_protos_anatomy_questions() {
+    assert!(text("alpha").is_bare_safe());
+    assert!(!text("alpha beta").is_bare_safe());
+    assert!(!text("[alpha]").is_bare_safe());
+    assert!(!text("alpha.beta").is_bare_safe());
+    assert!(Symbol::try_from("alpha beta").is_err());
+    assert!(Symbol::try_from("alpha]").is_err());
 }
 
 #[test]
-fn text_normalizes_only_non_structural_whitespace_and_hashes_the_normalized_content() {
-    let normalized = Text::from("  { alpha   [ beta gamma ] }  ");
-    let canonical = Text::from("{alpha [beta gamma]}");
-    let opaque = Text::from("“ keep   these spaces ”");
-    assert_eq!(normalized.as_ref(), canonical.as_ref());
-    assert_eq!(normalized.content_hash(), canonical.content_hash());
-    assert_eq!(opaque.as_ref(), "“ keep   these spaces ”");
+fn hashes_distinguish_distinct_normalized_content() {
+    assert_ne!(text("alpha").content_hash(), text("beta").content_hash());
+    assert_eq!(text(" alpha ").content_hash(), text("alpha").content_hash());
 }
 
 struct ToyRecord {
@@ -262,59 +202,37 @@ struct ToyRecord {
     count: String,
 }
 
+fn shape_fault(portion: &Portion) -> Fault {
+    Fault {
+        extent: Extent {
+            start: portion.as_ref().start,
+            end: portion.as_ref().end,
+        },
+        problem: FaultProblem::ExpectedShape,
+    }
+}
+
 impl Embodied for ToyRecord {
     fn from_portion(portion: &Portion) -> Result<Self, Fault> {
         let enclosed = match portion {
             Portion::Enclosed(_, enclosed)
-                if enclosed.boundary == Boundary::Universal(Enclosure::Braced) =>
+                if enclosed.structural_enclosure() == Some(StructuralEnclosure::Braced) =>
             {
                 enclosed
             }
-            _ => {
-                return Err(Fault {
-                    extent: Extent {
-                        start: portion.as_ref().start,
-                        end: portion.as_ref().end,
-                    },
-                    problem: FaultProblem::ExpectedShape,
-                });
-            }
+            _ => return Err(shape_fault(portion)),
         };
-        let fields = match &enclosed.contents {
-            EnclosedContents::Portions(fields) if fields.len() == 2 => fields,
-            _ => {
-                return Err(Fault {
-                    extent: Extent {
-                        start: portion.as_ref().start,
-                        end: portion.as_ref().end,
-                    },
-                    problem: FaultProblem::ExpectedShape,
-                });
-            }
-        };
+        let fields = enclosed
+            .portions()
+            .filter(|fields| fields.len() == 2)
+            .ok_or_else(|| shape_fault(portion))?;
         let name = match &fields[0] {
             Portion::Bare(_, bare) => bare.symbol.as_ref().to_owned(),
-            _ => {
-                return Err(Fault {
-                    extent: Extent {
-                        start: fields[0].as_ref().start,
-                        end: fields[0].as_ref().end,
-                    },
-                    problem: FaultProblem::ExpectedShape,
-                });
-            }
+            _ => return Err(shape_fault(&fields[0])),
         };
         let count = match &fields[1] {
             Portion::Bare(_, bare) => bare.symbol.as_ref().to_owned(),
-            _ => {
-                return Err(Fault {
-                    extent: Extent {
-                        start: fields[1].as_ref().start,
-                        end: fields[1].as_ref().end,
-                    },
-                    problem: FaultProblem::ExpectedShape,
-                });
-            }
+            _ => return Err(shape_fault(&fields[1])),
         };
         Ok(Self { name, count })
     }
@@ -322,47 +240,31 @@ impl Embodied for ToyRecord {
 
 impl Textualizable for ToyRecord {
     fn to_portion(&self) -> Portion {
-        Portion::Enclosed(
-            Extent { start: 0, end: 0 },
-            Enclosed {
-                boundary: Boundary::Universal(Enclosure::Braced),
-                arity: 2,
-                contents: EnclosedContents::Portions(vec![
-                    Portion::Bare(
-                        Extent { start: 0, end: 0 },
-                        Bare {
-                            symbol: Symbol::from(self.name.as_str()),
-                        },
-                    ),
-                    Portion::Bare(
-                        Extent { start: 0, end: 0 },
-                        Bare {
-                            symbol: Symbol::from(self.count.as_str()),
-                        },
-                    ),
-                ]),
-            },
-        )
+        let fields = vec![
+            Portion::from(Bare::from(symbol(&self.name))),
+            Portion::from(Bare::from(symbol(&self.count))),
+        ];
+        Portion::from(Enclosed::from(StructuralEnclosed::from((
+            StructuralEnclosure::Braced,
+            fields,
+        ))))
     }
 }
 
 impl ShapeDefined for ToyRecord {
     fn matches(portion: &Portion) -> bool {
-        matches!(portion, Portion::Enclosed(_, enclosed) if enclosed.boundary == Boundary::Universal(Enclosure::Braced) && enclosed.arity == 2)
+        matches!(portion, Portion::Enclosed(_, enclosed)
+            if enclosed.structural_enclosure() == Some(StructuralEnclosure::Braced) && enclosed.arity() == 2)
     }
 }
 
 #[test]
-fn a_dialect_embodies_and_textualizes_through_portions_without_handling_characters() {
-    let prospective: Prospective<ToyRecord> = Text::from(" { north 42 } ").into();
+fn typed_text_is_embodiable_and_dialects_never_rescan_characters() {
+    let prospective: Text<ToyRecord> = Text::from(" { north 42 } ");
     let record = prospective.embody().unwrap();
     assert_eq!(record.name, "north");
     assert_eq!(record.count, "42");
     assert_eq!(record.textualize().as_ref(), "{north 42}");
-    let portion = Text::from("{north 42}")
-        .delineate()
-        .unwrap()
-        .portions
-        .remove(0);
+    let portion = text("{north 42}").delineate().unwrap().portions.remove(0);
     assert!(<ToyRecord as ShapeDefined>::matches(&portion));
 }

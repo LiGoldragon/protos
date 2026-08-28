@@ -39,11 +39,11 @@ Types.[
 Kinds.[
   Delineatable.{delineate.[Result<Delineation Fault>]}
   Embodiable.{embody.[Result<Self.Embodied Fault>]}
-  Embodied.{fromPortion.[Result<Self Fault>]}
-  Textualizable.{toPortion.[Portion] textualize.[Text]}
+  Embodied.{Sized fromPortion.[Result<Self Fault>]}
+  Textualizable.{Embodied toPortion.[Portion] textualize.[Text]}
   ShapeDefined.{matches.[Boolean]}
   ContentHashable.{contentHash.[ContentHash]}
-  BareSafe.{isBareSafeFor.[BareExpectation Boolean]}
+  BareSafe.{isBareSafeFor.{[BareExpectation] [Boolean]}}
   PortionText.{canonicalText.[Text]}
   EnclosedArity.{arity.[Natural]}
   EnclosedAnatomy.{structuralEnclosure.[Optional<StructuralEnclosure>] opaqueBoundary.[Optional<OpaqueBoundary>] portions.[Optional<[Portion]>] opaqueContent.[Optional<String>]}
@@ -55,7 +55,6 @@ Kinds.[
 Associations.[
   Text.[Delineatable Embodiable ContentHashable BareSafe DelineatedText]
   Prospective.[Delineatable Embodiable]
-  Embodied.[Textualizable]
   Delineation.[Printing]
   Portion.[Printing PortionText ScalarAnatomy]
 ]
@@ -79,3 +78,14 @@ Associations.[
 ;; extents, while every writer projection computes fresh outbound extents.
 ;; Portion construction owns signed integer/decimal formatting and String's
 ;; unquoted-one-Portion or validated balanced-curly opaque choice.
+;;
+;; Public Rust declaration ownership for E2 comparison:
+;; `Text<T = ()>` and `Prospective<T = ()>` own their target generic, while
+;; Text's cached delineation and PhantomData are engine-private.  `Delineatable`
+;; declares associated `Delineation`; `Embodiable` declares associated `Embodied:
+;; Embodied`; the receiver and Result signatures above are public. `Embodied:
+;; Sized`; `Textualizable: Embodied`; and `DelineatedText::retag<U>` is generic.
+;; These generic/associated-type heads are part of the map-owned public surface
+;; even where the structural body records only their capability anatomy. Parser,
+;; printer, hashing, delimiter, extent, and cached-state implementation bodies
+;; are explicitly engine-owned and excluded from source equality.

@@ -30,7 +30,7 @@ Kinds.[
   Delineatable.{Visibility.Public Associated.[Delineation] Methods.[delineate.{Receiver.Shared Output.Result<Self.Delineation Fault>}]}
   Embodiable.{Visibility.Public Associated.[Embodied.Embodied] Methods.[embody.{Receiver.Shared Output.Result<Self.Embodied Fault>}]}
   Embodied.{Visibility.Public Supertraits.[Sized] Methods.[fromPortion.{Receiver.None Inputs.[portion.Borrowed<Portion>] Output.Result<Self Fault>}]}
-  Textualizable.{Visibility.Public Supertraits.[Embodied] Methods.[toPortion.{Receiver.Shared Output.Portion} textualize.{Receiver.Shared Output.Text Default.Yes}]}
+  Textualizable.{Visibility.Public Supertraits.[Embodied] Methods.[toPortion.{Receiver.Shared Output.Portion} textualize.{Receiver.Shared Output.Text Default.Chain.[Self toPortion print.[Layout.Flat]]}]}
   ShapeDefined.{Visibility.Public Supertraits.[Embodied] Methods.[matches.{Receiver.None Inputs.[portion.Borrowed<Portion>] Output.Boolean}]}
   ContentHashable.{Visibility.Public Methods.[contentHash.{Receiver.Shared Output.ContentHash}]}
   BareSafe.{Visibility.Public Methods.[isBareSafeFor.{Receiver.Shared Inputs.[expectation.BareExpectation] Output.Boolean}]}

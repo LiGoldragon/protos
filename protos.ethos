@@ -1,55 +1,45 @@
 Schema.{0 1 0}
 []
 
-;; Protos is the universal structural substrate.  A dialect supplies the
-;; Portion <-> embodied-type anatomy; Protos alone reads and writes characters.
-
 Types.[
-  Text.{Normalized.String ContentHash.ContentHash}
-  ContentHash.UnsignedInteger
-  Symbol.String
-  Extent.{Start.ByteOffset End.ByteOffset}
-  Separator.[Period Exclamation Colon]
-  BareExpectation.[Symbol String]
-  Enclosure.[Braced Bracketed Guillemets Angled CurlyQuote]
-  StructuralEnclosure.[Braced Bracketed Guillemets Angled]
-  DialectBoundary.[Parentheses]
-  OpaqueBoundary.[CurlyQuote Dialect.DialectBoundary]
-  Boundary.[Structural.StructuralEnclosure Opaque.OpaqueBoundary]
-  Portion.[
-    Headed.{Extent.Extent Content.Headed}
-    Enclosed.{Extent.Extent Content.Enclosed}
-    Bare.{Extent.Extent Content.Bare}
-    FromSignedI64.[Portion]
-    FromDecimalF64.[Result<Portion Fault>]
-    FromExpectedString.[Result<Portion Fault>]
-  ]
-  Headed.{Head.Symbol Separator.Separator Body.Portion}
-  Enclosed.[Structural.StructuralEnclosed Opaque.OpaqueEnclosed]
-  StructuralEnclosed.{Enclosure.StructuralEnclosure Portions.[Portion]}
-  OpaqueEnclosed.{Boundary.OpaqueBoundary Content.String}
-  Bare.{Symbol.Symbol}
-  Delineation.{Root.Portions}
-  Fault.{Extent.Extent Problem.FaultProblem}
-  FaultProblem.[UnexpectedCloser UnclosedDelimiter MissingHead MissingBody ExpectedOnePortion ExpectedShape ExpectedBareSymbol InvalidSignedInteger IntegerOutOfRange InvalidDecimal NonFiniteDecimal]
-  Layout.[Flat]
-  Prospective.{Text.Text<T>}
+  Text.Struct.{Visibility.Public Generics.<T.Unit> Private.Normalized.String Private.ContentHash.ContentHash Private.Delineation.Option<Delineation> Private.Target.Phantom<T>}
+  ContentHash.Tuple.[Visibility.Public Private.UnsignedInteger]
+  Symbol.Tuple.[Visibility.Public Private.String]
+  Extent.Struct.{Visibility.Public Public.Start.ByteOffset Public.End.ByteOffset}
+  Separator.Enum.[Visibility.Public Period Exclamation Colon]
+  BareExpectation.Enum.[Visibility.Public Symbol String]
+  Enclosure.Enum.[Visibility.Public Braced Bracketed Guillemets Angled CurlyQuote]
+  StructuralEnclosure.Enum.[Visibility.Public Braced Bracketed Guillemets Angled]
+  OpaqueBoundary.Enum.[Visibility.Public CurlyQuote Dialect.DialectBoundary]
+  Boundary.Enum.[Visibility.Public Structural.StructuralEnclosure Opaque.OpaqueBoundary]
+  DialectBoundary.Enum.[Visibility.Public Parentheses]
+  Portion.Enum.[Visibility.Public NonExhaustive.Yes Headed.Tuple.[Extent Headed] Enclosed.Tuple.[Extent Enclosed] Bare.Tuple.[Extent Bare]]
+  Headed.Struct.{Visibility.Public Public.Head.Symbol Public.Separator.Separator Public.Body.Box<Portion>}
+  Enclosed.Enum.[Visibility.Public Structural.StructuralEnclosed Opaque.OpaqueEnclosed]
+  StructuralEnclosed.Struct.{Visibility.Public Private.Enclosure.StructuralEnclosure Private.Portions.Vector<Portion>}
+  OpaqueEnclosed.Struct.{Visibility.Public Private.Boundary.OpaqueBoundary Private.Content.String}
+  Bare.Struct.{Visibility.Public Public.Symbol.Symbol}
+  Delineation.Struct.{Visibility.Public Public.Portions.Vector<Portion>}
+  Prospective.Alias.{Visibility.Public Generics.<T> Target.Text<T>}
+  Fault.Struct.{Visibility.Public Public.Extent.Extent Public.Problem.FaultProblem}
+  FaultProblem.Enum.[Visibility.Public UnexpectedCloser UnclosedDelimiter MissingHead MissingBody ExpectedOnePortion ExpectedShape ExpectedBareSymbol InvalidSignedInteger IntegerOutOfRange InvalidDecimal NonFiniteDecimal]
+  Layout.Enum.[Visibility.Public Flat]
 ]
 
 Kinds.[
-  Delineatable.{delineate.[Result<Delineation Fault>]}
-  Embodiable.{embody.[Result<Self.Embodied Fault>]}
-  Embodied.{Sized fromPortion.{[Portion] [Result<Self Fault>]}}
-  Textualizable.{Embodied toPortion.[Portion] textualize.[Text]}
-  ShapeDefined.{Embodied matches.{[Portion] [Boolean]}}
-  ContentHashable.{contentHash.[ContentHash]}
-  BareSafe.{isBareSafeFor.{[BareExpectation] [Boolean]}}
-  PortionText.{canonicalText.[Text]}
-  EnclosedArity.{arity.[Natural]}
-  EnclosedAnatomy.{structuralEnclosure.[Optional<StructuralEnclosure>] opaqueBoundary.[Optional<OpaqueBoundary>] portions.[Optional<[Portion]>] opaqueContent.[Optional<String>]}
-  Printing.{print.{[Layout] [Text]}}
-  ScalarAnatomy.{signedI64.[Result<Signed64 Fault>] decimalF64.[Result<Float64 Fault>]}
-  DelineatedText.{delineation.[Optional<Delineation>] retag.[Text<T>]}
+  Delineatable.{Visibility.Public Associated.[Delineation] Methods.[delineate.{Receiver.Shared Output.Result<Self.Delineation Fault>}]}
+  Embodiable.{Visibility.Public Associated.[Embodied.Embodied] Methods.[embody.{Receiver.Shared Output.Result<Self.Embodied Fault>}]}
+  Embodied.{Visibility.Public Supertraits.[Sized] Methods.[fromPortion.{Receiver.None Inputs.[portion.Borrowed<Portion>] Output.Result<Self Fault>}]}
+  Textualizable.{Visibility.Public Supertraits.[Embodied] Methods.[toPortion.{Receiver.Shared Output.Portion} textualize.{Receiver.Shared Output.Text Default.Yes}]}
+  ShapeDefined.{Visibility.Public Supertraits.[Embodied] Methods.[matches.{Receiver.None Inputs.[portion.Borrowed<Portion>] Output.Boolean}]}
+  ContentHashable.{Visibility.Public Methods.[contentHash.{Receiver.Shared Output.ContentHash}]}
+  BareSafe.{Visibility.Public Methods.[isBareSafeFor.{Receiver.Shared Inputs.[expectation.BareExpectation] Output.Boolean}]}
+  PortionText.{Visibility.Public Methods.[canonicalText.{Receiver.Shared Output.Text}]}
+  ScalarAnatomy.{Visibility.Public Methods.[signedI64.{Receiver.Shared Output.Result<Signed64 Fault>} decimalF64.{Receiver.Shared Output.Result<Float64 Fault>}]}
+  EnclosedArity.{Visibility.Public Methods.[arity.{Receiver.Shared Output.Natural}]}
+  EnclosedAnatomy.{Visibility.Public Methods.[structuralEnclosure.{Receiver.Shared Output.Option<StructuralEnclosure>} opaqueBoundary.{Receiver.Shared Output.Option<OpaqueBoundary>} portions.{Receiver.Shared Output.Option<Borrowed<Slice<Portion>>>} opaqueContent.{Receiver.Shared Output.Option<Borrowed<StringSlice>>}]}
+  Printing.{Visibility.Public Methods.[print.{Receiver.Shared Inputs.[layout.Layout] Output.Text}]}
+  DelineatedText.{Visibility.Public Methods.[delineation.{Receiver.Shared Output.Option<Borrowed<Delineation>>} retag.{Generics.<U> Receiver.Owned Output.Text<U> Where.[Self.Sized]}]}
 ]
 
 Associations.[
@@ -58,34 +48,3 @@ Associations.[
   Delineation.[Printing]
   Portion.[Printing PortionText ScalarAnatomy]
 ]
-
-;; Structural enclosures own Portion children. Curly quotes and dialect
-;; parentheses own opaque content. Parentheses are balanced through the sole
-;; delimiter machinery; `\\`, `\(`, and `\)` encode a literal backslash,
-;; unmatched opening parenthesis, and unmatched closing parenthesis. Curly
-;; quotes balance asymmetrically without escapes.
-;; Comments and whitespace are non-structural trivia, dropped by canonical
-;; delineation then printing. Parentheses are intentionally not an Enclosure.
-;; A Symbol expects one Bare Portion. A String expects exactly one Portion and
-;; recovers its canonical text through PortionText; multiple root siblings are
-;; not bare-safe for either expectation.
-;; ScalarAnatomy answers signed 64-bit integers from one Bare Portion and
-;; finite decimals from Period-headed Portion anatomy. Scalar spelling is
-;; canonical: no plus, leading zero, integer negative zero, or exponent; a
-;; decimal always has its point. DelineatedText.retag changes Text's target
-;; type while preserving printer-computed canonical text and delineation.
-;; Portion duplication is pure anatomy duplication: it retains validated inbound
-;; extents, while every writer projection computes fresh outbound extents.
-;; Portion construction owns signed integer/decimal formatting and String's
-;; unquoted-one-Portion or validated balanced-curly opaque choice.
-;;
-;; Public Rust declaration ownership for E2 comparison:
-;; `Text<T = ()>` and `Prospective<T = ()>` own their target generic, while
-;; Text's cached delineation and PhantomData are engine-private.  `Delineatable`
-;; declares associated `Delineation`; `Embodiable` declares associated `Embodied:
-;; Embodied`; the receiver and Result signatures above are public. `Embodied:
-;; Sized`; `Textualizable: Embodied`; and `DelineatedText::retag<U>` is generic.
-;; These generic/associated-type heads are part of the map-owned public surface
-;; even where the structural body records only their capability anatomy. Parser,
-;; printer, hashing, delimiter, extent, and cached-state implementation bodies
-;; are explicitly engine-owned and excluded from source equality.

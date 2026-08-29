@@ -1,5 +1,12 @@
 # Upgrades
 
+## Unreleased
+
+The authored Ethos map now states the complete public Protos declaration
+contract, including generic/default heads, private and public field layouts,
+tuple carriers, recursive boxes, and all thirteen public traits. This does not
+change the Rust API or require a version bump.
+
 ## 0.14.0
 
 `Portion` and its nested anatomy now implement `Clone`. Retained inbound

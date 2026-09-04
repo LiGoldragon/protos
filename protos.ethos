@@ -1,26 +1,25 @@
 ; protos.ethos — the substrate's own declaration
-Library.{0 15 0}
+Types
 []
 [ Text Integer Decimal Boolean
   Symbol.Text
   Extent.{ Integer Integer }
   Path.Vector<Integer>
-  Situation.« Path Extent »
   Separator.[ Period Exclamation Colon ]
-  Enclosure.[ Braced Bracketed Guillemets Angled ]
+  Enclosure.[ Braced Bracketed Angled ]
   Boundary.[ CurlyQuotes Parentheses ]
-  Protoform.[ Headed.{ Symbol Separator Protoform }
+  Head.[ Bare.Symbol Qualified.{ Symbol Vector<Protoform> } ]
+  Protoform.[ Headed.{ Head Separator Protoform }
               Enclosed.{ Enclosure Vector<Protoform> }
               Opaque.{ Boundary Text }
-              Bare.Symbol ]
-  Delineation.{ Vector<Protoform> Situation }
-  Fault.{ Extent Problem }
-  Problem.[ Unclosed.Enclosure UnclosedBoundary.Boundary Unopened MissingBody MissingHead EmptyInput ] ]
-[ Structural.[ delineate.[ Result<Delineation Fault> ] ]
-  Printing.[ print.[ Text ] ]
-  Protosizable.[ protosize.[ Protoform ] ]
-  Conceptual<Protosizable>.{ [] [ Fault ] «» [ conceive.[ Result<Protosizable Fault> ] ] }
-  Actualizable<Embodied>.{ [] [ Fault ] «» [ actualize.[ Result<Embodied Fault> ] ] }
-  Situating.[ situate.{ [ Path ] [ Option<Extent> ] } ]
-  Embodied.[] ]
-[ Text.[ Structural ]  Protoform.[ Printing ]  Delineation.[ Printing Situating ] ]
+              Bare.Head ]
+  Delineation.{ Vector<Protoform> }
+  Problem.[ Unclosed.Enclosure UnclosedBoundary.Boundary Unopened MissingBody MissingHead ]
+  Fault.{ Extent Problem } ]
+[ Textualizable.[ textualize.[ Text ] ]
+  Protosizable.{ [] [ Fault ] [] [ protosize.[ Result<Delineation Fault> ] ] }
+  Conceivable.{ [] [ Fault ] [] [ conceive.[ Result<Self Fault> ] ] }
+  Incorporable.{ [] [ Fault ] [] [ incorporate:{ [ Self ] [ Result<Self Fault> ] } ] }
+  Actualizable.{ [] [ Fault ] [] [ actualize.[ Result<Self Fault> ] ] }
+  Situating.[ situate.{ [ Path ] [ Option<Extent> ] } ] ]
+[ Text.[ Protosizable ] Protoform.[ Textualizable ] Delineation.[ Textualizable Situating ] ]

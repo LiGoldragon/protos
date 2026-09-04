@@ -1,20 +1,12 @@
 use proptest::prelude::*;
 use protos::{
-    Boundary, Delineation, Enclosure, Extent, Fault, Head, Potential, Printing, Problem, Protoform,
-    Separator, Situating, Structural,
+    Boundary, Delineation, Enclosure, Extent, Fault, Head, Potential, Problem, Protoform,
+    Protosizable, Separator, Situating, Textualizable,
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn delineate(source: &str) -> Result<Delineation, Fault> {
-    source.to_owned().delineate()
+    source.to_owned().protosize()
 }
-
-// ---------------------------------------------------------------------------
-// Proptest: print then delineate round-trips for Protoform
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug)]
 enum Spec {
@@ -25,7 +17,7 @@ enum Spec {
 
 fn to_protoform(spec: &Spec) -> Protoform {
     match spec {
-        Spec::Bare(s) => Protoform::Bare(s.clone()),
+        Spec::Bare(s) => Protoform::Bare(Head::Bare(s.clone())),
         Spec::Headed(h, s, b) => {
             Protoform::Headed(Head::Bare(h.clone()), *s, Box::new(to_protoform(b)))
         }
@@ -53,7 +45,6 @@ fn spec_strategy() -> impl Strategy<Value = Spec> {
                 prop_oneof![
                     Just(Enclosure::Braced),
                     Just(Enclosure::Bracketed),
-                    Just(Enclosure::Guillemets),
                     Just(Enclosure::Angled),
                 ],
                 prop::collection::vec(inner, 0..4),
@@ -67,18 +58,14 @@ proptest! {
     #[test]
     fn protoform_print_then_delineate_round_trips(spec in spec_strategy()) {
         let pf = to_protoform(&spec);
-        let printed = pf.print();
-        let delineated = printed.delineate()
+        let printed = pf.textualize();
+        let delineated = printed.protosize()
             .expect("the sole writer's output delineates");
         prop_assert_eq!(&delineated.protoforms, std::slice::from_ref(&pf));
-        let reprinted = delineated.print();
+        let reprinted = delineated.textualize();
         prop_assert_eq!(&reprinted, &printed);
     }
 }
-
-// ---------------------------------------------------------------------------
-// Delimiter round-trip tests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn all_separators_round_trip() {
@@ -93,11 +80,11 @@ fn all_separators_round_trip() {
             Protoform::Headed(Head::Bare(h), s, b) => {
                 assert_eq!(h, "alpha");
                 assert_eq!(*s, sep);
-                assert_eq!(**b, Protoform::Bare("beta".to_owned()));
+                assert_eq!(**b, Protoform::Bare(Head::Bare("beta".to_owned())));
             }
             other => panic!("expected Headed, got {other:?}"),
         }
-        assert_eq!(d.print(), source);
+        assert_eq!(d.textualize(), source);
     }
 }
 
@@ -106,7 +93,6 @@ fn structural_enclosures_round_trip() {
     let cases = [
         ("{ alpha beta }", Enclosure::Braced),
         ("[ alpha beta ]", Enclosure::Bracketed),
-        ("\u{00AB} alpha beta \u{00BB}", Enclosure::Guillemets),
         ("<alpha beta>", Enclosure::Angled),
     ];
     for (source, enclosure) in cases {
@@ -119,34 +105,37 @@ fn structural_enclosures_round_trip() {
             }
             other => panic!("expected Enclosed for {source}, got {other:?}"),
         }
-        assert_eq!(d.print(), source, "print round-trip for {source}");
+        assert_eq!(d.textualize(), source, "print round-trip for {source}");
     }
 }
 
 #[test]
 fn empty_enclosures_print_tight() {
-    assert_eq!(Protoform::Enclosed(Enclosure::Braced, vec![]).print(), "{}");
     assert_eq!(
-        Protoform::Enclosed(Enclosure::Bracketed, vec![]).print(),
+        Protoform::Enclosed(Enclosure::Braced, vec![]).textualize(),
+        "{}"
+    );
+    assert_eq!(
+        Protoform::Enclosed(Enclosure::Bracketed, vec![]).textualize(),
         "[]"
     );
     assert_eq!(
-        Protoform::Enclosed(Enclosure::Guillemets, vec![]).print(),
-        "\u{00AB}\u{00BB}"
+        Protoform::Enclosed(Enclosure::Angled, vec![]).textualize(),
+        "<>"
     );
-    assert_eq!(Protoform::Enclosed(Enclosure::Angled, vec![]).print(), "<>");
 }
 
 #[test]
-fn nonempty_braces_brackets_guillemets_have_inner_space() {
-    let pf = Protoform::Enclosed(Enclosure::Braced, vec![Protoform::Bare("a".to_owned())]);
-    assert_eq!(pf.print(), "{ a }");
+fn nonempty_braces_brackets_have_inner_space() {
+    let pf =
+        Protoform::Enclosed(Enclosure::Braced, vec![Protoform::Bare(Head::Bare("a".to_owned()))]);
+    assert_eq!(pf.textualize(), "{ a }");
 
-    let pf = Protoform::Enclosed(Enclosure::Bracketed, vec![Protoform::Bare("a".to_owned())]);
-    assert_eq!(pf.print(), "[ a ]");
-
-    let pf = Protoform::Enclosed(Enclosure::Guillemets, vec![Protoform::Bare("a".to_owned())]);
-    assert_eq!(pf.print(), "\u{00AB} a \u{00BB}");
+    let pf = Protoform::Enclosed(
+        Enclosure::Bracketed,
+        vec![Protoform::Bare(Head::Bare("a".to_owned()))],
+    );
+    assert_eq!(pf.textualize(), "[ a ]");
 }
 
 #[test]
@@ -154,11 +143,11 @@ fn angled_is_always_tight() {
     let pf = Protoform::Enclosed(
         Enclosure::Angled,
         vec![
-            Protoform::Bare("a".to_owned()),
-            Protoform::Bare("b".to_owned()),
+            Protoform::Bare(Head::Bare("a".to_owned())),
+            Protoform::Bare(Head::Bare("b".to_owned())),
         ],
     );
-    assert_eq!(pf.print(), "<a b>");
+    assert_eq!(pf.textualize(), "<a b>");
 }
 
 #[test]
@@ -172,7 +161,7 @@ fn curly_quotes_round_trip() {
         }
         other => panic!("expected CurlyQuotes opaque, got {other:?}"),
     }
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
@@ -186,30 +175,32 @@ fn parentheses_read_by_balance() {
         }
         other => panic!("expected Parentheses opaque, got {other:?}"),
     }
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
 fn parentheses_escaped_on_print() {
     let pf = Protoform::Opaque(Boundary::Parentheses, "a)b".to_owned());
-    let printed = pf.print();
+    let printed = pf.textualize();
     assert_eq!(printed, "(a\\)b)");
     let d = delineate(&printed).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     assert_eq!(d.protoforms[0], pf);
 }
 
-// ---------------------------------------------------------------------------
-// Comment tests
-// ---------------------------------------------------------------------------
-
 #[test]
 fn single_semicolon_opens_comment_to_end_of_line() {
     let source = "alpha ; dropped\nbeta";
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 2);
-    assert_eq!(d.protoforms[0], Protoform::Bare("alpha".to_owned()));
-    assert_eq!(d.protoforms[1], Protoform::Bare("beta".to_owned()));
+    assert_eq!(
+        d.protoforms[0],
+        Protoform::Bare(Head::Bare("alpha".to_owned()))
+    );
+    assert_eq!(
+        d.protoforms[1],
+        Protoform::Bare(Head::Bare("beta".to_owned()))
+    );
 }
 
 #[test]
@@ -217,12 +208,11 @@ fn comment_at_end_of_input() {
     let source = "alpha ; comment";
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
-    assert_eq!(d.protoforms[0], Protoform::Bare("alpha".to_owned()));
+    assert_eq!(
+        d.protoforms[0],
+        Protoform::Bare(Head::Bare("alpha".to_owned()))
+    );
 }
-
-// ---------------------------------------------------------------------------
-// Headed chain tests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn headed_chain_parses_and_prints() {
@@ -235,11 +225,11 @@ fn headed_chain_parses_and_prints() {
         Box::new(Protoform::Headed(
             Head::Bare("b".to_owned()),
             Separator::Period,
-            Box::new(Protoform::Bare("c".to_owned())),
+            Box::new(Protoform::Bare(Head::Bare("c".to_owned()))),
         )),
     );
     assert_eq!(d.protoforms[0], expected);
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
@@ -260,7 +250,7 @@ fn headed_with_enclosed_body() {
         }
         other => panic!("expected Headed, got {other:?}"),
     }
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
@@ -278,12 +268,8 @@ fn headed_chain_with_enclosed_body() {
         )),
     );
     assert_eq!(d.protoforms[0], expected);
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
-
-// ---------------------------------------------------------------------------
-// Fault tests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn fault_unclosed_brace() {
@@ -319,7 +305,6 @@ fn fault_unopened() {
     let source = "alpha }";
     let err = delineate(source).unwrap_err();
     assert_eq!(err.problem, Problem::Unopened);
-    // The `}` is at byte 6
     assert_eq!(err.extent.0, 6);
     assert_eq!(err.extent.1, 7);
 }
@@ -329,7 +314,6 @@ fn fault_missing_body() {
     let source = "alpha.";
     let err = delineate(source).unwrap_err();
     assert_eq!(err.problem, Problem::MissingBody);
-    // The `.` is at byte 5
     assert_eq!(err.extent, Extent(5, 6));
 }
 
@@ -338,47 +322,44 @@ fn fault_missing_head() {
     let source = ".alpha";
     let err = delineate(source).unwrap_err();
     assert_eq!(err.problem, Problem::MissingHead);
-    // The `.` is at byte 0
     assert_eq!(err.extent, Extent(0, 1));
 }
 
-// ---------------------------------------------------------------------------
-// Situation tests
-// ---------------------------------------------------------------------------
+#[test]
+fn empty_input_gives_empty_delineation() {
+    let d = delineate("").unwrap();
+    assert!(d.protoforms.is_empty());
+}
+
+#[test]
+fn whitespace_only_gives_empty_delineation() {
+    let d = delineate("   \n\t  ").unwrap();
+    assert!(d.protoforms.is_empty());
+}
 
 #[test]
 fn situation_records_correct_extents() {
     let source = "alpha { beta }";
     let d = delineate(source).unwrap();
-    // "alpha" at [0]: bytes 0..5
     assert_eq!(d.situate(&[0]), Some(Extent(0, 5)));
-    // "{ beta }" at [1]: bytes 6..14
     assert_eq!(d.situate(&[1]), Some(Extent(6, 14)));
-    // "beta" at [1, 0]: bytes 8..12
     assert_eq!(d.situate(&[1, 0]), Some(Extent(8, 12)));
 }
 
 #[test]
 fn situation_for_headed() {
-    // "Head.body" = H(0) e(1) a(2) d(3) .(4) b(5) o(6) d(7) y(8) = 9 bytes
     let source = "Head.body";
     let d = delineate(source).unwrap();
-    // The whole headed structure at [0]: bytes 0..9
     assert_eq!(d.situate(&[0]), Some(Extent(0, 9)));
-    // The body "body" at [0, 0]: bytes 5..9
     assert_eq!(d.situate(&[0, 0]), Some(Extent(5, 9)));
 }
 
 #[test]
 fn situation_for_headed_chain() {
-    // "a.b.c" = a(0) .(1) b(2) .(3) c(4) = 5 bytes
     let source = "a.b.c";
     let d = delineate(source).unwrap();
-    // The whole chain at [0]: bytes 0..5
     assert_eq!(d.situate(&[0]), Some(Extent(0, 5)));
-    // "b.c" at [0, 0]: bytes 2..5
     assert_eq!(d.situate(&[0, 0]), Some(Extent(2, 5)));
-    // "c" at [0, 0, 0]: bytes 4..5
     assert_eq!(d.situate(&[0, 0, 0]), Some(Extent(4, 5)));
 }
 
@@ -393,40 +374,22 @@ fn fault_unopened_close_paren() {
 fn fault_unopened_close_curly_quote() {
     let err = delineate("alpha \u{201D}").unwrap_err();
     assert_eq!(err.problem, Problem::Unopened);
-    // \u{201D} is 3 bytes; starts at byte 6
     assert_eq!(err.extent, Extent(6, 9));
 }
-
-// ---------------------------------------------------------------------------
-// Potential tests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn potential_delineates_from_text() {
     let pot: Potential<()> = Potential::from("alpha beta");
-    let d = pot.delineate().unwrap();
+    let d = pot.protosize().unwrap();
     assert_eq!(d.protoforms.len(), 2);
 }
 
-// ---------------------------------------------------------------------------
-// Complex round-trip tests (matching spec examples)
-// ---------------------------------------------------------------------------
-
 #[test]
 fn complex_headed_with_struct_and_vector() {
-    // Person-like structure from Vision/datom.md
     let source = "{ Ada 1990 { \u{201C}12 Rue de la Paix\u{201D} Paris 75002 } [ Author Reviewer.{ 2024 17 } ] }";
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
-    assert_eq!(d.print(), source);
-}
-
-#[test]
-fn map_with_bare_string_keys() {
-    let source = "\u{00AB} name:first Ada born 1990 \u{00BB}";
-    let d = delineate(source).unwrap();
-    assert_eq!(d.protoforms.len(), 1);
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
@@ -438,7 +401,7 @@ fn reply_variants() {
     ] {
         let d = delineate(source).unwrap();
         assert_eq!(d.protoforms.len(), 1, "source: {source}");
-        assert_eq!(d.print(), source, "round-trip: {source}");
+        assert_eq!(d.textualize(), source, "round-trip: {source}");
     }
 }
 
@@ -452,7 +415,7 @@ fn orchestrate_lock_examples() {
     ] {
         let d = delineate(source).unwrap();
         assert_eq!(d.protoforms.len(), 1, "source: {source}");
-        assert_eq!(d.print(), source, "round-trip: {source}");
+        assert_eq!(d.textualize(), source, "round-trip: {source}");
     }
 }
 
@@ -461,12 +424,8 @@ fn meaning_examples() {
     let source = "{ Ada (The build passed on the third try (after two timeouts)) }";
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
-
-// ---------------------------------------------------------------------------
-// Qualified (symbol<...>) tests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn qualified_standalone() {
@@ -474,14 +433,14 @@ fn qualified_standalone() {
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     match &d.protoforms[0] {
-        Protoform::Qualified(symbol, children) => {
+        Protoform::Bare(Head::Qualified(symbol, children)) => {
             assert_eq!(symbol, "Vector");
             assert_eq!(children.len(), 1);
-            assert_eq!(children[0], Protoform::Bare("Text".to_owned()));
+            assert_eq!(children[0], Protoform::Bare(Head::Bare("Text".to_owned())));
         }
-        other => panic!("expected Qualified, got {other:?}"),
+        other => panic!("expected Bare(Qualified), got {other:?}"),
     }
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
@@ -490,35 +449,33 @@ fn qualified_with_multiple_args() {
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     match &d.protoforms[0] {
-        Protoform::Qualified(symbol, children) => {
+        Protoform::Bare(Head::Qualified(symbol, children)) => {
             assert_eq!(symbol, "Result");
             assert_eq!(children.len(), 2);
         }
-        other => panic!("expected Qualified, got {other:?}"),
+        other => panic!("expected Bare(Qualified), got {other:?}"),
     }
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
 fn qualified_as_head() {
-    // Processable<[Clonable Sendable] Serializable>.[ ... ]
     let source = "Processable<[ Clonable Sendable ] Serializable>.[ cap ]";
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     match &d.protoforms[0] {
         Protoform::Headed(Head::Qualified(symbol, quals), sep, _body) => {
             assert_eq!(symbol, "Processable");
-            assert_eq!(quals.len(), 2); // bracket + bare
+            assert_eq!(quals.len(), 2);
             assert_eq!(*sep, Separator::Period);
         }
         other => panic!("expected Headed with Qualified head, got {other:?}"),
     }
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
 fn standalone_angle_stays_enclosed() {
-    // <a b> alone stays Enclosed Angled
     let source = "<a b>";
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
@@ -532,29 +489,26 @@ fn standalone_angle_stays_enclosed() {
 
 #[test]
 fn separator_before_qualified_body() {
-    // LockPaths.Vector<LockPath> must be Headed(Bare(LockPaths), Period, Qualified(Vector, [Bare(LockPath)]))
     let source = "LockPaths.Vector<LockPath>";
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     let expected = Protoform::Headed(
         Head::Bare("LockPaths".to_owned()),
         Separator::Period,
-        Box::new(Protoform::Qualified(
+        Box::new(Protoform::Bare(Head::Qualified(
             "Vector".to_owned(),
-            vec![Protoform::Bare("LockPath".to_owned())],
-        )),
+            vec![Protoform::Bare(Head::Bare("LockPath".to_owned()))],
+        ))),
     );
     assert_eq!(d.protoforms[0], expected);
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }
 
 #[test]
 fn chain_with_qualified_body() {
-    // A.B<C>.D must parse as a chain with Qualified body
     let source = "A.B<C>.D";
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
-    // A -> Headed(Bare(A), Period, Headed(Qualified(B, [Bare(C)]), Period, Bare(D)))
     match &d.protoforms[0] {
         Protoform::Headed(Head::Bare(a), Separator::Period, rest) => {
             assert_eq!(a, "A");
@@ -562,12 +516,15 @@ fn chain_with_qualified_body() {
                 Protoform::Headed(Head::Qualified(b, quals), Separator::Period, d_body) => {
                     assert_eq!(b, "B");
                     assert_eq!(quals.len(), 1);
-                    assert_eq!(**d_body, Protoform::Bare("D".to_owned()));
+                    assert_eq!(
+                        **d_body,
+                        Protoform::Bare(Head::Bare("D".to_owned()))
+                    );
                 }
                 other => panic!("expected Headed with Qualified head, got {other:?}"),
             }
         }
         other => panic!("expected Headed, got {other:?}"),
     }
-    assert_eq!(d.print(), source);
+    assert_eq!(d.textualize(), source);
 }

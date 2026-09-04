@@ -243,46 +243,61 @@ impl fmt::Debug for Problem {
 }
 
 /// Text taken as a would-be T, untrusted until actualized.
-pub struct Potential<T>(Text, PhantomData<fn() -> T>);
+/// The second type parameter C is the concept type of the dialect;
+/// it defaults to () when no dialect is in scope.
+pub struct Potential<T, C = ()>(Text, PhantomData<fn() -> (T, C)>);
 
-impl<T> Potential<T> {
+impl<T, C> Potential<T, C> {
     /// The raw text.
     pub fn text(&self) -> &str {
         &self.0
     }
 }
 
-impl<T> From<Text> for Potential<T> {
+impl<T, C> From<Text> for Potential<T, C> {
     fn from(text: Text) -> Self {
         Self(text, PhantomData)
     }
 }
 
-impl<T> From<&str> for Potential<T> {
+impl<T, C> From<&str> for Potential<T, C> {
     fn from(s: &str) -> Self {
         Self(s.to_owned(), PhantomData)
     }
 }
 
-impl<T> Clone for Potential<T> {
+impl<T, C> Clone for Potential<T, C> {
     fn clone(&self) -> Self {
         Self(self.0.clone(), PhantomData)
     }
 }
 
-impl<T> fmt::Debug for Potential<T> {
+impl<T, C> fmt::Debug for Potential<T, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Potential").field(&self.0).finish()
     }
 }
 
-impl<T> PartialEq for Potential<T> {
+impl<T, C> PartialEq for Potential<T, C> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl<T> Eq for Potential<T> {}
+impl<T, C> Eq for Potential<T, C> {}
+
+/// A fault joined to its extent by actualize. Generic over the dialect's fault.
+#[derive(Clone)]
+pub struct Situated<F>(pub Option<Extent>, pub F);
+
+impl<F: fmt::Debug> fmt::Debug for Situated<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Situated")
+            .field(&self.0)
+            .field(&self.1)
+            .finish()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Traits (kinds)
@@ -309,10 +324,22 @@ pub trait Conceptual<C: Protosizable> {
     fn conceive(&self) -> Result<C, Self::Fault>;
 }
 
-/// Borne by `Potential<T>`: actualize a value from text.
+/// The corporal kind: a value that can be incorporated from a concept.
+/// The concept type parameter C is the dialect's concept (e.g. Datom).
+pub trait Corporal<C: Protosizable>: Embodied {
+    type Fault;
+    fn incorporate(concept: C) -> Result<Self, Self::Fault>;
+}
+
+/// Borne by `Potential<T, C>`: actualize a value from text.
 pub trait Actualizable<T: Embodied> {
     type Fault;
     fn actualize(&self) -> Result<T, Self::Fault>;
+}
+
+/// A fault that knows where it is by path.
+pub trait Pathed {
+    fn path(&self) -> &[Integer];
 }
 
 /// Look up where a protoform was in the source text.
@@ -323,6 +350,38 @@ pub trait Situating {
 /// The bound: an alias of Sized, blanket-implemented.
 pub trait Embodied: Sized {}
 impl<T: Sized> Embodied for T {}
+
+// ---------------------------------------------------------------------------
+// Blanket Actualizable: delineate -> conceive -> incorporate
+// ---------------------------------------------------------------------------
+
+impl<C, T> Actualizable<T> for Potential<T, C>
+where
+    C: Protosizable,
+    T: Corporal<C>,
+    Delineation: Conceptual<C>,
+    T::Fault: From<Fault> + From<<Delineation as Conceptual<C>>::Fault> + Pathed,
+{
+    type Fault = Situated<T::Fault>;
+
+    fn actualize(&self) -> Result<T, Situated<T::Fault>> {
+        let delineation = self.text().to_owned().delineate().map_err(|f| {
+            let extent = Some(f.extent);
+            Situated(extent, T::Fault::from(f))
+        })?;
+
+        let concept = delineation.conceive().map_err(|f| {
+            let fault = T::Fault::from(f);
+            let extent = delineation.situate(fault.path());
+            Situated(extent, fault)
+        })?;
+
+        T::incorporate(concept).map_err(|f| {
+            let extent = delineation.situate(f.path());
+            Situated(extent, f)
+        })
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Structural for Text (the delineator / parser)

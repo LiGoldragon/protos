@@ -1,57 +1,83 @@
-# protos architecture
+# Architecture
 
-`Text<T>` is the canonical text carrier. The only route from characters to
-structure is `Text::delineate`; the only route from structure to characters is
-`Printing::print`.
+## Four layers
 
-```text
-input text --delineator--> Delineation[Portion] --printer--> canonical Text<T>
-                         \                                  /
-                          \-- dialect Embodied / Textualizable --/
+| Layer | Type | Descent (may fault) | Ascent (cannot fault) |
+|---|---|---|---|
+| Text | `Text`, `Potential<T>` | `Structural::delineate` | -- |
+| Protoform | `Protoform`, `Delineation` | `Conceptual<C>::conceive` | `Printing::print` |
+| Concept | dialect data model | `Datomic::incorporate` | `Protosizable::protosize` |
+| Corporal | Rust value | -- | `Datomic::datomize` |
+
+## Kinds (traits)
+
+All behavior lives under traits. No free functions.
+
+- **Structural**: `fn delineate(&self) -> Result<Delineation, Fault>`.
+  Borne by Text. The sole character reader.
+- **Printing**: `fn print(&self) -> Text`.
+  Borne by Protoform and Delineation. The sole character writer.
+- **Protosizable**: `fn protosize(&self) -> Protoform`.
+  Borne by every concept type.
+- **Conceptual<C: Protosizable>**: `fn conceive(&self) -> Result<C, Self::Fault>`.
+  Borne by Protoform, once per dialect.
+- **Actualizable<T: Embodied>**: `fn actualize(&self) -> Result<T, Self::Fault>`.
+  Borne by Potential<T>.
+- **Situating**: `fn situate(&self, path: &[Integer]) -> Option<Extent>`.
+  Borne by Delineation.
+- **Embodied**: Sized. Blanket-implemented for all Sized types.
+
+## Delineation rules
+
+The source text is read without modification (no normalization pass).
+
+### Comments
+A single `;` opens a comment to end of line. Comments are stripped.
+
+### Delimiters
+Six structural pairs and two opaque pairs:
+
+| Glyph pair | Kind | Protoform variant |
+|---|---|---|
+| `{ }` | Structural (Braced) | Enclosed |
+| `[ ]` | Structural (Bracketed) | Enclosed |
+| `\u{00AB} \u{00BB}` | Structural (Guillemets) | Enclosed |
+| `< >` | Structural (Angled) | Enclosed |
+| `\u{201C} \u{201D}` | Opaque (CurlyQuotes) | Opaque |
+| `( )` | Opaque (Parentheses) | Opaque |
+
+### Bare runs and separators
+A Bare is a maximal run of non-whitespace, non-delimiter, non-comment
+characters. Inside a run, a separator (`.` `!` `:`) splits head from
+body when a non-whitespace, non-closing character follows. Chained:
+`a.b.c` is Headed(a, Period, Headed(b, Period, Bare(c))).
+
+### Extents
+Extents are byte offsets (Integer) into the source text. The Situation
+in a Delineation maps each protoform's Path to its Extent.
+
+## Canonical print rules
+
+```
+; ethos example of a Library declaration
+Library.{0 15 0}
+[]
+[ Text Integer Decimal Boolean ]
 ```
 
-`Portion` is its own inline union: `Headed(Extent, Headed)`,
-`Enclosed(Extent, Enclosed)`, or `Bare(Extent, Bare)`. Extents are half-open
-UTF-8 byte offsets and are always computed by the delineator or printer.
-There is no separate form, block, shape, walk, normalizer, or second parser.
+```rust
+// The target Rust of the types above
+pub type Text = String;
+pub type Integer = i64;
+pub type Decimal = f64;
+pub type Boolean = bool;
+```
 
-Structural enclosure and opaque content are distinct anatomy. `{}`, `[]`,
-`«»`, and `<>` contain nested `Portion` values. Curly quotes contain balanced,
-asymmetric opaque content with no escapes. Parentheses are represented as
-`OpaqueBoundary::Dialect(DialectBoundary::Parentheses)`: their content is
-opaque and balanced by the universal delimiter machinery, with canonical
-escaping: `\\` for a literal backslash, `\(` for an unmatched opening
-parenthesis, and `\)` for an unmatched closing parenthesis. This keeps
-parentheses dialect-owned without creating a sixth universal `Enclosure`.
-
-The shared delimiter and separator tables are read by both delineator and
-printer. Comments and whitespace are non-structural trivia. Valid text is
-canonically projected by delineation then printing, including a single space
-between adjacent siblings. Invalid `Text` retains its source spelling so its
-delineation reports a precise fault.
-
-Dialects see no character-level API. They implement `Embodied` from received
-`Portion` anatomy and `Textualizable` to produce a valid `Portion`. `Text<T>`
-implements `Embodiable` when `T: Embodied`; `Prospective<T>` names the same
-association. `BareSafe` answers with the expected context: `Symbol` requires
-one `Bare` Portion, while `String` requires exactly one Portion and therefore
-retains load-bearing separators. `PortionText::canonical_text` recovers that
-Portion's canonical text through the writer, not a dialect character scan.
-Multiple root siblings are unsafe in either context. `ShapeDefined` is only a
-structural predicate.
-
-`ScalarAnatomy` answers numeric expectations from existing Portion anatomy:
-a signed integer is one `Bare` Portion, and a decimal is a Period-headed
-Portion with a bare fractional body. The universal question checks canonical
-sign/zero spelling, range, finite value, mandatory point, and absence of an
-exponent; failure carries the Portion's computed UTF-8 extent. Dialects do not
-read a `Symbol` or reconstruct a headed body. `DelineatedText::retag` moves a
-printer-produced canonical `Text` to a dialect target type while retaining its
-already-computed delineation, without a read.
-
-Outbound scalar and String construction also belongs to Protos. `Portion` owns
-the numeric formatting and the decision between a one-Portion String and
-validated balanced-curly opaque content; dialects do not format numbers or add
-quotes. A Portion tree can be cloned purely, retaining its validated inbound
-extents for later generic/container projection. Printing that clone is still a
-new projection and computes its own output extents.
+Canonical print produces a single line:
+- Structural enclosures: `{ a b }` `[ a b ]` `\u{00AB} k v \u{00BB}` with space
+  inside at both ends when non-empty; `{}` `[]` `\u{00AB}\u{00BB}` when empty.
+- Angled: always tight, `<a b>`, no inner space.
+- Headed: `Head.body` with separator glyph directly adjacent.
+- Siblings: one space apart.
+- Opaque: verbatim with their glyphs.
+- Comments: never printed.

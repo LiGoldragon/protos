@@ -1,81 +1,70 @@
-# Upgrades
+# Upgrading from protos 0.14 to 0.15
 
-## Unreleased
+## Breaking changes
 
-The authored Ethos map now states the complete public Protos declaration
-contract, including generic/default heads, private and public field layouts,
-tuple carriers, recursive boxes, and all thirteen public traits. This does not
-change the Rust API or require a version bump.
+### Portion is now Protoform
 
-## 0.14.0
+The `Portion` enum is renamed to `Protoform`. Its variants changed:
 
-`Portion` and its nested anatomy now implement `Clone`. Retained inbound
-extents are valid provenance; a later writer projection recomputes output
-extents. Use `Portion::from_signed_i64`, `from_decimal_f64`, and
-`from_expected_string` for infallible integer or fallible decimal/String
-outbound construction. The String constructor chooses one unquoted Portion or
-validated balanced-curly opaque content; unbalanced curly content is rejected.
+| 0.14 | 0.15 |
+|---|---|
+| `Portion::Headed(Extent, Headed)` | `Protoform::Headed(Symbol, Separator, Box<Protoform>)` |
+| `Portion::Enclosed(Extent, Enclosed)` | `Protoform::Enclosed(Enclosure, Vec<Protoform>)` |
+| `Portion::Bare(Extent, Bare)` | `Protoform::Bare(Symbol)` |
+| -- | `Protoform::Opaque(Boundary, Text)` |
 
-## 0.13.0
+Protoforms no longer carry extents. Extents are tracked in the
+`Delineation::situation` map, keyed by `Path`.
 
-`Portion` implements `ScalarAnatomy`: `signed_i64()` accepts one canonical
-signed-integer `Bare` Portion, while `decimal_f64()` accepts one finite,
-point-mandatory Period-headed decimal. The methods return extent-bearing
-`Fault`s for invalid spelling, integer range, and non-finite decimal values.
-Use these rather than reading symbols in a dialect. `DelineatedText::retag()`
-changes a writer-produced `Text` target type without re-delineating it.
+### Text is now a type alias
 
-## 0.12.0
+`Text` is `String`, not a wrapper struct. No more `ContentHash`,
+`Delineation` inside Text, normalization on construction, or
+`BareExpectation`.
 
-`BareSafe::is_bare_safe()` is replaced by
-`is_bare_safe_for(BareExpectation)`. Use `BareExpectation::Symbol` for the
-former one-`Bare` rule. A dialect expecting a String uses
-`BareExpectation::String`, which permits any exactly-one canonical `Portion`,
-including headed forms such as `a.b`, `a!b`, and `a:b`, but rejects sibling text
-such as `a b`. `PortionText::canonical_text()` recovers a delineated Portion's
-canonical content without a dialect character scan.
+### Prospective is now Potential
 
-## 0.11.0
+`Prospective<T>` (which was `Text<T>`) is now `Potential<T>`.
+It wraps a String and is `From<Text>` and `From<&str>`.
 
-`Text` is now `Text<T = ()>` and itself implements `Embodiable` for its typed
-target; `Prospective<T>` is an alias for `Text<T>`. Replace a separate
-prospective carrier with a typed `Text<T>` where the inbound type association
-is useful.
+### Trait renames
 
-`Enclosed` now separates `StructuralEnclosed` from `OpaqueEnclosed`. Structural
-construction uses `(StructuralEnclosure, Vec<Portion>)`; opaque construction is
-fallible through `OpaqueEnclosed::try_from((OpaqueBoundary, String))`. The old
-single `Boundary`/contents construction path is gone. `EnclosedArity::arity()`
-is computed from structural children, and opaque values have arity zero.
+| 0.14 | 0.15 |
+|---|---|
+| `Delineatable` | `Structural` |
+| `Embodied` (from_portion) | removed; use `Datomic::incorporate` |
+| `Textualizable` (to_portion) | removed; use `Datomic::datomize` |
+| `Printing::print(Layout)` | `Printing::print()` |
 
-`Symbol` construction is fallible (`Symbol::try_from`), and public `Portion`
-construction materializes its UTF-8 extents through the printer. This release
-introduced Protos-owned bare-safety; 0.12 names its current context-aware API.
-`Text::from` now projects valid input canonically: it drops `;;` comments and
-spaces adjacent sibling Portions.
+`Structural::delineate` is now on `Text` (String), not on a wrapper.
+There is no Layout parameter; print always produces canonical flat text.
 
-## 0.10.0
+### Comment marker
 
-`Portion` is now the `Headed` / `Enclosed` / `Bare` union directly; each
-variant carries its one `Extent`. Replace `Portion { extent, form }` and
-`PortionForm` matches with `Portion::{Headed, Enclosed, Bare}` matches, and use
-`AsRef<Extent>` where a common extent is needed.
+The comment marker changed from `;;` to `;` (single semicolon).
 
-`Boundary::Parentheses` is replaced by
-`Boundary::Dialect(DialectBoundary::Parentheses)`. Parentheses remain
-dialect-owned, and are not a sixth universal `Enclosure`. Parenthetical opaque
-payloads use balanced parentheses; `\\` is a literal backslash and `\)` is an
-unmatched literal close. Printing emits that canonical escaping.
+### Canonical print spacing
 
-## 0.8.0
+Canonical print now puts a space inside `{ }`, `[ ]`, and guillemets
+at both ends when non-empty. Empty enclosures are tight. Angled
+brackets are always tight.
 
-`Shape` now includes `DottedBare`, written `Head.Unit` (for example,
-`Observe.Locks`). Update exhaustive `Shape` matches. The scanner exposes the
-prefix as `Block::head` and the suffix as `Block::body`; dialects still assign
-the type-directed meaning of that block.
+### Removed types
 
-## 0.7.0
+`ContentHash`, `BareExpectation`, `BareSafe`, `Layout`, `ScalarAnatomy`,
+`PortionText`, `EnclosedAnatomy`, `EnclosedArity`, `ShapeDefined`,
+`DelineatedText`, `ContentHashable`, `Symbol` (as a struct),
+`StructuralEnclosure`, `StructuralEnclosed`, `OpaqueEnclosed`,
+`OpaqueBoundary`, `DialectBoundary`, `Boundary` (as Structural/Opaque),
+`Enclosure` (as the old 5-variant form including CurlyQuote).
 
-`Shape` now includes the headless `Guillemeted` structural block, written
-`« … »`. Update exhaustive `Shape` matches to handle it. A dotted prefix is
-not valid on this shape.
+### Migration steps
+
+1. Replace `Portion` with `Protoform` everywhere.
+2. Replace `Text<T>` with `Potential<T>`.
+3. Replace `Delineatable::delineate()` with `Structural::delineate()`.
+4. Replace `Embodied::from_portion` with `Datomic::incorporate`.
+5. Replace `Textualizable::to_portion` with `Datomic::datomize`.
+6. Replace `Printing::print(Layout::Flat)` with `Printing::print()`.
+7. Replace `;;` comments with `;`.
+8. Update tests expecting tight delimiters to expect spaced delimiters.

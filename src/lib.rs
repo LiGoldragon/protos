@@ -1,1622 +1,849 @@
-//! The universal structural boundary for Protos dialects.
+//! Universal structural substrate for the Protos family.
 //!
-//! A dialect receives `Portion` values and supplies its own type anatomy. This
-//! crate owns the sole character reader and, in the next slice, the sole
-//! character writer.
+//! This crate owns the sole character reader (delineation) and the sole
+//! character writer (canonical print). All dialects ride on it.
 
+use std::collections::BTreeMap;
 use std::fmt;
+use std::marker::PhantomData;
 
-pub struct Text<T = ()> {
-    normalized: String,
-    content_hash: ContentHash,
-    delineation: Option<Delineation>,
-    target: std::marker::PhantomData<fn() -> T>,
+// ---------------------------------------------------------------------------
+// Intrinsic scalars (type aliases, hand-written)
+// ---------------------------------------------------------------------------
+
+pub type Text = String;
+pub type Integer = i64;
+pub type Decimal = f64;
+pub type Boolean = bool;
+pub type Symbol = Text;
+
+// ---------------------------------------------------------------------------
+// Structural types
+// ---------------------------------------------------------------------------
+
+/// Byte offsets into the source text: start, end (half-open).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Extent(pub Integer, pub Integer);
+
+impl fmt::Debug for Extent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Extent({}, {})", self.0, self.1)
+    }
 }
 
-pub struct ContentHash(u64);
+/// The position of a protoform: indices from the root.
+/// A head's body is at index 0.
+pub type Path = Vec<Integer>;
 
-pub struct Symbol(String);
+/// Where each protoform of a delineation lies in its text.
+pub type Situation = BTreeMap<Path, Extent>;
 
-pub struct Extent {
-    pub start: usize,
-    pub end: usize,
-}
-
+/// The three separators: `.` `!` `:`
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Separator {
     Period,
     Exclamation,
     Colon,
 }
 
-/// The anatomy a dialect expects when it considers emitting text unquoted.
-pub enum BareExpectation {
-    Symbol,
-    String,
+impl fmt::Debug for Separator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Period => write!(f, "Period"),
+            Self::Exclamation => write!(f, "Exclamation"),
+            Self::Colon => write!(f, "Colon"),
+        }
+    }
 }
 
+impl Separator {
+    /// The glyph character for this separator.
+    pub fn glyph(self) -> char {
+        match self {
+            Self::Period => '.',
+            Self::Exclamation => '!',
+            Self::Colon => ':',
+        }
+    }
+}
+
+/// Structural enclosures: `{ }` `[ ]` `« »` `< >`
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Enclosure {
     Braced,
     Bracketed,
     Guillemets,
     Angled,
-    CurlyQuote,
 }
 
-pub enum StructuralEnclosure {
-    Braced,
-    Bracketed,
-    Guillemets,
-    Angled,
+impl fmt::Debug for Enclosure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Braced => write!(f, "Braced"),
+            Self::Bracketed => write!(f, "Bracketed"),
+            Self::Guillemets => write!(f, "Guillemets"),
+            Self::Angled => write!(f, "Angled"),
+        }
+    }
 }
 
-/// A dialect-owned delimiter recognized by the common reader without becoming
-/// one of Protos's five universal enclosures.
-pub enum OpaqueBoundary {
-    CurlyQuote,
-    Dialect(DialectBoundary),
-}
-
+/// Opaque boundaries: `\u{201C} \u{201D}` (curly quotes), `( )` (parentheses)
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Boundary {
-    Structural(StructuralEnclosure),
-    Opaque(OpaqueBoundary),
-}
-
-pub enum DialectBoundary {
+    CurlyQuotes,
     Parentheses,
 }
 
-/// One structural value. Its variant is its inline anatomy and carries the
-/// value's one half-open UTF-8 byte extent.
-#[non_exhaustive]
-pub enum Portion {
-    Headed(Extent, Headed),
-    Enclosed(Extent, Enclosed),
-    Bare(Extent, Bare),
+impl fmt::Debug for Boundary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CurlyQuotes => write!(f, "CurlyQuotes"),
+            Self::Parentheses => write!(f, "Parentheses"),
+        }
+    }
 }
 
-pub struct Headed {
-    pub head: Symbol,
-    pub separator: Separator,
-    pub body: Box<Portion>,
+/// One structural value. Protoform carries no extent; extents are found on the
+/// way in and computed when printing.
+#[derive(Clone)]
+pub enum Protoform {
+    /// A head, a separator, and a body: `Head.body`
+    Headed(Symbol, Separator, Box<Protoform>),
+    /// A structural enclosure with children: `{ a b }` `[ a b ]` `« a b »` `<a b>`
+    Enclosed(Enclosure, Vec<Protoform>),
+    /// An opaque boundary with content: `\u{201C}content\u{201D}` or `(content)`
+    Opaque(Boundary, Text),
+    /// A bare word
+    Bare(Symbol),
 }
 
-pub enum Enclosed {
-    Structural(StructuralEnclosed),
-    Opaque(OpaqueEnclosed),
+impl fmt::Debug for Protoform {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Headed(h, s, b) => f.debug_tuple("Headed").field(h).field(s).field(b).finish(),
+            Self::Enclosed(e, c) => f.debug_tuple("Enclosed").field(e).field(c).finish(),
+            Self::Opaque(b, c) => f.debug_tuple("Opaque").field(b).field(c).finish(),
+            Self::Bare(s) => f.debug_tuple("Bare").field(s).finish(),
+        }
+    }
 }
 
-pub struct StructuralEnclosed {
-    enclosure: StructuralEnclosure,
-    portions: Vec<Portion>,
+impl PartialEq for Protoform {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Headed(h1, s1, b1), Self::Headed(h2, s2, b2)) => {
+                h1 == h2 && s1 == s2 && b1 == b2
+            }
+            (Self::Enclosed(e1, c1), Self::Enclosed(e2, c2)) => e1 == e2 && c1 == c2,
+            (Self::Opaque(b1, c1), Self::Opaque(b2, c2)) => b1 == b2 && c1 == c2,
+            (Self::Bare(s1), Self::Bare(s2)) => s1 == s2,
+            _ => false,
+        }
+    }
 }
 
-pub struct OpaqueEnclosed {
-    boundary: OpaqueBoundary,
-    content: String,
-}
+impl Eq for Protoform {}
 
-pub struct Bare {
-    pub symbol: Symbol,
-}
-
+/// The structures of a text and where they lie.
 pub struct Delineation {
-    pub portions: Vec<Portion>,
+    pub protoforms: Vec<Protoform>,
+    pub situation: Situation,
 }
 
-pub type Prospective<T> = Text<T>;
-
-pub struct Fault {
-    pub extent: Extent,
-    pub problem: FaultProblem,
-}
-
-pub enum FaultProblem {
-    UnexpectedCloser,
-    UnclosedDelimiter,
-    MissingHead,
-    MissingBody,
-    ExpectedOnePortion,
-    ExpectedShape,
-    ExpectedBareSymbol,
-    InvalidSignedInteger,
-    IntegerOutOfRange,
-    InvalidDecimal,
-    NonFiniteDecimal,
-}
-
-pub enum Layout {
-    Flat,
-}
-
-pub trait Delineatable {
-    type Delineation;
-
-    fn delineate(&self) -> Result<Self::Delineation, Fault>;
-}
-
-pub trait Embodiable {
-    type Embodied: Embodied;
-
-    fn embody(&self) -> Result<Self::Embodied, Fault>;
-}
-
-/// A final Rust type owns its inbound Portion anatomy.
-pub trait Embodied: Sized {
-    fn from_portion(portion: &Portion) -> Result<Self, Fault>;
-}
-
-/// A final Rust type owns its outbound Portion anatomy; Protos prints it.
-pub trait Textualizable: Embodied {
-    fn to_portion(&self) -> Portion;
-
-    fn textualize(&self) -> Text {
-        self.to_portion().print(Layout::Flat)
-    }
-}
-
-/// A shape predicate used by a dialect to select an anatomy, never a parser.
-pub trait ShapeDefined: Embodied {
-    fn matches(portion: &Portion) -> bool;
-}
-
-pub trait ContentHashable {
-    fn content_hash(&self) -> ContentHash;
-}
-
-/// The universal anatomy question a dialect asks before it chooses Bare.
-pub trait BareSafe {
-    fn is_bare_safe_for(&self, expectation: BareExpectation) -> bool;
-}
-
-/// Canonical text recovered from one already-delineated Portion.
-pub trait PortionText {
-    fn canonical_text(&self) -> Text;
-}
-
-/// Universal scalar questions over anatomy already produced by the delineator.
-pub trait ScalarAnatomy {
-    fn signed_i64(&self) -> Result<i64, Fault>;
-    fn decimal_f64(&self) -> Result<f64, Fault>;
-}
-
-pub trait EnclosedArity {
-    fn arity(&self) -> usize;
-}
-
-pub trait EnclosedAnatomy {
-    fn structural_enclosure(&self) -> Option<StructuralEnclosure>;
-    fn opaque_boundary(&self) -> Option<OpaqueBoundary>;
-    fn portions(&self) -> Option<&[Portion]>;
-    fn opaque_content(&self) -> Option<&str>;
-}
-
-/// The only Protos capability which writes structural characters.
-pub trait Printing {
-    fn print(&self, layout: Layout) -> Text;
-}
-
-/// Lets callers retain the extents computed by the writer without re-reading
-/// the text it just wrote.
-pub trait DelineatedText {
-    fn delineation(&self) -> Option<&Delineation>;
-    fn retag<U>(self) -> Text<U>
-    where
-        Self: Sized;
-}
-
-impl<T> From<&str> for Text<T> {
-    fn from(value: &str) -> Self {
-        let mut parser = Parser {
-            input: value,
-            cursor: 0,
-        };
-        let normalized = match parser.delineate_document() {
-            Ok(delineation) => {
-                let mut printer = Printer {
-                    output: String::new(),
-                };
-                printer.delineation(&delineation, Layout::Flat);
-                printer.output
-            }
-            Err(_) => value.to_owned(),
-        };
-        let content_hash = TextHasher.hash(&normalized);
-        Self {
-            normalized,
-            content_hash,
-            delineation: None,
-            target: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<T> From<String> for Text<T> {
-    fn from(value: String) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-impl<T> AsRef<str> for Text<T> {
-    fn as_ref(&self) -> &str {
-        &self.normalized
-    }
-}
-
-impl AsRef<str> for Symbol {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<&str> for Symbol {
-    type Error = Fault;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let text = Text::<()>::from(value);
-        let delineation = text.delineate()?;
-        match delineation.portions.as_slice() {
-            [Portion::Bare(extent, bare)]
-                if extent.start == 0 && extent.end == text.as_ref().len() =>
-            {
-                Ok(Symbol(bare.symbol.0.to_owned()))
-            }
-            _ => Err(Fault {
-                extent: Extent {
-                    start: 0,
-                    end: text.as_ref().len(),
-                },
-                problem: FaultProblem::ExpectedBareSymbol,
-            }),
-        }
-    }
-}
-
-impl AsRef<Extent> for Portion {
-    fn as_ref(&self) -> &Extent {
-        match self {
-            Self::Headed(extent, _) | Self::Enclosed(extent, _) | Self::Bare(extent, _) => extent,
-        }
-    }
-}
-
-impl EnclosedArity for Enclosed {
-    fn arity(&self) -> usize {
-        match self {
-            Self::Structural(enclosed) => enclosed.portions.len(),
-            Self::Opaque(_) => 0,
-        }
-    }
-}
-
-impl EnclosedAnatomy for Enclosed {
-    fn structural_enclosure(&self) -> Option<StructuralEnclosure> {
-        match self {
-            Self::Structural(enclosed) => Some(enclosed.enclosure),
-            Self::Opaque(_) => None,
-        }
-    }
-
-    fn opaque_boundary(&self) -> Option<OpaqueBoundary> {
-        match self {
-            Self::Structural(_) => None,
-            Self::Opaque(enclosed) => Some(enclosed.boundary),
-        }
-    }
-
-    fn portions(&self) -> Option<&[Portion]> {
-        match self {
-            Self::Structural(enclosed) => Some(&enclosed.portions),
-            Self::Opaque(_) => None,
-        }
-    }
-
-    fn opaque_content(&self) -> Option<&str> {
-        match self {
-            Self::Structural(_) => None,
-            Self::Opaque(enclosed) => Some(&enclosed.content),
-        }
-    }
-}
-
-impl From<Symbol> for Bare {
-    fn from(symbol: Symbol) -> Self {
-        Self { symbol }
-    }
-}
-
-impl From<Bare> for Portion {
-    fn from(bare: Bare) -> Self {
-        let provisional = Self::Bare(Extent { start: 0, end: 0 }, bare);
-        let mut printer = Printer {
-            output: String::new(),
-        };
-        printer.materialize(provisional)
-    }
-}
-
-impl From<(Symbol, Separator, Portion)> for Headed {
-    fn from((head, separator, body): (Symbol, Separator, Portion)) -> Self {
-        Self {
-            head,
-            separator,
-            body: Box::new(body),
-        }
-    }
-}
-
-impl From<Headed> for Portion {
-    fn from(headed: Headed) -> Self {
-        let provisional = Self::Headed(Extent { start: 0, end: 0 }, headed);
-        let mut printer = Printer {
-            output: String::new(),
-        };
-        printer.materialize(provisional)
-    }
-}
-
-impl From<StructuralEnclosure> for Boundary {
-    fn from(enclosure: StructuralEnclosure) -> Self {
-        Self::Structural(enclosure)
-    }
-}
-
-impl From<OpaqueBoundary> for Boundary {
-    fn from(boundary: OpaqueBoundary) -> Self {
-        Self::Opaque(boundary)
-    }
-}
-
-impl From<(StructuralEnclosure, Vec<Portion>)> for StructuralEnclosed {
-    fn from((enclosure, portions): (StructuralEnclosure, Vec<Portion>)) -> Self {
-        Self {
-            enclosure,
-            portions,
-        }
-    }
-}
-
-impl TryFrom<(OpaqueBoundary, String)> for OpaqueEnclosed {
-    type Error = Fault;
-
-    fn try_from((boundary, content): (OpaqueBoundary, String)) -> Result<Self, Self::Error> {
-        // Opaque payloads still become public Portion values only through the
-        // sole writer and reader. This rejects curly-quote payloads whose
-        // balance cannot be represented, while parenthetical payloads are
-        // canonically escaped by the writer.
-        let candidate = Self { boundary, content };
-        let provisional = Portion::Enclosed(
-            Extent { start: 0, end: 0 },
-            Enclosed::Opaque(Self {
-                boundary: candidate.boundary,
-                content: candidate.content.to_owned(),
-            }),
-        );
-        let printed = provisional.print(Layout::Flat);
-        let valid = printed.delineate().is_ok_and(|delineation| {
-            matches!(delineation.portions.as_slice(), [Portion::Enclosed(_, Enclosed::Opaque(parsed))]
-                if parsed.boundary == candidate.boundary && parsed.content == candidate.content)
-        });
-        if valid {
-            Ok(candidate)
-        } else {
-            Err(Fault {
-                extent: Extent {
-                    start: 0,
-                    end: candidate.content.len(),
-                },
-                problem: FaultProblem::ExpectedShape,
-            })
-        }
-    }
-}
-
-impl From<StructuralEnclosed> for Enclosed {
-    fn from(enclosed: StructuralEnclosed) -> Self {
-        Self::Structural(enclosed)
-    }
-}
-
-impl From<OpaqueEnclosed> for Enclosed {
-    fn from(enclosed: OpaqueEnclosed) -> Self {
-        Self::Opaque(enclosed)
-    }
-}
-
-impl From<Enclosed> for Portion {
-    fn from(enclosed: Enclosed) -> Self {
-        let provisional = Self::Enclosed(Extent { start: 0, end: 0 }, enclosed);
-        let mut printer = Printer {
-            output: String::new(),
-        };
-        printer.materialize(provisional)
-    }
-}
-
-impl Portion {
-    /// Materialize a canonical signed integer through the sole writer.
-    pub fn from_signed_i64(value: i64) -> Self {
-        Self::from(Bare::from(Symbol(value.to_string())))
-    }
-
-    /// Materialize a finite, point-mandatory decimal through the sole writer.
-    pub fn from_decimal_f64(value: f64) -> Result<Self, Fault> {
-        let source = canonical_decimal_f64(value)?;
-        let (integer, fraction) = source
-            .split_once('.')
-            .expect("a canonical Protos decimal always has a point");
-        Ok(Self::from(Headed::from((
-            Symbol(integer.to_owned()),
-            Separator::Period,
-            Self::from(Bare::from(Symbol(fraction.to_owned()))),
-        ))))
-    }
-
-    /// Materialize expected String content as one unquoted Portion or a
-    /// validated balanced-curly opaque Portion.
-    pub fn from_expected_string(content: &str) -> Result<Self, Fault> {
-        let text = Text::<()>::from(content);
-        if text.is_bare_safe_for(BareExpectation::String) {
-            return Ok(text
-                .delineate()
-                .expect("bare safety proved delineation succeeds")
-                .portions
-                .into_iter()
-                .next()
-                .expect("String bare safety proved exactly one Portion"));
-        }
-        let opaque = OpaqueEnclosed::try_from((OpaqueBoundary::CurlyQuote, content.to_owned()))?;
-        Ok(Self::from(Enclosed::from(opaque)))
-    }
-}
-
-impl<T> Delineatable for Text<T> {
-    type Delineation = Delineation;
-
-    fn delineate(&self) -> Result<Self::Delineation, Fault> {
-        let mut parser = Parser {
-            input: self.as_ref(),
-            cursor: 0,
-        };
-        parser.delineate_document()
-    }
-}
-
-impl<T: Embodied> Embodiable for Text<T> {
-    type Embodied = T;
-
-    fn embody(&self) -> Result<Self::Embodied, Fault> {
-        let delineation = self.delineate()?;
-        if delineation.portions.len() != 1 {
-            return Err(Fault {
-                extent: Extent {
-                    start: 0,
-                    end: self.as_ref().len(),
-                },
-                problem: FaultProblem::ExpectedOnePortion,
-            });
-        }
-        T::from_portion(&delineation.portions[0])
-    }
-}
-
-impl<T> ContentHashable for Text<T> {
-    fn content_hash(&self) -> ContentHash {
-        ContentHash(self.content_hash.0)
-    }
-}
-
-impl<T> BareSafe for Text<T> {
-    fn is_bare_safe_for(&self, expectation: BareExpectation) -> bool {
-        self.delineate().is_ok_and(|delineation| match expectation {
-            BareExpectation::Symbol => matches!(
-                delineation.portions.as_slice(),
-                [Portion::Bare(extent, _)] if extent.start == 0 && extent.end == self.as_ref().len()
-            ),
-            BareExpectation::String => delineation.portions.len() == 1,
-        })
-    }
-}
-
-impl PortionText for Portion {
-    fn canonical_text(&self) -> Text {
-        self.print(Layout::Flat)
-    }
-}
-
-impl ScalarAnatomy for Portion {
-    fn signed_i64(&self) -> Result<i64, Fault> {
-        let Portion::Bare(_, bare) = self else {
-            return Err(scalar_fault(self, FaultProblem::InvalidSignedInteger));
-        };
-        let source = bare.symbol.as_ref();
-        if !canonical_signed_integer(source, true) {
-            return Err(scalar_fault(self, FaultProblem::InvalidSignedInteger));
-        }
-        source
-            .parse()
-            .map_err(|_| scalar_fault(self, FaultProblem::IntegerOutOfRange))
-    }
-
-    fn decimal_f64(&self) -> Result<f64, Fault> {
-        let Portion::Headed(_, headed) = self else {
-            return Err(scalar_fault(self, FaultProblem::InvalidDecimal));
-        };
-        if headed.separator != Separator::Period {
-            return Err(scalar_fault(self, FaultProblem::InvalidDecimal));
-        }
-        let Portion::Bare(_, fraction) = headed.body.as_ref() else {
-            return Err(scalar_fault(self, FaultProblem::InvalidDecimal));
-        };
-        let integer = headed.head.as_ref();
-        let fraction = fraction.symbol.as_ref();
-        if !canonical_signed_integer(integer, false)
-            || fraction.is_empty()
-            || !fraction.bytes().all(|byte| byte.is_ascii_digit())
-        {
-            return Err(scalar_fault(self, FaultProblem::InvalidDecimal));
-        }
-        let source = format!("{integer}.{fraction}");
-        let value = source
-            .parse::<f64>()
-            .map_err(|_| scalar_fault(self, FaultProblem::InvalidDecimal))?;
-        if value.is_finite() {
-            Ok(value)
-        } else {
-            Err(scalar_fault(self, FaultProblem::NonFiniteDecimal))
-        }
-    }
-}
-
-fn scalar_fault(portion: &Portion, problem: FaultProblem) -> Fault {
-    Fault {
-        extent: Extent {
-            start: portion.as_ref().start,
-            end: portion.as_ref().end,
-        },
-        problem,
-    }
-}
-
-fn canonical_signed_integer(source: &str, reject_negative_zero: bool) -> bool {
-    let digits = source.strip_prefix('-').unwrap_or(source);
-    !digits.is_empty()
-        && digits.bytes().all(|byte| byte.is_ascii_digit())
-        && (digits == "0" || !digits.starts_with('0'))
-        && (!reject_negative_zero || source != "-0")
-}
-
-fn canonical_decimal_f64(value: f64) -> Result<String, Fault> {
-    if !value.is_finite() {
-        return Err(construction_fault(FaultProblem::NonFiniteDecimal));
-    }
-    let source = value.to_string();
-    let Some(index) = source.find('e').or_else(|| source.find('E')) else {
-        return Ok(if source.contains('.') {
-            source
-        } else {
-            format!("{source}.0")
-        });
-    };
-    let mantissa = &source[..index];
-    let exponent = source[index + 1..]
-        .parse::<i32>()
-        .expect("Rust f64 formatting emits an integer exponent");
-    let (negative, unsigned) = match mantissa.strip_prefix('-') {
-        Some(unsigned) => (true, unsigned),
-        None => (false, mantissa),
-    };
-    let (whole, fractional) = unsigned.split_once('.').unwrap_or((unsigned, ""));
-    let digits = format!("{whole}{fractional}");
-    let point = whole.len() as i32 + exponent;
-    let mut expanded = String::new();
-    if negative {
-        expanded.push('-');
-    }
-    if point <= 0 {
-        expanded.push_str("0.");
-        for _ in point..0 {
-            expanded.push('0');
-        }
-        expanded.push_str(&digits);
-    } else if point as usize >= digits.len() {
-        expanded.push_str(&digits);
-        for _ in digits.len()..point as usize {
-            expanded.push('0');
-        }
-        expanded.push_str(".0");
-    } else {
-        expanded.push_str(&digits[..point as usize]);
-        expanded.push('.');
-        expanded.push_str(&digits[point as usize..]);
-    }
-    Ok(expanded)
-}
-
-fn construction_fault(problem: FaultProblem) -> Fault {
-    Fault {
-        extent: Extent { start: 0, end: 0 },
-        problem,
-    }
-}
-
-impl<T> DelineatedText for Text<T> {
-    fn delineation(&self) -> Option<&Delineation> {
-        self.delineation.as_ref()
-    }
-
-    fn retag<U>(self) -> Text<U> {
-        Text {
-            normalized: self.normalized,
-            content_hash: self.content_hash,
-            delineation: self.delineation,
-            target: std::marker::PhantomData,
-        }
-    }
-}
-
-impl Printing for Delineation {
-    fn print(&self, layout: Layout) -> Text {
-        let mut printer = Printer {
-            output: String::new(),
-        };
-        let delineation = printer.delineation(self, layout);
-        let content_hash = TextHasher.hash(&printer.output);
-        Text {
-            normalized: printer.output,
-            content_hash,
-            delineation: Some(delineation),
-            target: std::marker::PhantomData,
-        }
-    }
-}
-
-impl Printing for Portion {
-    fn print(&self, layout: Layout) -> Text {
-        let mut printer = Printer {
-            output: String::new(),
-        };
-        let portion = printer.portion(self, layout);
-        let content_hash = TextHasher.hash(&printer.output);
-        Text {
-            normalized: printer.output,
-            content_hash,
-            delineation: Some(Delineation {
-                portions: vec![portion],
-            }),
-            target: std::marker::PhantomData,
-        }
-    }
-}
-
-struct Printer {
-    output: String,
-}
-
-trait Rendering {
-    fn materialize(&mut self, portion: Portion) -> Portion;
-    fn delineation(&mut self, delineation: &Delineation, layout: Layout) -> Delineation;
-    fn portion(&mut self, portion: &Portion, layout: Layout) -> Portion;
-    fn headed(&mut self, headed: &Headed, layout: Layout) -> Headed;
-    fn enclosed(&mut self, enclosed: &Enclosed, layout: Layout) -> Enclosed;
-    fn bare(&mut self, bare: &Bare) -> Bare;
-    fn emit_parenthetical_payload(&mut self, payload: &str);
-    fn delimiter(&self, boundary: Boundary) -> &'static DelimiterSpec;
-    fn separator(&self, separator: Separator) -> &'static SeparatorSpec;
-    fn emit(&mut self, text: &str);
-}
-
-impl Rendering for Printer {
-    fn materialize(&mut self, portion: Portion) -> Portion {
-        self.portion(&portion, Layout::Flat)
-    }
-
-    fn delineation(&mut self, delineation: &Delineation, layout: Layout) -> Delineation {
-        let mut portions = Vec::with_capacity(delineation.portions.len());
-        for portion in &delineation.portions {
-            if !self.output.is_empty() {
-                match layout {
-                    Layout::Flat => self.emit(" "),
-                }
-            }
-            portions.push(self.portion(portion, layout));
-        }
-        Delineation { portions }
-    }
-
-    fn portion(&mut self, portion: &Portion, layout: Layout) -> Portion {
-        let start = self.output.len();
-        match portion {
-            Portion::Headed(_, headed) => {
-                let anatomy = self.headed(headed, layout);
-                Portion::Headed(
-                    Extent {
-                        start,
-                        end: self.output.len(),
-                    },
-                    anatomy,
-                )
-            }
-            Portion::Enclosed(_, enclosed) => {
-                let anatomy = self.enclosed(enclosed, layout);
-                Portion::Enclosed(
-                    Extent {
-                        start,
-                        end: self.output.len(),
-                    },
-                    anatomy,
-                )
-            }
-            Portion::Bare(_, bare) => {
-                let anatomy = self.bare(bare);
-                Portion::Bare(
-                    Extent {
-                        start,
-                        end: self.output.len(),
-                    },
-                    anatomy,
-                )
-            }
-        }
-    }
-
-    fn headed(&mut self, headed: &Headed, layout: Layout) -> Headed {
-        self.emit(headed.head.as_ref());
-        self.emit(self.separator(headed.separator).text);
-        Headed {
-            head: Symbol(headed.head.0.to_owned()),
-            separator: headed.separator,
-            body: Box::new(self.portion(&headed.body, layout)),
-        }
-    }
-
-    fn enclosed(&mut self, enclosed: &Enclosed, layout: Layout) -> Enclosed {
-        match enclosed {
-            Enclosed::Structural(enclosed) => {
-                let boundary = Boundary::Structural(enclosed.enclosure);
-                let delimiter = self.delimiter(boundary);
-                self.emit(delimiter.opening);
-                let mut printed = Vec::with_capacity(enclosed.portions.len());
-                for portion in &enclosed.portions {
-                    if !printed.is_empty() {
-                        match layout {
-                            Layout::Flat => self.emit(" "),
-                        }
-                    }
-                    printed.push(self.portion(portion, layout));
-                }
-                self.emit(delimiter.closing);
-                Enclosed::Structural(StructuralEnclosed {
-                    enclosure: enclosed.enclosure,
-                    portions: printed,
-                })
-            }
-            Enclosed::Opaque(enclosed) => {
-                let boundary = Boundary::Opaque(enclosed.boundary);
-                let delimiter = self.delimiter(boundary);
-                self.emit(delimiter.opening);
-                match enclosed.boundary {
-                    OpaqueBoundary::Dialect(DialectBoundary::Parentheses) => {
-                        self.emit_parenthetical_payload(&enclosed.content)
-                    }
-                    OpaqueBoundary::CurlyQuote => self.emit(&enclosed.content),
-                }
-                self.emit(delimiter.closing);
-                Enclosed::Opaque(OpaqueEnclosed {
-                    boundary: enclosed.boundary,
-                    content: enclosed.content.to_owned(),
-                })
-            }
-        }
-    }
-
-    fn bare(&mut self, bare: &Bare) -> Bare {
-        self.emit(bare.symbol.as_ref());
-        Bare {
-            symbol: Symbol(bare.symbol.0.to_owned()),
-        }
-    }
-
-    fn emit_parenthetical_payload(&mut self, payload: &str) {
-        let delimiter = self.delimiter(Boundary::Opaque(OpaqueBoundary::Dialect(
-            DialectBoundary::Parentheses,
-        )));
-        let DelimiterHandling::BalancedOpaque {
-            escape: Some(escape),
-        } = delimiter.handling
-        else {
-            unreachable!("parentheses have an escape specification")
-        };
-        let mut unmatched_openings = Vec::new();
-        for character in payload.chars() {
-            let character = character.to_string();
-            if character == escape {
-                self.emit(escape);
-                self.emit(escape);
-            } else if character == delimiter.opening {
-                unmatched_openings.push(self.output.len());
-                self.emit(delimiter.opening);
-            } else if character == delimiter.closing {
-                if unmatched_openings.pop().is_some() {
-                    self.emit(delimiter.closing);
-                } else {
-                    self.emit(escape);
-                    self.emit(delimiter.closing);
-                }
-            } else {
-                self.emit(&character);
-            }
-        }
-        for position in unmatched_openings.into_iter().rev() {
-            self.output.insert_str(position, escape);
-        }
-    }
-
-    fn delimiter(&self, boundary: Boundary) -> &'static DelimiterSpec {
-        DELIMITERS
-            .iter()
-            .find(|delimiter| delimiter.boundary == boundary)
-            .expect("every parsed boundary has one universal delimiter specification")
-    }
-
-    fn separator(&self, separator: Separator) -> &'static SeparatorSpec {
-        SEPARATORS
-            .iter()
-            .find(|specification| specification.separator == separator)
-            .expect("every Separator has one universal separator specification")
-    }
-
-    fn emit(&mut self, text: &str) {
-        self.output.push_str(text);
-    }
-}
-
-struct DelimiterSpec {
-    boundary: Boundary,
-    opening: &'static str,
-    closing: &'static str,
-    handling: DelimiterHandling,
-}
-
-struct SeparatorSpec {
-    separator: Separator,
-    text: &'static str,
-}
-
-enum DelimiterHandling {
-    Structural,
-    BalancedOpaque { escape: Option<&'static str> },
-}
-
-static DELIMITERS: [DelimiterSpec; 6] = [
-    DelimiterSpec {
-        boundary: Boundary::Structural(StructuralEnclosure::Braced),
-        opening: "{",
-        closing: "}",
-        handling: DelimiterHandling::Structural,
-    },
-    DelimiterSpec {
-        boundary: Boundary::Structural(StructuralEnclosure::Bracketed),
-        opening: "[",
-        closing: "]",
-        handling: DelimiterHandling::Structural,
-    },
-    DelimiterSpec {
-        boundary: Boundary::Structural(StructuralEnclosure::Guillemets),
-        opening: "«",
-        closing: "»",
-        handling: DelimiterHandling::Structural,
-    },
-    DelimiterSpec {
-        boundary: Boundary::Structural(StructuralEnclosure::Angled),
-        opening: "<",
-        closing: ">",
-        handling: DelimiterHandling::Structural,
-    },
-    DelimiterSpec {
-        boundary: Boundary::Opaque(OpaqueBoundary::CurlyQuote),
-        opening: "“",
-        closing: "”",
-        handling: DelimiterHandling::BalancedOpaque { escape: None },
-    },
-    DelimiterSpec {
-        boundary: Boundary::Opaque(OpaqueBoundary::Dialect(DialectBoundary::Parentheses)),
-        opening: "(",
-        closing: ")",
-        handling: DelimiterHandling::BalancedOpaque { escape: Some("\\") },
-    },
-];
-
-static SEPARATORS: [SeparatorSpec; 3] = [
-    SeparatorSpec {
-        separator: Separator::Period,
-        text: ".",
-    },
-    SeparatorSpec {
-        separator: Separator::Exclamation,
-        text: "!",
-    },
-    SeparatorSpec {
-        separator: Separator::Colon,
-        text: ":",
-    },
-];
-
-struct TextHasher;
-
-trait Hashing {
-    fn hash(&self, text: &str) -> ContentHash;
-}
-
-impl Hashing for TextHasher {
-    fn hash(&self, text: &str) -> ContentHash {
-        let mut value = 0xcbf29ce484222325_u64;
-        for byte in text.bytes() {
-            value ^= u64::from(byte);
-            value = value.wrapping_mul(0x100000001b3);
-        }
-        ContentHash(value)
-    }
-}
-
-struct Parser<'input> {
-    input: &'input str,
-    cursor: usize,
-}
-
-trait Parsing {
-    fn delineate_document(&mut self) -> Result<Delineation, Fault>;
-    fn portions_until(
-        &mut self,
-        closing: Option<(&'static str, usize)>,
-    ) -> Result<Vec<Portion>, Fault>;
-    fn portion(&mut self) -> Result<Portion, Fault>;
-    fn enclosed(&mut self, start: usize, delimiter: &DelimiterSpec) -> Result<Portion, Fault>;
-    fn balanced_opaque(
-        &mut self,
-        start: usize,
-        delimiter: &DelimiterSpec,
-        escape: Option<&'static str>,
-    ) -> Result<Portion, Fault>;
-    fn bare_or_headed(&mut self) -> Result<Portion, Fault>;
-    fn skip_trivia(&mut self);
-    fn matching_opening(&self) -> Option<&'static DelimiterSpec>;
-    fn matching_closer(&self) -> Option<&'static DelimiterSpec>;
-    fn next_character(&self) -> Option<char>;
-    fn advance_character(&mut self);
-    fn separator_from(&self, character: char) -> Option<Separator>;
-    fn fault(&self, start: usize, problem: FaultProblem) -> Fault;
-}
-
-impl Parsing for Parser<'_> {
-    fn delineate_document(&mut self) -> Result<Delineation, Fault> {
-        self.portions_until(None)
-            .map(|portions| Delineation { portions })
-    }
-
-    fn portions_until(
-        &mut self,
-        closing: Option<(&'static str, usize)>,
-    ) -> Result<Vec<Portion>, Fault> {
-        let mut portions = Vec::new();
-        loop {
-            self.skip_trivia();
-            if let Some((expected, _)) = closing {
-                if self.input[self.cursor..].starts_with(expected) {
-                    self.cursor += expected.len();
-                    return Ok(portions);
-                }
-            }
-            if self.cursor == self.input.len() {
-                return match closing {
-                    Some((_, start)) => Err(self.fault(start, FaultProblem::UnclosedDelimiter)),
-                    None => Ok(portions),
-                };
-            }
-            if let Some(closer) = self.matching_closer() {
-                return Err(Fault {
-                    extent: Extent {
-                        start: self.cursor,
-                        end: self.cursor + closer.closing.len(),
-                    },
-                    problem: FaultProblem::UnexpectedCloser,
-                });
-            }
-            portions.push(self.portion()?);
-        }
-    }
-
-    fn portion(&mut self) -> Result<Portion, Fault> {
-        let start = self.cursor;
-        match self.matching_opening() {
-            Some(delimiter) => {
-                self.cursor += delimiter.opening.len();
-                match delimiter.handling {
-                    DelimiterHandling::Structural => self.enclosed(start, delimiter),
-                    DelimiterHandling::BalancedOpaque { escape } => {
-                        self.balanced_opaque(start, delimiter, escape)
-                    }
-                }
-            }
-            None => self.bare_or_headed(),
-        }
-    }
-
-    fn enclosed(&mut self, start: usize, delimiter: &DelimiterSpec) -> Result<Portion, Fault> {
-        let portions = self.portions_until(Some((delimiter.closing, start)))?;
-        Ok(Portion::Enclosed(
-            Extent {
-                start,
-                end: self.cursor,
-            },
-            match delimiter.boundary {
-                Boundary::Structural(enclosure) => Enclosed::Structural(StructuralEnclosed {
-                    enclosure,
-                    portions,
-                }),
-                Boundary::Opaque(_) => {
-                    unreachable!("a structural delimiter has a structural boundary")
-                }
-            },
-        ))
-    }
-
-    fn balanced_opaque(
-        &mut self,
-        start: usize,
-        delimiter: &DelimiterSpec,
-        escape: Option<&'static str>,
-    ) -> Result<Portion, Fault> {
-        let mut content = String::new();
-        let mut depth = 1_usize;
-        while self.cursor < self.input.len() {
-            if escape.is_some_and(|escape| self.input[self.cursor..].starts_with(escape)) {
-                self.cursor += escape.expect("checked above").len();
-                if let Some(character) = self.next_character() {
-                    content.push(character);
-                    self.advance_character();
-                } else {
-                    return Err(self.fault(start, FaultProblem::UnclosedDelimiter));
-                }
-            } else if self.input[self.cursor..].starts_with(delimiter.opening) {
-                depth += 1;
-                content.push_str(delimiter.opening);
-                self.cursor += delimiter.opening.len();
-            } else if self.input[self.cursor..].starts_with(delimiter.closing) {
-                depth -= 1;
-                if depth == 0 {
-                    self.cursor += delimiter.closing.len();
-                    return Ok(Portion::Enclosed(
-                        Extent {
-                            start,
-                            end: self.cursor,
-                        },
-                        match delimiter.boundary {
-                            Boundary::Opaque(boundary) => {
-                                Enclosed::Opaque(OpaqueEnclosed { boundary, content })
-                            }
-                            Boundary::Structural(_) => {
-                                unreachable!("an opaque delimiter has an opaque boundary")
-                            }
-                        },
-                    ));
-                }
-                content.push_str(delimiter.closing);
-                self.cursor += delimiter.closing.len();
-            } else {
-                content.push(self.next_character().expect("cursor is in bounds"));
-                self.advance_character();
-            }
-        }
-        Err(self.fault(start, FaultProblem::UnclosedDelimiter))
-    }
-
-    fn bare_or_headed(&mut self) -> Result<Portion, Fault> {
-        let start = self.cursor;
-        let mut separator = None;
-        while let Some(character) = self.next_character() {
-            if character.is_whitespace()
-                || self.matching_opening().is_some()
-                || self.matching_closer().is_some()
-            {
-                break;
-            }
-            if let Some(found) = self.separator_from(character) {
-                separator = Some(found);
-                break;
-            }
-            self.advance_character();
-        }
-        if self.cursor == start {
-            let end = self
-                .next_character()
-                .map_or(start, |character| start + character.len_utf8());
-            return Err(Fault {
-                extent: Extent { start, end },
-                problem: FaultProblem::MissingHead,
-            });
-        }
-        let symbol = Symbol(self.input[start..self.cursor].to_owned());
-        match separator {
-            Some(separator) => {
-                self.advance_character();
-                if self.cursor == self.input.len()
-                    || self.next_character().is_some_and(char::is_whitespace)
-                    || self.matching_closer().is_some()
-                {
-                    return Err(self.fault(self.cursor, FaultProblem::MissingBody));
-                }
-                let body = self.portion()?;
-                let end = body.as_ref().end;
-                Ok(Portion::Headed(
-                    Extent { start, end },
-                    Headed {
-                        head: symbol,
-                        separator,
-                        body: Box::new(body),
-                    },
-                ))
-            }
-            None => Ok(Portion::Bare(
-                Extent {
-                    start,
-                    end: self.cursor,
-                },
-                Bare { symbol },
-            )),
-        }
-    }
-
-    fn skip_trivia(&mut self) {
-        loop {
-            while self.next_character().is_some_and(char::is_whitespace) {
-                self.advance_character();
-            }
-            if !self.input[self.cursor..].starts_with(";;") {
-                return;
-            }
-            while let Some(character) = self.next_character() {
-                self.advance_character();
-                if character == '\n' {
-                    break;
-                }
-            }
-        }
-    }
-
-    fn matching_opening(&self) -> Option<&'static DelimiterSpec> {
-        DELIMITERS
-            .iter()
-            .find(|delimiter| self.input[self.cursor..].starts_with(delimiter.opening))
-    }
-
-    fn matching_closer(&self) -> Option<&'static DelimiterSpec> {
-        DELIMITERS
-            .iter()
-            .find(|delimiter| self.input[self.cursor..].starts_with(delimiter.closing))
-    }
-
-    fn next_character(&self) -> Option<char> {
-        self.input[self.cursor..].chars().next()
-    }
-
-    fn advance_character(&mut self) {
-        if let Some(character) = self.next_character() {
-            self.cursor += character.len_utf8();
-        }
-    }
-
-    fn separator_from(&self, character: char) -> Option<Separator> {
-        SEPARATORS
-            .iter()
-            .find(|specification| specification.text.starts_with(character))
-            .map(|specification| specification.separator)
-    }
-
-    fn fault(&self, start: usize, problem: FaultProblem) -> Fault {
-        Fault {
-            extent: Extent {
-                start,
-                end: self.cursor,
-            },
-            problem,
-        }
-    }
-}
-
-impl Copy for Separator {}
-
-impl Clone for Separator {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl Clone for Symbol {
-    fn clone(&self) -> Self {
-        Self(self.0.to_owned())
-    }
-}
-
-impl Clone for Extent {
-    fn clone(&self) -> Self {
-        Self {
-            start: self.start,
-            end: self.end,
-        }
-    }
-}
-
-impl Clone for Bare {
-    fn clone(&self) -> Self {
-        Self {
-            symbol: self.symbol.clone(),
-        }
-    }
-}
-
-impl Clone for Headed {
-    fn clone(&self) -> Self {
-        Self {
-            head: self.head.clone(),
-            separator: self.separator,
-            body: Box::new((*self.body).clone()),
-        }
-    }
-}
-
-impl Clone for StructuralEnclosed {
-    fn clone(&self) -> Self {
-        Self {
-            enclosure: self.enclosure,
-            portions: self.portions.iter().map(Clone::clone).collect(),
-        }
-    }
-}
-
-impl Clone for OpaqueEnclosed {
-    fn clone(&self) -> Self {
-        Self {
-            boundary: self.boundary,
-            content: self.content.to_owned(),
-        }
-    }
-}
-
-impl Clone for Enclosed {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Structural(enclosed) => Self::Structural(enclosed.clone()),
-            Self::Opaque(enclosed) => Self::Opaque(enclosed.clone()),
-        }
-    }
-}
-
-impl Clone for Portion {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Headed(extent, headed) => Self::Headed(extent.clone(), headed.clone()),
-            Self::Enclosed(extent, enclosed) => Self::Enclosed(extent.clone(), enclosed.clone()),
-            Self::Bare(extent, bare) => Self::Bare(extent.clone(), bare.clone()),
-        }
-    }
-}
-
-impl Clone for Delineation {
-    fn clone(&self) -> Self {
-        Self {
-            portions: self.portions.iter().map(Clone::clone).collect(),
-        }
-    }
-}
-
-impl Copy for BareExpectation {}
-
-impl Clone for BareExpectation {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl Copy for Enclosure {}
-
-impl Clone for Enclosure {
-    fn clone(&self) -> Self {
-        *self
+impl fmt::Debug for Delineation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Delineation")
+            .field("protoforms", &self.protoforms)
+            .field("situation", &self.situation)
+            .finish()
     }
 }
-
-impl Copy for StructuralEnclosure {}
-
-impl Clone for StructuralEnclosure {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl Copy for OpaqueBoundary {}
-
-impl Clone for OpaqueBoundary {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl Copy for Boundary {}
-
-impl Clone for Boundary {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl Copy for Layout {}
-
-impl Clone for Layout {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T> PartialEq for Text<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.normalized == other.normalized
-    }
-}
-
-impl<T> Eq for Text<T> {}
-
-impl PartialEq for ContentHash {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Eq for ContentHash {}
-
-impl PartialEq for Symbol {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Eq for Symbol {}
-
-impl PartialEq for Extent {
-    fn eq(&self, other: &Self) -> bool {
-        self.start == other.start && self.end == other.end
-    }
-}
-
-impl Eq for Extent {}
-
-impl PartialEq for Separator {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::Period, Self::Period)
-                | (Self::Exclamation, Self::Exclamation)
-                | (Self::Colon, Self::Colon)
-        )
-    }
-}
-
-impl Eq for Separator {}
-
-impl PartialEq for BareExpectation {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::Symbol, Self::Symbol) | (Self::String, Self::String)
-        )
-    }
-}
-
-impl Eq for BareExpectation {}
-
-impl PartialEq for Enclosure {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::Braced, Self::Braced)
-                | (Self::Bracketed, Self::Bracketed)
-                | (Self::Guillemets, Self::Guillemets)
-                | (Self::Angled, Self::Angled)
-                | (Self::CurlyQuote, Self::CurlyQuote)
-        )
-    }
-}
-
-impl Eq for Enclosure {}
-
-impl PartialEq for StructuralEnclosure {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::Braced, Self::Braced)
-                | (Self::Bracketed, Self::Bracketed)
-                | (Self::Guillemets, Self::Guillemets)
-                | (Self::Angled, Self::Angled)
-        )
-    }
-}
-
-impl Eq for StructuralEnclosure {}
-
-impl PartialEq for OpaqueBoundary {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::CurlyQuote, Self::CurlyQuote) => true,
-            (Self::Dialect(left), Self::Dialect(right)) => left == right,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for OpaqueBoundary {}
-
-impl PartialEq for Boundary {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Structural(left), Self::Structural(right)) => left == right,
-            (Self::Opaque(left), Self::Opaque(right)) => left == right,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for Boundary {}
-
-impl Copy for DialectBoundary {}
-
-impl Clone for DialectBoundary {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl PartialEq for DialectBoundary {
-    fn eq(&self, other: &Self) -> bool {
-        matches!((self, other), (Self::Parentheses, Self::Parentheses))
-    }
-}
-
-impl Eq for DialectBoundary {}
-
-impl PartialEq for Portion {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Headed(left_extent, left), Self::Headed(right_extent, right)) => {
-                left_extent == right_extent && left == right
-            }
-            (Self::Enclosed(left_extent, left), Self::Enclosed(right_extent, right)) => {
-                left_extent == right_extent && left == right
-            }
-            (Self::Bare(left_extent, left), Self::Bare(right_extent, right)) => {
-                left_extent == right_extent && left == right
-            }
-            _ => false,
-        }
-    }
-}
-
-impl Eq for Portion {}
-
-impl PartialEq for Headed {
-    fn eq(&self, other: &Self) -> bool {
-        self.head == other.head && self.separator == other.separator && self.body == other.body
-    }
-}
-
-impl Eq for Headed {}
-
-impl PartialEq for Enclosed {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Structural(left), Self::Structural(right)) => left == right,
-            (Self::Opaque(left), Self::Opaque(right)) => left == right,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for Enclosed {}
-
-impl PartialEq for StructuralEnclosed {
-    fn eq(&self, other: &Self) -> bool {
-        self.enclosure == other.enclosure && self.portions == other.portions
-    }
-}
-
-impl Eq for StructuralEnclosed {}
-
-impl PartialEq for OpaqueEnclosed {
-    fn eq(&self, other: &Self) -> bool {
-        self.boundary == other.boundary && self.content == other.content
-    }
-}
-
-impl Eq for OpaqueEnclosed {}
-
-impl PartialEq for Bare {
-    fn eq(&self, other: &Self) -> bool {
-        self.symbol == other.symbol
-    }
-}
-
-impl Eq for Bare {}
 
 impl PartialEq for Delineation {
     fn eq(&self, other: &Self) -> bool {
-        self.portions == other.portions
+        self.protoforms == other.protoforms
     }
 }
 
 impl Eq for Delineation {}
 
-impl PartialEq for Fault {
-    fn eq(&self, other: &Self) -> bool {
-        self.extent == other.extent && self.problem == other.problem
+/// A structural fault, situated.
+#[derive(Clone)]
+pub struct Fault {
+    pub extent: Extent,
+    pub problem: Problem,
+}
+
+impl fmt::Debug for Fault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Fault")
+            .field("extent", &self.extent)
+            .field("problem", &self.problem)
+            .finish()
     }
 }
 
-impl Eq for Fault {}
+/// The structural fault taxonomy.
+#[derive(Clone, PartialEq, Eq)]
+pub enum Problem {
+    Unclosed(Enclosure),
+    UnclosedBoundary(Boundary),
+    Unopened,
+    MissingBody,
+    MissingHead,
+    EmptyInput,
+}
 
-impl PartialEq for FaultProblem {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::UnexpectedCloser, Self::UnexpectedCloser)
-                | (Self::UnclosedDelimiter, Self::UnclosedDelimiter)
-                | (Self::MissingHead, Self::MissingHead)
-                | (Self::MissingBody, Self::MissingBody)
-                | (Self::ExpectedOnePortion, Self::ExpectedOnePortion)
-                | (Self::ExpectedShape, Self::ExpectedShape)
-                | (Self::ExpectedBareSymbol, Self::ExpectedBareSymbol)
-                | (Self::InvalidSignedInteger, Self::InvalidSignedInteger)
-                | (Self::IntegerOutOfRange, Self::IntegerOutOfRange)
-                | (Self::InvalidDecimal, Self::InvalidDecimal)
-                | (Self::NonFiniteDecimal, Self::NonFiniteDecimal)
-        )
+impl fmt::Debug for Problem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unclosed(e) => write!(f, "Unclosed({e:?})"),
+            Self::UnclosedBoundary(b) => write!(f, "UnclosedBoundary({b:?})"),
+            Self::Unopened => write!(f, "Unopened"),
+            Self::MissingBody => write!(f, "MissingBody"),
+            Self::MissingHead => write!(f, "MissingHead"),
+            Self::EmptyInput => write!(f, "EmptyInput"),
+        }
     }
 }
 
-impl Eq for FaultProblem {}
+/// Text taken as a would-be T, untrusted until actualized.
+pub struct Potential<T>(Text, PhantomData<fn() -> T>);
 
-macro_rules! debug_as_display {
-    ($($type:ty),+ $(,)?) => {
-        $(impl fmt::Debug for $type {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(formatter, "{}", stringify!($type))
+impl<T> Potential<T> {
+    /// The raw text.
+    pub fn text(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<T> From<Text> for Potential<T> {
+    fn from(text: Text) -> Self {
+        Self(text, PhantomData)
+    }
+}
+
+impl<T> From<&str> for Potential<T> {
+    fn from(s: &str) -> Self {
+        Self(s.to_owned(), PhantomData)
+    }
+}
+
+impl<T> fmt::Debug for Potential<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Potential").field(&self.0).finish()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Traits (kinds)
+// ---------------------------------------------------------------------------
+
+/// Borne by Text: delineate text into protoforms.
+pub trait Structural {
+    fn delineate(&self) -> Result<Delineation, Fault>;
+}
+
+/// Borne by Protoform and Delineation: canonical text.
+pub trait Printing {
+    fn print(&self) -> Text;
+}
+
+/// Borne by every concept: yield the protoform.
+pub trait Protosizable {
+    fn protosize(&self) -> Protoform;
+}
+
+/// Borne by Protoform, once per dialect: conceive a concept from a protoform.
+pub trait Conceptual<C: Protosizable> {
+    type Fault;
+    fn conceive(&self) -> Result<C, Self::Fault>;
+}
+
+/// Borne by Potential<T>: actualize a value from text.
+pub trait Actualizable<T: Embodied> {
+    type Fault;
+    fn actualize(&self) -> Result<T, Self::Fault>;
+}
+
+/// Look up where a protoform was in the source text.
+pub trait Situating {
+    fn situate(&self, path: &[Integer]) -> Option<Extent>;
+}
+
+/// The bound: an alias of Sized, blanket-implemented.
+pub trait Embodied: Sized {}
+impl<T: Sized> Embodied for T {}
+
+// ---------------------------------------------------------------------------
+// Structural for Text (the delineator / parser)
+// ---------------------------------------------------------------------------
+
+/// Delimiter characters.
+const OPEN_BRACE: char = '{';
+const CLOSE_BRACE: char = '}';
+const OPEN_BRACKET: char = '[';
+const CLOSE_BRACKET: char = ']';
+const OPEN_GUILLEMET: char = '\u{00AB}'; // «
+const CLOSE_GUILLEMET: char = '\u{00BB}'; // »
+const OPEN_ANGLE: char = '<';
+const CLOSE_ANGLE: char = '>';
+const OPEN_CURLY_QUOTE: char = '\u{201C}'; // "
+const CLOSE_CURLY_QUOTE: char = '\u{201D}'; // "
+const OPEN_PAREN: char = '(';
+const CLOSE_PAREN: char = ')';
+const COMMENT_CHAR: char = ';';
+const ESCAPE_CHAR: char = '\\';
+
+fn is_delimiter(c: char) -> bool {
+    matches!(
+        c,
+        OPEN_BRACE
+            | CLOSE_BRACE
+            | OPEN_BRACKET
+            | CLOSE_BRACKET
+            | OPEN_GUILLEMET
+            | CLOSE_GUILLEMET
+            | OPEN_ANGLE
+            | CLOSE_ANGLE
+            | OPEN_CURLY_QUOTE
+            | CLOSE_CURLY_QUOTE
+            | OPEN_PAREN
+            | CLOSE_PAREN
+    )
+}
+
+fn is_separator(c: char) -> bool {
+    matches!(c, '.' | '!' | ':')
+}
+
+fn separator_from_char(c: char) -> Separator {
+    match c {
+        '.' => Separator::Period,
+        '!' => Separator::Exclamation,
+        ':' => Separator::Colon,
+        _ => unreachable!(),
+    }
+}
+
+fn enclosure_for_opener(c: char) -> Option<Enclosure> {
+    match c {
+        OPEN_BRACE => Some(Enclosure::Braced),
+        OPEN_BRACKET => Some(Enclosure::Bracketed),
+        OPEN_GUILLEMET => Some(Enclosure::Guillemets),
+        OPEN_ANGLE => Some(Enclosure::Angled),
+        _ => None,
+    }
+}
+
+fn closer_for_enclosure(e: Enclosure) -> char {
+    match e {
+        Enclosure::Braced => CLOSE_BRACE,
+        Enclosure::Bracketed => CLOSE_BRACKET,
+        Enclosure::Guillemets => CLOSE_GUILLEMET,
+        Enclosure::Angled => CLOSE_ANGLE,
+    }
+}
+
+fn is_closer(c: char) -> bool {
+    matches!(
+        c,
+        CLOSE_BRACE | CLOSE_BRACKET | CLOSE_GUILLEMET | CLOSE_ANGLE
+    )
+}
+
+/// Parse a bare run (word with separators) into a Protoform.
+/// The run contains no whitespace and no delimiter glyphs.
+/// Returns (protoform, [path -> (byte_start, byte_end)] entries).
+fn parse_bare_run(
+    run: &str,
+    run_start: Integer,
+    base_path: &[Integer],
+) -> Result<(Protoform, Vec<(Path, Extent)>), Fault> {
+    // Check for leading separator (MissingHead)
+    if let Some(first_char) = run.chars().next() {
+        if is_separator(first_char) {
+            return Err(Fault {
+                extent: Extent(run_start, run_start + first_char.len_utf8() as Integer),
+                problem: Problem::MissingHead,
+            });
+        }
+    }
+
+    // Find the first separator that has a non-whitespace, non-closing, non-delimiter
+    // character following it
+    let mut char_iter = run.char_indices().peekable();
+    while let Some((byte_offset, ch)) = char_iter.next() {
+        if is_separator(ch) {
+            // Check what follows
+            if let Some(&(next_offset, next_ch)) = char_iter.peek() {
+                if !next_ch.is_whitespace() && !is_closer(next_ch) && !is_delimiter(next_ch) {
+                    // Split: head is run[..byte_offset], separator is ch, body is run[next_offset..]
+                    let head = run[..byte_offset].to_owned();
+                    let sep = separator_from_char(ch);
+                    let body_str = &run[next_offset..];
+                    let body_start = run_start + next_offset as Integer;
+
+                    let mut situations = Vec::new();
+                    let body_path: Path = base_path
+                        .iter()
+                        .copied()
+                        .chain(std::iter::once(0))
+                        .collect();
+
+                    let (body, body_situations) = parse_bare_run(body_str, body_start, &body_path)?;
+
+                    let head_extent = Extent(run_start, run_start + run.len() as Integer);
+                    situations.push((base_path.to_vec(), head_extent));
+                    situations.extend(body_situations);
+
+                    return Ok((Protoform::Headed(head, sep, Box::new(body)), situations));
+                } else {
+                    // Separator at end of run or followed by whitespace/closer -> MissingBody
+                    return Err(Fault {
+                        extent: Extent(
+                            run_start + byte_offset as Integer,
+                            run_start + byte_offset as Integer + ch.len_utf8() as Integer,
+                        ),
+                        problem: Problem::MissingBody,
+                    });
+                }
+            } else {
+                // Separator at end of string -> MissingBody
+                return Err(Fault {
+                    extent: Extent(
+                        run_start + byte_offset as Integer,
+                        run_start + byte_offset as Integer + ch.len_utf8() as Integer,
+                    ),
+                    problem: Problem::MissingBody,
+                });
             }
-        })+
-    };
+        }
+    }
+
+    // No separator found: just a bare symbol
+    let extent = Extent(run_start, run_start + run.len() as Integer);
+    let situations = vec![(base_path.to_vec(), extent)];
+    Ok((Protoform::Bare(run.to_owned()), situations))
 }
 
-debug_as_display!(
-    ContentHash,
-    Symbol,
-    Extent,
-    Separator,
-    BareExpectation,
-    Enclosure,
-    StructuralEnclosure,
-    OpaqueBoundary,
-    Boundary,
-    DialectBoundary,
-    Portion,
-    Headed,
-    Enclosed,
-    StructuralEnclosed,
-    OpaqueEnclosed,
-    Bare,
-    Delineation,
-    Fault,
-    FaultProblem,
-    Layout,
-);
+/// The core delineation parser.
+struct Delineator<'a> {
+    source: &'a str,
+    pos: usize,
+}
 
-impl<T> fmt::Debug for Text<T> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "Text")
+impl<'a> Delineator<'a> {
+    fn new(source: &'a str) -> Self {
+        Self { source, pos: 0 }
+    }
+
+    fn remaining(&self) -> &'a str {
+        &self.source[self.pos..]
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        self.remaining().chars().next()
+    }
+
+    fn advance_char(&mut self) -> Option<char> {
+        let c = self.remaining().chars().next()?;
+        self.pos += c.len_utf8();
+        Some(c)
+    }
+
+    fn skip_whitespace_and_comments(&mut self) {
+        loop {
+            // Skip whitespace
+            let before = self.pos;
+            while let Some(c) = self.peek_char() {
+                if c.is_whitespace() {
+                    self.advance_char();
+                } else {
+                    break;
+                }
+            }
+
+            // Check for comment: `;` opens a comment to end of line
+            if self.peek_char() == Some(COMMENT_CHAR) {
+                while let Some(c) = self.advance_char() {
+                    if c == '\n' {
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            if self.pos == before {
+                break;
+            }
+        }
+    }
+
+    /// Parse the contents of a structural enclosure (or the top level).
+    /// `closer` is None for top level, Some(ch) for an enclosure.
+    #[allow(clippy::type_complexity)]
+    fn parse_contents(
+        &mut self,
+        closer: Option<char>,
+        base_path: &[Integer],
+    ) -> Result<(Vec<Protoform>, Vec<(Path, Extent)>), Fault> {
+        let mut protoforms = Vec::new();
+        let mut situations = Vec::new();
+        let mut child_index: Integer = 0;
+
+        loop {
+            self.skip_whitespace_and_comments();
+
+            if self.pos >= self.source.len() {
+                if closer.is_some() {
+                    // We never found the closer
+                    return Err(Fault {
+                        extent: Extent(0, 0),                          // Will be set by caller
+                        problem: Problem::Unclosed(Enclosure::Braced), // Will be set by caller
+                    });
+                }
+                break;
+            }
+
+            let c = self.peek_char().unwrap();
+
+            // Check for closer
+            if let Some(expected_closer) = closer {
+                if c == expected_closer {
+                    self.advance_char();
+                    break;
+                }
+            }
+
+            // Check for unexpected closer
+            if is_closer(c) {
+                let start = self.pos as Integer;
+                self.advance_char();
+                return Err(Fault {
+                    extent: Extent(start, self.pos as Integer),
+                    problem: Problem::Unopened,
+                });
+            }
+
+            let child_path: Path = base_path
+                .iter()
+                .copied()
+                .chain(std::iter::once(child_index))
+                .collect();
+
+            let (pf, pf_situations) = self.parse_one(&child_path)?;
+            protoforms.push(pf);
+            situations.extend(pf_situations);
+            child_index += 1;
+        }
+
+        Ok((protoforms, situations))
+    }
+
+    /// Parse one protoform at the current position.
+    fn parse_one(&mut self, path: &[Integer]) -> Result<(Protoform, Vec<(Path, Extent)>), Fault> {
+        let c = self.peek_char().unwrap();
+
+        // Structural enclosure opener
+        if let Some(enclosure) = enclosure_for_opener(c) {
+            let start = self.pos as Integer;
+            self.advance_char(); // consume opener
+            let children_path = path;
+            match self.parse_contents(Some(closer_for_enclosure(enclosure)), children_path) {
+                Ok((children, mut child_situations)) => {
+                    let end = self.pos as Integer;
+                    let extent = Extent(start, end);
+                    child_situations.push((path.to_vec(), extent));
+                    Ok((Protoform::Enclosed(enclosure, children), child_situations))
+                }
+                Err(_) => Err(Fault {
+                    extent: Extent(start, self.source.len() as Integer),
+                    problem: Problem::Unclosed(enclosure),
+                }),
+            }
+        }
+        // Curly quote opener
+        else if c == OPEN_CURLY_QUOTE {
+            let start = self.pos as Integer;
+            self.advance_char(); // consume opener
+            let content_start = self.pos;
+            // Read until closing curly quote; everything inside is content
+            loop {
+                match self.advance_char() {
+                    Some(CLOSE_CURLY_QUOTE) => break,
+                    Some(_) => continue,
+                    None => {
+                        return Err(Fault {
+                            extent: Extent(start, self.source.len() as Integer),
+                            problem: Problem::UnclosedBoundary(Boundary::CurlyQuotes),
+                        });
+                    }
+                }
+            }
+            let content =
+                self.source[content_start..self.pos - CLOSE_CURLY_QUOTE.len_utf8()].to_owned();
+            let end = self.pos as Integer;
+            let extent = Extent(start, end);
+            let situations = vec![(path.to_vec(), extent)];
+            Ok((
+                Protoform::Opaque(Boundary::CurlyQuotes, content),
+                situations,
+            ))
+        }
+        // Parenthesis opener
+        else if c == OPEN_PAREN {
+            let start = self.pos as Integer;
+            self.advance_char(); // consume opener
+            let mut content = String::new();
+            let mut depth = 1u32;
+            // Read by balance, building content with unescaping
+            loop {
+                match self.advance_char() {
+                    Some(ESCAPE_CHAR) => {
+                        // The next char is escaped (e.g., `\)` -> `)`)
+                        if let Some(escaped) = self.advance_char() {
+                            content.push(escaped);
+                        }
+                    }
+                    Some(OPEN_PAREN) => {
+                        depth += 1;
+                        content.push(OPEN_PAREN);
+                    }
+                    Some(CLOSE_PAREN) => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                        content.push(CLOSE_PAREN);
+                    }
+                    Some(ch) => content.push(ch),
+                    None => {
+                        return Err(Fault {
+                            extent: Extent(start, self.source.len() as Integer),
+                            problem: Problem::UnclosedBoundary(Boundary::Parentheses),
+                        });
+                    }
+                }
+            }
+            let end = self.pos as Integer;
+            let extent = Extent(start, end);
+            let situations = vec![(path.to_vec(), extent)];
+            Ok((
+                Protoform::Opaque(Boundary::Parentheses, content),
+                situations,
+            ))
+        }
+        // Bare run: accumulate characters until whitespace or delimiter
+        else {
+            let start = self.pos;
+            while let Some(c) = self.peek_char() {
+                if c.is_whitespace() || is_delimiter(c) || c == COMMENT_CHAR {
+                    break;
+                }
+                self.advance_char();
+            }
+            let run = &self.source[start..self.pos];
+
+            // Now check: does the bare run lead into a structural opener?
+            // e.g. "Head.{" or "Head.[" -- the separator+opener creates a headed form
+            // We need to check if there's a separator at the end that connects to a delimiter
+            // Actually, we handle this differently: the bare run already ended.
+            // But "Head.{" means "Head" is the run ending at ".", then "{" follows.
+            // In our grammar, the run "Head." has a trailing separator -> MissingBody.
+            // BUT "Head.{" should parse as Headed(Head, Period, Enclosed(...)).
+            // This means we need to look for separators that connect to delimiters.
+
+            // Re-parse: find separators in the run. If a separator is at the end of the run
+            // and the next char is a structural opener or opaque opener, then we need to
+            // treat it as a headed structure with the following structure as body.
+
+            // Check if the run ends with a separator and the next char is an opener
+            if !run.is_empty() {
+                let last_char = run.chars().next_back().unwrap();
+                if is_separator(last_char) {
+                    // Check what follows
+                    if let Some(next_c) = self.peek_char() {
+                        if enclosure_for_opener(next_c).is_some()
+                            || next_c == OPEN_CURLY_QUOTE
+                            || next_c == OPEN_PAREN
+                        {
+                            // The run up to (not including) the separator is the head
+                            // The separator connects to the following structure
+                            let sep_byte_offset = run.len() - last_char.len_utf8();
+                            let head_str = &run[..sep_byte_offset];
+                            if head_str.is_empty() {
+                                return Err(Fault {
+                                    extent: Extent(
+                                        start as Integer,
+                                        start as Integer + last_char.len_utf8() as Integer,
+                                    ),
+                                    problem: Problem::MissingHead,
+                                });
+                            }
+                            let sep = separator_from_char(last_char);
+
+                            // Parse the head part (may itself contain separators)
+                            let body_path: Path =
+                                path.iter().copied().chain(std::iter::once(0)).collect();
+                            let (body, body_situations) = self.parse_one(&body_path)?;
+
+                            // Now wrap: parse the head part for internal separators
+                            let (head_pf, mut head_situations) =
+                                parse_bare_run(head_str, start as Integer, path)?;
+
+                            // The head_pf might be a Bare or a Headed chain.
+                            // We need to attach the body to the deepest rightmost element.
+                            let result = attach_body_to_deepest(head_pf, sep, body);
+                            head_situations.extend(body_situations);
+                            // Update the extent for the overall headed structure
+                            if let Some(entry) = head_situations.iter_mut().find(|(p, _)| p == path)
+                            {
+                                entry.1 = Extent(start as Integer, self.pos as Integer);
+                            }
+                            return Ok((result, head_situations));
+                        }
+                    }
+                    // Separator at end of run with nothing following -> handled by parse_bare_run
+                }
+            }
+
+            // Standard bare run parsing
+            parse_bare_run(run, start as Integer, path)
+        }
+    }
+}
+
+/// Attach a body to the deepest rightmost position in a headed chain.
+/// e.g., for head=Headed(A, Period, Bare(B)), sep=Colon, body=Enclosed(...)
+/// -> Headed(A, Period, Headed(B, Colon, Enclosed(...)))
+fn attach_body_to_deepest(head: Protoform, sep: Separator, body: Protoform) -> Protoform {
+    match head {
+        Protoform::Bare(symbol) => Protoform::Headed(symbol, sep, Box::new(body)),
+        Protoform::Headed(h, s, inner) => {
+            Protoform::Headed(h, s, Box::new(attach_body_to_deepest(*inner, sep, body)))
+        }
+        other => {
+            // Shouldn't happen in normal parsing, but handle gracefully
+            Protoform::Headed(String::new(), sep, Box::new(other))
+        }
+    }
+}
+
+impl Structural for Text {
+    fn delineate(&self) -> Result<Delineation, Fault> {
+        let mut delineator = Delineator::new(self);
+        let (protoforms, situation_entries) = delineator.parse_contents(None, &[])?;
+        let mut situation = Situation::new();
+        for (path, extent) in situation_entries {
+            situation.insert(path, extent);
+        }
+        Ok(Delineation {
+            protoforms,
+            situation,
+        })
+    }
+}
+
+impl Structural for Potential<()> {
+    fn delineate(&self) -> Result<Delineation, Fault> {
+        self.0.delineate()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Printing for Protoform and Delineation
+// ---------------------------------------------------------------------------
+
+impl Printing for Protoform {
+    fn print(&self) -> Text {
+        match self {
+            Protoform::Headed(head, sep, body) => {
+                let mut result = head.clone();
+                result.push(sep.glyph());
+                result.push_str(&body.print());
+                result
+            }
+            Protoform::Enclosed(enclosure, children) => {
+                let (open, close) = match enclosure {
+                    Enclosure::Braced => ("{", "}"),
+                    Enclosure::Bracketed => ("[", "]"),
+                    Enclosure::Guillemets => ("\u{00AB}", "\u{00BB}"),
+                    Enclosure::Angled => ("<", ">"),
+                };
+                if children.is_empty() {
+                    // Empty enclosures are tight
+                    format!("{open}{close}")
+                } else {
+                    let inner: Vec<String> = children.iter().map(|c| c.print()).collect();
+                    let joined = inner.join(" ");
+                    match enclosure {
+                        // Angled: always tight (no space inside)
+                        Enclosure::Angled => format!("{open}{joined}{close}"),
+                        // Others: space inside at both ends
+                        _ => format!("{open} {joined} {close}"),
+                    }
+                }
+            }
+            Protoform::Opaque(boundary, content) => match boundary {
+                Boundary::CurlyQuotes => {
+                    format!("\u{201C}{content}\u{201D}")
+                }
+                Boundary::Parentheses => {
+                    // Escape unbalanced `)` as `\)` in content
+                    let escaped = escape_parens_for_print(content);
+                    format!("({escaped})")
+                }
+            },
+            Protoform::Bare(symbol) => symbol.clone(),
+        }
+    }
+}
+
+/// Escape unbalanced `)` in parenthesized content for printing.
+fn escape_parens_for_print(content: &str) -> String {
+    let mut result = String::with_capacity(content.len());
+    let mut depth: i32 = 0;
+
+    // First pass: find which `)` are unbalanced.
+    // Actually, the content stores the raw content between the opening `(` and closing `)`.
+    // When printing, we need to ensure that reading it back by balance produces the same content.
+    // An unbalanced `)` in the content would close the outer parenthesis prematurely.
+    // So we escape any `)` that would cause depth to go below 0.
+    for c in content.chars() {
+        match c {
+            '(' => {
+                depth += 1;
+                result.push(c);
+            }
+            ')' => {
+                if depth > 0 {
+                    depth -= 1;
+                    result.push(c);
+                } else {
+                    result.push('\\');
+                    result.push(')');
+                }
+            }
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
+impl Printing for Delineation {
+    fn print(&self) -> Text {
+        let parts: Vec<String> = self.protoforms.iter().map(|p| p.print()).collect();
+        parts.join(" ")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Situating for Delineation
+// ---------------------------------------------------------------------------
+
+impl Situating for Delineation {
+    fn situate(&self, path: &[Integer]) -> Option<Extent> {
+        self.situation.get(path).copied()
     }
 }

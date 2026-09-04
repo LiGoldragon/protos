@@ -1,50 +1,26 @@
-Schema.{0 1 0}
+; protos.ethos — the substrate's own declaration
+Library.{0 15 0}
 []
-
-Types.[
-  Text.Struct.{Visibility.Public Generics.<T.Unit> Private.Normalized.String Private.ContentHash.ContentHash Private.Delineation.Option<Delineation> Private.Target.Phantom<T>}
-  ContentHash.Tuple.[Visibility.Public Private.UnsignedInteger]
-  Symbol.Tuple.[Visibility.Public Private.String]
-  Extent.Struct.{Visibility.Public Public.Start.ByteOffset Public.End.ByteOffset}
-  Separator.Enum.[Visibility.Public Period Exclamation Colon]
-  BareExpectation.Enum.[Visibility.Public Symbol String]
-  Enclosure.Enum.[Visibility.Public Braced Bracketed Guillemets Angled CurlyQuote]
-  StructuralEnclosure.Enum.[Visibility.Public Braced Bracketed Guillemets Angled]
-  OpaqueBoundary.Enum.[Visibility.Public CurlyQuote Dialect.DialectBoundary]
-  Boundary.Enum.[Visibility.Public Structural.StructuralEnclosure Opaque.OpaqueBoundary]
-  DialectBoundary.Enum.[Visibility.Public Parentheses]
-  Portion.Enum.[Visibility.Public NonExhaustive.Yes Headed.Tuple.[Extent Headed] Enclosed.Tuple.[Extent Enclosed] Bare.Tuple.[Extent Bare]]
-  Headed.Struct.{Visibility.Public Public.Head.Symbol Public.Separator.Separator Public.Body.Box<Portion>}
-  Enclosed.Enum.[Visibility.Public Structural.StructuralEnclosed Opaque.OpaqueEnclosed]
-  StructuralEnclosed.Struct.{Visibility.Public Private.Enclosure.StructuralEnclosure Private.Portions.Vector<Portion>}
-  OpaqueEnclosed.Struct.{Visibility.Public Private.Boundary.OpaqueBoundary Private.Content.String}
-  Bare.Struct.{Visibility.Public Public.Symbol.Symbol}
-  Delineation.Struct.{Visibility.Public Public.Portions.Vector<Portion>}
-  Prospective.Alias.{Visibility.Public Generics.<T> Target.Text<T>}
-  Fault.Struct.{Visibility.Public Public.Extent.Extent Public.Problem.FaultProblem}
-  FaultProblem.Enum.[Visibility.Public UnexpectedCloser UnclosedDelimiter MissingHead MissingBody ExpectedOnePortion ExpectedShape ExpectedBareSymbol InvalidSignedInteger IntegerOutOfRange InvalidDecimal NonFiniteDecimal]
-  Layout.Enum.[Visibility.Public Flat]
-]
-
-Kinds.[
-  Delineatable.{Visibility.Public Associated.[Delineation] Methods.[delineate.{Receiver.Shared Output.Result<Self.Delineation Fault>}]}
-  Embodiable.{Visibility.Public Associated.[Embodied.Embodied] Methods.[embody.{Receiver.Shared Output.Result<Self.Embodied Fault>}]}
-  Embodied.{Visibility.Public Supertraits.[Sized] Methods.[fromPortion.{Receiver.None Inputs.[portion.Borrowed<Portion>] Output.Result<Self Fault>}]}
-  Textualizable.{Visibility.Public Supertraits.[Embodied] Methods.[toPortion.{Receiver.Shared Output.Portion} textualize.{Receiver.Shared Output.Text Default.Chain.[Self toPortion print.[Layout.Flat]]}]}
-  ShapeDefined.{Visibility.Public Supertraits.[Embodied] Methods.[matches.{Receiver.None Inputs.[portion.Borrowed<Portion>] Output.Boolean}]}
-  ContentHashable.{Visibility.Public Methods.[contentHash.{Receiver.Shared Output.ContentHash}]}
-  BareSafe.{Visibility.Public Methods.[isBareSafeFor.{Receiver.Shared Inputs.[expectation.BareExpectation] Output.Boolean}]}
-  PortionText.{Visibility.Public Methods.[canonicalText.{Receiver.Shared Output.Text}]}
-  ScalarAnatomy.{Visibility.Public Methods.[signedI64.{Receiver.Shared Output.Result<Signed64 Fault>} decimalF64.{Receiver.Shared Output.Result<Float64 Fault>}]}
-  EnclosedArity.{Visibility.Public Methods.[arity.{Receiver.Shared Output.Natural}]}
-  EnclosedAnatomy.{Visibility.Public Methods.[structuralEnclosure.{Receiver.Shared Output.Option<StructuralEnclosure>} opaqueBoundary.{Receiver.Shared Output.Option<OpaqueBoundary>} portions.{Receiver.Shared Output.Option<Borrowed<Slice<Portion>>>} opaqueContent.{Receiver.Shared Output.Option<Borrowed<StringSlice>>}]}
-  Printing.{Visibility.Public Methods.[print.{Receiver.Shared Inputs.[layout.Layout] Output.Text}]}
-  DelineatedText.{Visibility.Public Methods.[delineation.{Receiver.Shared Output.Option<Borrowed<Delineation>>} retag.{Generics.<U> Receiver.Owned Output.Text<U> Where.[Self.Sized]}]}
-]
-
-Associations.[
-  Text.[Delineatable Embodiable ContentHashable BareSafe DelineatedText]
-  Prospective.[Delineatable Embodiable]
-  Delineation.[Printing]
-  Portion.[Printing PortionText ScalarAnatomy]
-]
+[ Text Integer Decimal Boolean
+  Symbol.Text
+  Extent.{ Integer Integer }
+  Path.Vector<Integer>
+  Situation.« Path Extent »
+  Separator.[ Period Exclamation Colon ]
+  Enclosure.[ Braced Bracketed Guillemets Angled ]
+  Boundary.[ CurlyQuotes Parentheses ]
+  Protoform.[ Headed.{ Symbol Separator Protoform }
+              Enclosed.{ Enclosure Vector<Protoform> }
+              Opaque.{ Boundary Text }
+              Bare.Symbol ]
+  Delineation.{ Vector<Protoform> Situation }
+  Fault.{ Extent Problem }
+  Problem.[ Unclosed.Enclosure UnclosedBoundary.Boundary Unopened MissingBody MissingHead EmptyInput ] ]
+[ Structural.[ delineate.[ Result<Delineation Fault> ] ]
+  Printing.[ print.[ Text ] ]
+  Protosizable.[ protosize.[ Protoform ] ]
+  Conceptual<Protosizable>.{ [] [ Fault ] «» [ conceive.[ Result<Protosizable Fault> ] ] }
+  Actualizable<Embodied>.{ [] [ Fault ] «» [ actualize.[ Result<Embodied Fault> ] ] }
+  Situating.[ situate.{ [ Path ] [ Option<Extent> ] } ]
+  Embodied.[] ]
+[ Text.[ Structural ]  Protoform.[ Printing ]  Delineation.[ Printing Situating ] ]

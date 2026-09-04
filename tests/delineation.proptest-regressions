@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 21d81b9d78c0a088a31791c482294597c5d9ef7ea2eda5409bd27c7a4effba19 # shrinks to spec = Headed("A", Period, Enclosed(Angled, []))

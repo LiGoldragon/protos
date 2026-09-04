@@ -103,18 +103,50 @@ impl fmt::Debug for Boundary {
     }
 }
 
+/// The head of a headed structure: either a bare symbol or a qualified symbol.
+#[derive(Clone)]
+pub enum Head {
+    /// A bare symbol: `Name`
+    Bare(Symbol),
+    /// A symbol qualified by an angled enclosure: `Name<...>`
+    Qualified(Symbol, Vec<Protoform>),
+}
+
+impl fmt::Debug for Head {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bare(s) => f.debug_tuple("Bare").field(s).finish(),
+            Self::Qualified(s, c) => f.debug_tuple("Qualified").field(s).field(c).finish(),
+        }
+    }
+}
+
+impl PartialEq for Head {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bare(a), Self::Bare(b)) => a == b,
+            (Self::Qualified(a1, a2), Self::Qualified(b1, b2)) => a1 == b1 && a2 == b2,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Head {}
+
 /// One structural value. Protoform carries no extent; extents are found on the
 /// way in and computed when printing.
 #[derive(Clone)]
 pub enum Protoform {
     /// A head, a separator, and a body: `Head.body`
-    Headed(Symbol, Separator, Box<Protoform>),
+    Headed(Head, Separator, Box<Protoform>),
     /// A structural enclosure with children: `{ a b }` `[ a b ]` `« a b »` `<a b>`
     Enclosed(Enclosure, Vec<Protoform>),
     /// An opaque boundary with content: `\u{201C}content\u{201D}` or `(content)`
     Opaque(Boundary, Text),
     /// A bare word
     Bare(Symbol),
+    /// A symbol qualified by an angled enclosure: `Vector<Text>`
+    Qualified(Symbol, Vec<Protoform>),
 }
 
 impl fmt::Debug for Protoform {
@@ -124,6 +156,7 @@ impl fmt::Debug for Protoform {
             Self::Enclosed(e, c) => f.debug_tuple("Enclosed").field(e).field(c).finish(),
             Self::Opaque(b, c) => f.debug_tuple("Opaque").field(b).field(c).finish(),
             Self::Bare(s) => f.debug_tuple("Bare").field(s).finish(),
+            Self::Qualified(s, c) => f.debug_tuple("Qualified").field(s).field(c).finish(),
         }
     }
 }
@@ -137,6 +170,7 @@ impl PartialEq for Protoform {
             (Self::Enclosed(e1, c1), Self::Enclosed(e2, c2)) => e1 == e2 && c1 == c2,
             (Self::Opaque(b1, c1), Self::Opaque(b2, c2)) => b1 == b2 && c1 == c2,
             (Self::Bare(s1), Self::Bare(s2)) => s1 == s2,
+            (Self::Qualified(s1, c1), Self::Qualified(s2, c2)) => s1 == s2 && c1 == c2,
             _ => false,
         }
     }
@@ -417,7 +451,10 @@ fn parse_bare_run(
                     situations.push((base_path.to_vec(), head_extent));
                     situations.extend(body_situations);
 
-                    return Ok((Protoform::Headed(head, sep, Box::new(body)), situations));
+                    return Ok((
+                        Protoform::Headed(Head::Bare(head), sep, Box::new(body)),
+                        situations,
+                    ));
                 } else {
                     // Separator at end of run or followed by whitespace/closer -> MissingBody
                     return Err(Fault {
@@ -665,18 +702,77 @@ impl<'a> Delineator<'a> {
             }
             let run = &self.source[start..self.pos];
 
-            // Now check: does the bare run lead into a structural opener?
-            // e.g. "Head.{" or "Head.[" -- the separator+opener creates a headed form
-            // We need to check if there's a separator at the end that connects to a delimiter
-            // Actually, we handle this differently: the bare run already ended.
-            // But "Head.{" means "Head" is the run ending at ".", then "{" follows.
-            // In our grammar, the run "Head." has a trailing separator -> MissingBody.
-            // BUT "Head.{" should parse as Headed(Head, Period, Enclosed(...)).
-            // This means we need to look for separators that connect to delimiters.
+            // Check if the bare run is immediately followed by `<` (no whitespace)
+            // AND the run does NOT end with a separator (that case is handled below):
+            // this creates a Qualified structure, e.g. `Vector<Text>`
+            let run_ends_with_sep =
+                !run.is_empty() && run.chars().next_back().is_some_and(is_separator);
+            if !run.is_empty() && !run_ends_with_sep && self.peek_char() == Some(OPEN_ANGLE) {
+                let angle_start = self.pos as Integer;
+                self.advance_char(); // consume `<`
+                match self.parse_contents(Some(CLOSE_ANGLE), path) {
+                    Ok((children, mut child_situations)) => {
+                        let end = self.pos as Integer;
+                        let extent = Extent(start as Integer, end);
+                        child_situations.push((path.to_vec(), extent));
 
-            // Re-parse: find separators in the run. If a separator is at the end of the run
-            // and the next char is a structural opener or opaque opener, then we need to
-            // treat it as a headed structure with the following structure as body.
+                        // Parse the bare run for internal separators to get the symbol
+                        // The run itself is a bare word (no separators expected before <)
+                        let symbol = run.to_owned();
+
+                        // Check if a separator follows the `>` (creating a Headed with Qualified head)
+                        if let Some(next_c) = self.peek_char() {
+                            if is_separator(next_c) {
+                                let sep = separator_from_char(next_c);
+                                self.advance_char(); // consume separator
+                                // Check what follows the separator
+                                if let Some(after_sep) = self.peek_char() {
+                                    if !after_sep.is_whitespace()
+                                        && !is_closer(after_sep)
+                                        && after_sep != COMMENT_CHAR
+                                    {
+                                        let body_path: Path = path
+                                            .iter()
+                                            .copied()
+                                            .chain(std::iter::once(0))
+                                            .collect();
+                                        let (body, body_situations) = self.parse_one(&body_path)?;
+                                        child_situations.extend(body_situations);
+                                        // Update extent
+                                        if let Some(entry) =
+                                            child_situations.iter_mut().find(|(p, _)| p == path)
+                                        {
+                                            entry.1 = Extent(start as Integer, self.pos as Integer);
+                                        }
+                                        return Ok((
+                                            Protoform::Headed(
+                                                Head::Qualified(symbol, children),
+                                                sep,
+                                                Box::new(body),
+                                            ),
+                                            child_situations,
+                                        ));
+                                    }
+                                }
+                                // Separator with nothing after -> MissingBody
+                                return Err(Fault {
+                                    extent: Extent(self.pos as Integer - 1, self.pos as Integer),
+                                    problem: Problem::MissingBody,
+                                });
+                            }
+                        }
+
+                        // Standalone Qualified
+                        return Ok((Protoform::Qualified(symbol, children), child_situations));
+                    }
+                    Err(_) => {
+                        return Err(Fault {
+                            extent: Extent(angle_start, self.source.len() as Integer),
+                            problem: Problem::Unclosed(Enclosure::Angled),
+                        });
+                    }
+                }
+            }
 
             // Check if the run ends with a separator and the next char is an opener
             if !run.is_empty() {
@@ -688,8 +784,6 @@ impl<'a> Delineator<'a> {
                             || next_c == OPEN_CURLY_QUOTE
                             || next_c == OPEN_PAREN
                         {
-                            // The run up to (not including) the separator is the head
-                            // The separator connects to the following structure
                             let sep_byte_offset = run.len() - last_char.len_utf8();
                             let head_str = &run[..sep_byte_offset];
                             if head_str.is_empty() {
@@ -703,20 +797,15 @@ impl<'a> Delineator<'a> {
                             }
                             let sep = separator_from_char(last_char);
 
-                            // Parse the head part (may itself contain separators)
                             let body_path: Path =
                                 path.iter().copied().chain(std::iter::once(0)).collect();
                             let (body, body_situations) = self.parse_one(&body_path)?;
 
-                            // Now wrap: parse the head part for internal separators
                             let (head_pf, mut head_situations) =
                                 parse_bare_run(head_str, start as Integer, path)?;
 
-                            // The head_pf might be a Bare or a Headed chain.
-                            // We need to attach the body to the deepest rightmost element.
                             let result = attach_body_to_deepest(head_pf, sep, body);
                             head_situations.extend(body_situations);
-                            // Update the extent for the overall headed structure
                             if let Some(entry) = head_situations.iter_mut().find(|(p, _)| p == path)
                             {
                                 entry.1 = Extent(start as Integer, self.pos as Integer);
@@ -724,7 +813,6 @@ impl<'a> Delineator<'a> {
                             return Ok((result, head_situations));
                         }
                     }
-                    // Separator at end of run with nothing following -> handled by parse_bare_run
                 }
             }
 
@@ -739,13 +827,16 @@ impl<'a> Delineator<'a> {
 /// -> Headed(A, Period, Headed(B, Colon, Enclosed(...)))
 fn attach_body_to_deepest(head: Protoform, sep: Separator, body: Protoform) -> Protoform {
     match head {
-        Protoform::Bare(symbol) => Protoform::Headed(symbol, sep, Box::new(body)),
+        Protoform::Bare(symbol) => Protoform::Headed(Head::Bare(symbol), sep, Box::new(body)),
+        Protoform::Qualified(symbol, quals) => {
+            Protoform::Headed(Head::Qualified(symbol, quals), sep, Box::new(body))
+        }
         Protoform::Headed(h, s, inner) => {
             Protoform::Headed(h, s, Box::new(attach_body_to_deepest(*inner, sep, body)))
         }
         other => {
             // Shouldn't happen in normal parsing, but handle gracefully
-            Protoform::Headed(String::new(), sep, Box::new(other))
+            Protoform::Headed(Head::Bare(String::new()), sep, Box::new(other))
         }
     }
 }
@@ -775,11 +866,24 @@ impl Structural for Potential<()> {
 // Printing for Protoform and Delineation
 // ---------------------------------------------------------------------------
 
+impl Printing for Head {
+    fn print(&self) -> Text {
+        match self {
+            Head::Bare(symbol) => symbol.clone(),
+            Head::Qualified(symbol, children) => {
+                let inner: Vec<String> = children.iter().map(|c| c.print()).collect();
+                let joined = inner.join(" ");
+                format!("{symbol}<{joined}>")
+            }
+        }
+    }
+}
+
 impl Printing for Protoform {
     fn print(&self) -> Text {
         match self {
             Protoform::Headed(head, sep, body) => {
-                let mut result = head.clone();
+                let mut result = head.print();
                 result.push(sep.glyph());
                 result.push_str(&body.print());
                 result
@@ -816,6 +920,9 @@ impl Printing for Protoform {
                 }
             },
             Protoform::Bare(symbol) => symbol.clone(),
+            Protoform::Qualified(symbol, children) => {
+                Head::Qualified(symbol.clone(), children.clone()).print()
+            }
         }
     }
 }

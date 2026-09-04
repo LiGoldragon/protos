@@ -1,6 +1,6 @@
 use proptest::prelude::*;
 use protos::{
-    Boundary, Delineation, Enclosure, Extent, Fault, Potential, Printing, Problem, Protoform,
+    Boundary, Delineation, Enclosure, Extent, Fault, Head, Potential, Printing, Problem, Protoform,
     Separator, Situating, Structural,
 };
 
@@ -26,7 +26,9 @@ enum Spec {
 fn to_protoform(spec: &Spec) -> Protoform {
     match spec {
         Spec::Bare(s) => Protoform::Bare(s.clone()),
-        Spec::Headed(h, s, b) => Protoform::Headed(h.clone(), *s, Box::new(to_protoform(b))),
+        Spec::Headed(h, s, b) => {
+            Protoform::Headed(Head::Bare(h.clone()), *s, Box::new(to_protoform(b)))
+        }
         Spec::Enclosed(e, children) => {
             Protoform::Enclosed(*e, children.iter().map(to_protoform).collect())
         }
@@ -88,7 +90,7 @@ fn all_separators_round_trip() {
         let d = delineate(source).unwrap();
         assert_eq!(d.protoforms.len(), 1);
         match &d.protoforms[0] {
-            Protoform::Headed(h, s, b) => {
+            Protoform::Headed(Head::Bare(h), s, b) => {
                 assert_eq!(h, "alpha");
                 assert_eq!(*s, sep);
                 assert_eq!(**b, Protoform::Bare("beta".to_owned()));
@@ -228,10 +230,10 @@ fn headed_chain_parses_and_prints() {
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     let expected = Protoform::Headed(
-        "a".to_owned(),
+        Head::Bare("a".to_owned()),
         Separator::Period,
         Box::new(Protoform::Headed(
-            "b".to_owned(),
+            Head::Bare("b".to_owned()),
             Separator::Period,
             Box::new(Protoform::Bare("c".to_owned())),
         )),
@@ -246,7 +248,7 @@ fn headed_with_enclosed_body() {
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     match &d.protoforms[0] {
-        Protoform::Headed(h, s, b) => {
+        Protoform::Headed(Head::Bare(h), s, b) => {
             assert_eq!(h, "Head");
             assert_eq!(*s, Separator::Period);
             match b.as_ref() {
@@ -267,10 +269,10 @@ fn headed_chain_with_enclosed_body() {
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     let expected = Protoform::Headed(
-        "Observed".to_owned(),
+        Head::Bare("Observed".to_owned()),
         Separator::Period,
         Box::new(Protoform::Headed(
-            "Locks".to_owned(),
+            Head::Bare("Locks".to_owned()),
             Separator::Period,
             Box::new(Protoform::Enclosed(Enclosure::Bracketed, vec![])),
         )),
@@ -460,4 +462,70 @@ fn meaning_examples() {
     let d = delineate(source).unwrap();
     assert_eq!(d.protoforms.len(), 1);
     assert_eq!(d.print(), source);
+}
+
+// ---------------------------------------------------------------------------
+// Qualified (symbol<...>) tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn qualified_standalone() {
+    let source = "Vector<Text>";
+    let d = delineate(source).unwrap();
+    assert_eq!(d.protoforms.len(), 1);
+    match &d.protoforms[0] {
+        Protoform::Qualified(symbol, children) => {
+            assert_eq!(symbol, "Vector");
+            assert_eq!(children.len(), 1);
+            assert_eq!(children[0], Protoform::Bare("Text".to_owned()));
+        }
+        other => panic!("expected Qualified, got {other:?}"),
+    }
+    assert_eq!(d.print(), source);
+}
+
+#[test]
+fn qualified_with_multiple_args() {
+    let source = "Result<Integer SinkError>";
+    let d = delineate(source).unwrap();
+    assert_eq!(d.protoforms.len(), 1);
+    match &d.protoforms[0] {
+        Protoform::Qualified(symbol, children) => {
+            assert_eq!(symbol, "Result");
+            assert_eq!(children.len(), 2);
+        }
+        other => panic!("expected Qualified, got {other:?}"),
+    }
+    assert_eq!(d.print(), source);
+}
+
+#[test]
+fn qualified_as_head() {
+    // Processable<[Clonable Sendable] Serializable>.[ ... ]
+    let source = "Processable<[ Clonable Sendable ] Serializable>.[ cap ]";
+    let d = delineate(source).unwrap();
+    assert_eq!(d.protoforms.len(), 1);
+    match &d.protoforms[0] {
+        Protoform::Headed(Head::Qualified(symbol, quals), sep, _body) => {
+            assert_eq!(symbol, "Processable");
+            assert_eq!(quals.len(), 2); // bracket + bare
+            assert_eq!(*sep, Separator::Period);
+        }
+        other => panic!("expected Headed with Qualified head, got {other:?}"),
+    }
+    assert_eq!(d.print(), source);
+}
+
+#[test]
+fn standalone_angle_stays_enclosed() {
+    // <a b> alone stays Enclosed Angled
+    let source = "<a b>";
+    let d = delineate(source).unwrap();
+    assert_eq!(d.protoforms.len(), 1);
+    match &d.protoforms[0] {
+        Protoform::Enclosed(Enclosure::Angled, children) => {
+            assert_eq!(children.len(), 2);
+        }
+        other => panic!("expected Enclosed Angled, got {other:?}"),
+    }
 }

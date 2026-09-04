@@ -766,7 +766,12 @@ impl<'a> Delineator<'a> {
             // this creates a Qualified structure, e.g. `Vector<Text>`
             let run_ends_with_sep =
                 !run.is_empty() && run.chars().next_back().is_some_and(is_separator);
-            if !run.is_empty() && !run_ends_with_sep && self.peek_char() == Some(OPEN_ANGLE) {
+            let run_has_internal_sep = run.chars().any(is_separator);
+            if !run.is_empty()
+                && !run_ends_with_sep
+                && !run_has_internal_sep
+                && self.peek_char() == Some(OPEN_ANGLE)
+            {
                 let angle_start = self.pos as Integer;
                 self.advance_char(); // consume `<`
                 match self.parse_contents(Some(CLOSE_ANGLE), path) {
@@ -829,6 +834,43 @@ impl<'a> Delineator<'a> {
                             extent: Extent(angle_start, self.source.len() as Integer),
                             problem: Problem::Unclosed(Enclosure::Angled),
                         });
+                    }
+                }
+            }
+
+            // If the run has internal separators AND `<` follows, the separator
+            // rule must apply first: `LockPaths.Vector<LockPath>` becomes
+            // Headed(Bare(LockPaths), Period, Qualified(Vector, [Bare(LockPath)])).
+            // Rewind past the body portion so parse_one sees `Vector<LockPath>`.
+            if run_has_internal_sep && self.peek_char() == Some(OPEN_ANGLE) {
+                // Find the first separator in the run
+                for (byte_offset, ch) in run.char_indices() {
+                    if is_separator(ch) {
+                        let head_str = &run[..byte_offset];
+                        if head_str.is_empty() {
+                            return Err(Fault {
+                                extent: Extent(
+                                    start as Integer,
+                                    start as Integer + ch.len_utf8() as Integer,
+                                ),
+                                problem: Problem::MissingHead,
+                            });
+                        }
+                        let sep = separator_from_char(ch);
+                        let body_text_start = start + byte_offset + ch.len_utf8();
+                        // Rewind self.pos to the body start so parse_one picks up the body
+                        self.pos = body_text_start;
+                        let body_path: Path =
+                            path.iter().copied().chain(std::iter::once(0)).collect();
+                        let (body, body_situations) = self.parse_one(&body_path)?;
+                        let (head_pf, mut head_situations) =
+                            parse_bare_run(head_str, start as Integer, path)?;
+                        let result = attach_body_to_deepest(head_pf, sep, body);
+                        head_situations.extend(body_situations);
+                        if let Some(entry) = head_situations.iter_mut().find(|(p, _)| p == path) {
+                            entry.1 = Extent(start as Integer, self.pos as Integer);
+                        }
+                        return Ok((result, head_situations));
                     }
                 }
             }

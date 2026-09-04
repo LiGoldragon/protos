@@ -529,3 +529,45 @@ fn standalone_angle_stays_enclosed() {
         other => panic!("expected Enclosed Angled, got {other:?}"),
     }
 }
+
+#[test]
+fn separator_before_qualified_body() {
+    // LockPaths.Vector<LockPath> must be Headed(Bare(LockPaths), Period, Qualified(Vector, [Bare(LockPath)]))
+    let source = "LockPaths.Vector<LockPath>";
+    let d = delineate(source).unwrap();
+    assert_eq!(d.protoforms.len(), 1);
+    let expected = Protoform::Headed(
+        Head::Bare("LockPaths".to_owned()),
+        Separator::Period,
+        Box::new(Protoform::Qualified(
+            "Vector".to_owned(),
+            vec![Protoform::Bare("LockPath".to_owned())],
+        )),
+    );
+    assert_eq!(d.protoforms[0], expected);
+    assert_eq!(d.print(), source);
+}
+
+#[test]
+fn chain_with_qualified_body() {
+    // A.B<C>.D must parse as a chain with Qualified body
+    let source = "A.B<C>.D";
+    let d = delineate(source).unwrap();
+    assert_eq!(d.protoforms.len(), 1);
+    // A -> Headed(Bare(A), Period, Headed(Qualified(B, [Bare(C)]), Period, Bare(D)))
+    match &d.protoforms[0] {
+        Protoform::Headed(Head::Bare(a), Separator::Period, rest) => {
+            assert_eq!(a, "A");
+            match rest.as_ref() {
+                Protoform::Headed(Head::Qualified(b, quals), Separator::Period, d_body) => {
+                    assert_eq!(b, "B");
+                    assert_eq!(quals.len(), 1);
+                    assert_eq!(**d_body, Protoform::Bare("D".to_owned()));
+                }
+                other => panic!("expected Headed with Qualified head, got {other:?}"),
+            }
+        }
+        other => panic!("expected Headed, got {other:?}"),
+    }
+    assert_eq!(d.print(), source);
+}

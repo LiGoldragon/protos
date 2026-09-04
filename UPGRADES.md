@@ -1,3 +1,16 @@
+# Upgrading from protos 0.15.0 to 0.15.1
+
+## Non-breaking additions
+
+### `Situated<F>` derives `Clone, Debug, PartialEq, Eq`
+
+`Situated<F>` now derives `Clone`, `Debug`, `PartialEq`, and `Eq`
+conditionally on `F`. No migration needed; existing code continues to
+compile. Code that previously required manual `PartialEq` implementations
+for `Situated` types can now use the derived equality.
+
+---
+
 # Upgrading from protos 0.14 to 0.15
 
 ## Breaking changes

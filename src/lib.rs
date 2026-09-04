@@ -287,17 +287,8 @@ impl<T, C> PartialEq for Potential<T, C> {
 impl<T, C> Eq for Potential<T, C> {}
 
 /// A fault joined to its extent by actualize. Generic over the dialect's fault.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Situated<F>(pub Option<Extent>, pub F);
-
-impl<F: fmt::Debug> fmt::Debug for Situated<F> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Situated")
-            .field(&self.0)
-            .field(&self.1)
-            .finish()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Traits (kinds)

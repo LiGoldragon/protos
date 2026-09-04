@@ -145,6 +145,7 @@ impl PartialEq for Protoform {
 impl Eq for Protoform {}
 
 /// The structures of a text and where they lie.
+#[derive(Clone)]
 pub struct Delineation {
     pub protoforms: Vec<Protoform>,
     pub situation: Situation,
@@ -168,7 +169,7 @@ impl PartialEq for Delineation {
 impl Eq for Delineation {}
 
 /// A structural fault, situated.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Fault {
     pub extent: Extent,
     pub problem: Problem,
@@ -229,11 +230,25 @@ impl<T> From<&str> for Potential<T> {
     }
 }
 
+impl<T> Clone for Potential<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), PhantomData)
+    }
+}
+
 impl<T> fmt::Debug for Potential<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Potential").field(&self.0).finish()
     }
 }
+
+impl<T> PartialEq for Potential<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T> Eq for Potential<T> {}
 
 // ---------------------------------------------------------------------------
 // Traits (kinds)
@@ -260,7 +275,7 @@ pub trait Conceptual<C: Protosizable> {
     fn conceive(&self) -> Result<C, Self::Fault>;
 }
 
-/// Borne by Potential<T>: actualize a value from text.
+/// Borne by `Potential<T>`: actualize a value from text.
 pub trait Actualizable<T: Embodied> {
     type Fault;
     fn actualize(&self) -> Result<T, Self::Fault>;
@@ -348,7 +363,12 @@ fn closer_for_enclosure(e: Enclosure) -> char {
 fn is_closer(c: char) -> bool {
     matches!(
         c,
-        CLOSE_BRACE | CLOSE_BRACKET | CLOSE_GUILLEMET | CLOSE_ANGLE
+        CLOSE_BRACE
+            | CLOSE_BRACKET
+            | CLOSE_GUILLEMET
+            | CLOSE_ANGLE
+            | CLOSE_CURLY_QUOTE
+            | CLOSE_PAREN
     )
 }
 

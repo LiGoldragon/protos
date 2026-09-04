@@ -12,13 +12,6 @@ fn delineate(source: &str) -> Result<Delineation, Fault> {
     source.to_owned().delineate()
 }
 
-fn _print_and_delineate(pf: &Protoform) -> Delineation {
-    let printed = pf.print();
-    printed
-        .delineate()
-        .unwrap_or_else(|e| panic!("printed text {:?} did not delineate: {:?}", printed, e))
-}
-
 // ---------------------------------------------------------------------------
 // Proptest: print then delineate round-trips for Protoform
 // ---------------------------------------------------------------------------
@@ -334,6 +327,8 @@ fn fault_missing_body() {
     let source = "alpha.";
     let err = delineate(source).unwrap_err();
     assert_eq!(err.problem, Problem::MissingBody);
+    // The `.` is at byte 5
+    assert_eq!(err.extent, Extent(5, 6));
 }
 
 #[test]
@@ -341,6 +336,8 @@ fn fault_missing_head() {
     let source = ".alpha";
     let err = delineate(source).unwrap_err();
     assert_eq!(err.problem, Problem::MissingHead);
+    // The `.` is at byte 0
+    assert_eq!(err.extent, Extent(0, 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -361,12 +358,41 @@ fn situation_records_correct_extents() {
 
 #[test]
 fn situation_for_headed() {
+    // "Head.body" = H(0) e(1) a(2) d(3) .(4) b(5) o(6) d(7) y(8) = 9 bytes
     let source = "Head.body";
     let d = delineate(source).unwrap();
-    // The whole headed structure at [0]
-    assert!(d.situate(&[0]).is_some());
-    // The body at [0, 0]
-    assert!(d.situate(&[0, 0]).is_some());
+    // The whole headed structure at [0]: bytes 0..9
+    assert_eq!(d.situate(&[0]), Some(Extent(0, 9)));
+    // The body "body" at [0, 0]: bytes 5..9
+    assert_eq!(d.situate(&[0, 0]), Some(Extent(5, 9)));
+}
+
+#[test]
+fn situation_for_headed_chain() {
+    // "a.b.c" = a(0) .(1) b(2) .(3) c(4) = 5 bytes
+    let source = "a.b.c";
+    let d = delineate(source).unwrap();
+    // The whole chain at [0]: bytes 0..5
+    assert_eq!(d.situate(&[0]), Some(Extent(0, 5)));
+    // "b.c" at [0, 0]: bytes 2..5
+    assert_eq!(d.situate(&[0, 0]), Some(Extent(2, 5)));
+    // "c" at [0, 0, 0]: bytes 4..5
+    assert_eq!(d.situate(&[0, 0, 0]), Some(Extent(4, 5)));
+}
+
+#[test]
+fn fault_unopened_close_paren() {
+    let err = delineate("alpha )").unwrap_err();
+    assert_eq!(err.problem, Problem::Unopened);
+    assert_eq!(err.extent, Extent(6, 7));
+}
+
+#[test]
+fn fault_unopened_close_curly_quote() {
+    let err = delineate("alpha \u{201D}").unwrap_err();
+    assert_eq!(err.problem, Problem::Unopened);
+    // \u{201D} is 3 bytes; starts at byte 6
+    assert_eq!(err.extent, Extent(6, 9));
 }
 
 // ---------------------------------------------------------------------------

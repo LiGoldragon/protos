@@ -56,16 +56,25 @@ pub trait Conceivable<C> {
 pub trait Incorporable<T> {
     /// What can go wrong.
     type Fault;
+    /// The caller-owned context for this incorporation.
+    type Budget;
     /// The corporate value.
-    fn incorporate(&self, at: &Situation) -> Result<T, Self::Fault>;
+    fn incorporate(&self, at: &Situation, budget: Self::Budget) -> Result<T, Self::Fault>;
 }
 
 /// The kind whose capability actualizes a potential `T`: the whole descent.
 pub trait Actualizable<T> {
     /// What can go wrong.
     type Fault;
+    type Budget;
     /// The value, if the text matches its anatomy.
-    fn actualize(&self) -> Result<T, Self::Fault>;
+    fn actualize(&self, budget: Self::Budget) -> Result<T, Self::Fault>;
+}
+
+pub trait Route<T> {
+    type Fault;
+    type Budget;
+    fn run(text: &str, budget: Self::Budget) -> Result<T, Self::Fault>;
 }
 
 /// The kind whose capability yields the path of a fault, and places it under a parent.

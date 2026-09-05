@@ -1,18 +1,19 @@
 ; protos: the kinds each layer bears, named by where the capability goes.
 ; Sized names the unnamed constraint of a kind; Situated<Sized> is the concept a structure conceives.
+; Glyphing and Delimiting yield Rust char, which ethos has no declaration form;
+; the unsupported associations are omitted rather than represented as Text.
 Kinds
 [ std::marker:Copyable.Copy
   crate:[ Delineation Extent Glyph Situation Situated ] ]
-[ Glyphing.[ glyph.[ Text ] ]
-  Delimiting.[ opener.[ Text ] closer.[ Text ] ]
-  Serial.{ [ Sized Copyable ] [] [] [ first:[ Self ] after.[ Option<Self> ] ] }
+[ Serial.{ [ Sized Copyable ] [] [] [ first:[ Self ] after.[ Option<Self> ] ] }
   Classifying.[ classify.[ Glyph ] ]
   Textualizable.[ textualize.[ Text ] ]
   Situating.[ situate.[ Situated<Text> ] ]
   Protosizable.{ [] [ Fault ] [] [ protosize.[ Result<Delineation Fault> ] ] }
   Conceivable<Sized>.{ [] [ Fault ] [] [ conceive.[ Result<Situated<Sized> Fault> ] ] }
-  Incorporable<Sized>.{ [] [ Fault ] [] [ incorporate.{ [ Situation ] [ Result<Sized Fault> ] } ] }
-  Actualizable<Sized>.{ [] [ Fault ] [] [ actualize.[ Result<Sized Fault> ] ] }
+  Incorporable<Sized>.{ [] [ Fault Budget ] [] [ incorporate.{ [ Situation Budget ] [ Result<Sized Fault> ] } ] }
+  Actualizable<Sized>.{ [] [ Fault Budget ] [] [ actualize.{ [ Budget ] [ Result<Sized Fault> ] } ] }
+  Route<Sized>.{ [] [ Fault Budget ] [] [ run.{ [ Text Budget ] [ Result<Sized Fault> ] } ] }
   Pathed.[ path.[ Vector<Integer> ] within.{ [ Integer ] [ Self ] } ]
   Locating.[ locate.{ [ Vector<Integer> ] [ Option<Extent> ] } part.{ [ Integer ] [ Situation ] } ]
   Texted.[ text.[ Text ] ] ]

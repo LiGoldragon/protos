@@ -4,7 +4,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::anatomy::{Delineation, Extent, Potential, Protoform, Situated, Situation};
-use crate::kinds::{Actualizable, Conceivable, Incorporable, Protosizable, Texted};
+use crate::kinds::{Actualizable, Conceivable, Protosizable, Route, Texted};
 use std::convert::Infallible;
 
 impl<T, C> From<String> for Potential<T, C> {
@@ -95,6 +95,17 @@ impl Conceivable<Delineation> for Situated<Protoform> {
     }
 }
 
+impl<T, C> Conceivable<C> for Box<T>
+where
+    T: Conceivable<C>,
+{
+    type Fault = T::Fault;
+
+    fn conceive(&self) -> Result<Situated<C>, Self::Fault> {
+        self.as_ref().conceive()
+    }
+}
+
 impl Protosizable for Delineation {
     type Fault = Infallible;
 
@@ -103,19 +114,38 @@ impl Protosizable for Delineation {
     }
 }
 
-/// The descent: protosize the text, conceive the concept, incorporate the value.
+impl Protosizable for crate::Text {
+    type Fault = crate::anatomy::Fault;
+
+    fn protosize(&self) -> Result<Delineation, Self::Fault> {
+        self.as_ref().protosize()
+    }
+}
+
 impl<T, C> Actualizable<T> for Potential<T, C>
 where
-    Delineation: Conceivable<C>,
-    C: Incorporable<T>,
-    <C as Incorporable<T>>::Fault:
-        From<<Delineation as Conceivable<C>>::Fault> + From<crate::anatomy::Fault>,
+    C: Route<T>,
 {
-    type Fault = <C as Incorporable<T>>::Fault;
+    type Fault = <C as Route<T>>::Fault;
+    type Budget = <C as Route<T>>::Budget;
 
-    fn actualize(&self) -> Result<T, Self::Fault> {
-        let delineation = self.0.protosize()?;
-        let Situated(at, concept) = delineation.conceive()?;
-        concept.incorporate(&at)
+    fn actualize(&self, budget: Self::Budget) -> Result<T, Self::Fault> {
+        C::run(&self.0, budget)
+    }
+}
+
+impl Route<Protoform> for Protoform {
+    type Fault = crate::anatomy::Fault;
+    type Budget = ();
+
+    fn run(text: &str, (): Self::Budget) -> Result<Protoform, Self::Fault> {
+        let delineation = text.protosize()?;
+        match delineation.0.as_slice() {
+            [Situated(_, form)] => Ok(form.clone()),
+            forms => Err(crate::anatomy::Fault {
+                extent: Extent(0, text.len() as crate::Integer),
+                problem: crate::anatomy::Problem::OneForm(forms.len() as crate::Integer),
+            }),
+        }
     }
 }

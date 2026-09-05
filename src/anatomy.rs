@@ -191,6 +191,8 @@ pub struct Delineation(pub Vec<Situated<Protoform>>);
 /// What can go wrong in the structure of a text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Problem {
+    /// A potential requested one form but the text has this many.
+    OneForm(Integer),
     /// An enclosure opened and never closed.
     Unclosed(Enclosure),
     /// A closing enclosure glyph with no open enclosure to close.
@@ -211,4 +213,4 @@ pub struct Fault {
 }
 
 /// Text that may become a `T` through the concept `C`: potential until it matches its anatomy.
-pub struct Potential<T, C = ()>(pub(crate) String, pub(crate) PhantomData<fn() -> (T, C)>);
+pub struct Potential<T, C = T>(pub(crate) String, pub(crate) PhantomData<fn() -> (T, C)>);

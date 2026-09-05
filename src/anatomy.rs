@@ -18,6 +18,13 @@ pub type Symbol = String;
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Text(pub(crate) String);
 
+/// Content held by an opaque boundary.
+///
+/// The boundary that contains it determines its terminator and escaping rules,
+/// so it has no delimiter-independent exclusion.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Opaque(pub(crate) String);
+
 /// The refusal of a string as [`Text`]: the glyph that cannot be carried, at its byte offset.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Refusal {
@@ -95,7 +102,7 @@ pub enum Protoform {
     /// Structures between the delimiters of an enclosure.
     Enclosed(Enclosure, Vec<Protoform>),
     /// Content between the delimiters of a boundary.
-    Opaque(Boundary, Text),
+    Opaque(Boundary, Opaque),
     /// A head alone.
     Bare(Head),
 }

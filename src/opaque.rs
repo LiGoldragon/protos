@@ -38,7 +38,6 @@ impl Bounding for Reader<'_> {
         let opener = Boundary::Parentheses.opener();
         let closer = Boundary::Parentheses.closer();
         let escape = Mark::Escape.glyph();
-        let stray = Boundary::CurlyQuotes.closer();
         let mut here = opened + opener.len_utf8();
         let mut depth = 0usize;
         let mut content = String::new();
@@ -63,12 +62,6 @@ impl Bounding for Reader<'_> {
                 }
                 depth -= 1;
                 content.push(glyph);
-            } else if glyph == stray {
-                return Err(self.fault(
-                    here - glyph.len_utf8(),
-                    here,
-                    Problem::Stray(Boundary::CurlyQuotes),
-                ));
             } else {
                 content.push(glyph);
             }

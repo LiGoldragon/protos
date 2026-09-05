@@ -1,8 +1,8 @@
 //! Reading: every rule of the reader, every fault, every extent.
 
 use protos::{
-    Boundary, Delineation, Enclosure, Extent, Fault, Head, Locating, Problem, Protoform,
-    Protosizable, Separator, Situated, Situation, Text,
+    Boundary, Delineation, Enclosure, Extent, Fault, Head, Locating, Opaque, Problem, Protoform,
+    Protosizable, Separator, Situated, Situation,
 };
 
 fn sym(s: &str) -> Head {
@@ -24,10 +24,10 @@ fn bracketed(children: Vec<Protoform>) -> Protoform {
     Protoform::Enclosed(Enclosure::Bracketed, children)
 }
 fn quoted(s: &str) -> Protoform {
-    Protoform::Opaque(Boundary::CurlyQuotes, Text::try_from(s).unwrap())
+    Protoform::Opaque(Boundary::CurlyQuotes, Opaque::from(s))
 }
 fn parens(s: &str) -> Protoform {
-    Protoform::Opaque(Boundary::Parentheses, Text::try_from(s).unwrap())
+    Protoform::Opaque(Boundary::Parentheses, Opaque::from(s))
 }
 fn qualified(s: &str, constraints: Vec<Protoform>) -> Head {
     Head::Qualified(s.to_owned(), constraints)
@@ -248,6 +248,7 @@ fn parentheses_are_read_by_balance() {
     assert_eq!(forms("()"), vec![parens("")]);
     assert_eq!(forms("(a ; b)"), vec![parens("a ; b")]);
     assert_eq!(forms("(a “ b)"), vec![parens("a “ b")]);
+    assert_eq!(forms("(a ” b)"), vec![parens("a ” b")]);
 }
 
 #[test]
@@ -359,13 +360,6 @@ fn faults_are_situated() {
         fault("a ” b"),
         Fault {
             extent: Extent(2, 5),
-            problem: Problem::Stray(Boundary::CurlyQuotes)
-        }
-    );
-    assert_eq!(
-        fault("(a ” b)"),
-        Fault {
-            extent: Extent(3, 6),
             problem: Problem::Stray(Boundary::CurlyQuotes)
         }
     );

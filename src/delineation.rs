@@ -2,8 +2,8 @@
 //! each shape announcing its type and its context reading to its completion.
 
 use crate::anatomy::{
-    Boundary, Delineation, Enclosure, Extent, Fault, Head, Integer, Problem, Protoform, Separator,
-    Situated, Situation, Symbol, Text,
+    Boundary, Delineation, Enclosure, Extent, Fault, Head, Integer, Opaque, Problem, Protoform,
+    Separator, Situated, Situation, Symbol,
 };
 use crate::glyph::{Classifying, Glyph};
 use crate::kinds::Protosizable;
@@ -32,6 +32,14 @@ enum Frame {
         separator: Separator,
         start: usize,
     },
+}
+
+/// An enclosure just removed from the reader stack, named while it becomes one
+/// completed structure.
+struct Closed {
+    opened: usize,
+    children: Vec<Situated<Protoform>>,
+    qualifying: Option<Qualifying>,
 }
 
 /// The reader's state: the text, the offset, the open frames, the finished top-level structures.
@@ -224,13 +232,17 @@ impl Reading for Reader<'_> {
 
     fn read_close(&mut self, enclosure: Enclosure) -> Result<(), Fault> {
         let glyph_end = self.offset + enclosure.closer().len_utf8();
-        let (opened, children, qualifying) = match self.frames.pop() {
+        let closed = match self.frames.pop() {
             Some(Frame::Enclosing {
                 enclosure: open,
                 opened,
                 children,
                 qualifying,
-            }) if open == enclosure => (opened, children, qualifying),
+            }) if open == enclosure => Closed {
+                opened,
+                children,
+                qualifying,
+            },
             other => {
                 if let Some(frame) = other {
                     self.frames.push(frame);
@@ -239,20 +251,20 @@ impl Reading for Reader<'_> {
             }
         };
         self.offset = glyph_end;
-        let mut situations = Vec::with_capacity(children.len());
-        let mut forms = Vec::with_capacity(children.len());
-        for Situated(at, form) in children {
+        let mut situations = Vec::with_capacity(closed.children.len());
+        let mut forms = Vec::with_capacity(closed.children.len());
+        for Situated(at, form) in closed.children {
             situations.push(at);
             forms.push(form);
         }
         let structure = Situated(
             Situation {
-                extent: Extent(opened as Integer, glyph_end as Integer),
+                extent: Extent(closed.opened as Integer, glyph_end as Integer),
                 children: situations,
             },
             Protoform::Enclosed(enclosure, forms),
         );
-        match qualifying {
+        match closed.qualifying {
             Some(Qualifying { symbol, start }) => self.qualify(symbol, start, structure),
             None => self.deliver(structure),
         }
@@ -301,7 +313,7 @@ impl Reading for Reader<'_> {
                 extent: Extent(opened as Integer, self.offset as Integer),
                 children: vec![],
             },
-            Protoform::Opaque(boundary, Text(content)),
+            Protoform::Opaque(boundary, Opaque::from(content)),
         ));
         Ok(())
     }

@@ -2,8 +2,8 @@
 
 use proptest::prelude::*;
 use protos::{
-    Boundary, Delineation, Enclosure, Extent, Head, Locating, Protoform, Protosizable, Refusal,
-    Separator, Situated, Situating, Text, Textualizable,
+    Boundary, Delineation, Enclosure, Extent, Head, Locating, Opaque, Protoform, Protosizable,
+    Refusal, Separator, Situated, Situating, Text, Textualizable,
 };
 
 fn sym(s: &str) -> Head {
@@ -19,7 +19,7 @@ fn enclosed(e: Enclosure, children: Vec<Protoform>) -> Protoform {
     Protoform::Enclosed(e, children)
 }
 fn opaque(b: Boundary, s: &str) -> Protoform {
-    Protoform::Opaque(b, Text::try_from(s).unwrap())
+    Protoform::Opaque(b, Opaque::from(s))
 }
 
 /// The writer's situation must be the reader's situation of the written text.
@@ -195,7 +195,7 @@ fn text_refuses_the_closing_curly_quote() {
 
 proptest! {
     #[test]
-    fn any_meaning_text_round_trips(content in "[^”]*") {
+    fn any_meaning_text_round_trips(content in ".*") {
         let form = opaque(Boundary::Parentheses, &content);
         let text = form.textualize();
         let mut read = text.protosize().unwrap().0;

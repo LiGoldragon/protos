@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::anatomy::{Boundary, Integer, Refusal, Text};
+use crate::anatomy::{Boundary, Integer, Opaque, Refusal, Text};
 use crate::kinds::Delimiting;
 
 impl TryFrom<String> for Text {
@@ -50,7 +50,45 @@ impl From<Text> for String {
     }
 }
 
+impl From<String> for Opaque {
+    fn from(string: String) -> Self {
+        Self(string)
+    }
+}
+
+impl From<&str> for Opaque {
+    fn from(string: &str) -> Self {
+        Self(string.to_owned())
+    }
+}
+
+impl From<Opaque> for String {
+    fn from(opaque: Opaque) -> String {
+        opaque.0
+    }
+}
+
+impl AsRef<str> for Opaque {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for Opaque {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl fmt::Display for Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl fmt::Display for Opaque {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }

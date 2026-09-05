@@ -1,842 +1,434 @@
-//! Delineation: Text to Protoform (the structural pass).
-//!
-//! The delineator reads text into protoforms using an explicit stack,
-//! bounded by DEPTH_LIMIT, so that any text yields a Delineation or
-//! a Fault and never aborts the process.
+//! The reader: one pass over the characters with an explicit stack of frames,
+//! each shape announcing its type and its context reading to its completion.
 
-use crate::{
-    Boundary, Delimiting, Delineation, Enclosure, Extent, Fault, Glyphing, Head, Identifying,
-    Integer, Path, Problem, Protoform, Protosizable, Recognizing, Separator, Situation, Text,
+use crate::anatomy::{
+    Boundary, Delineation, Enclosure, Extent, Fault, Head, Integer, Problem, Protoform, Separator,
+    Situated, Situation, Symbol, Text,
 };
+use crate::glyph::{Classifying, Glyph, Mark};
+use crate::kinds::Protosizable;
+use crate::kinds::{Delimiting, Glyphing};
+use crate::run::{Piece, Run, Splitting, Symbolic};
 
-const DEPTH_LIMIT: usize = 100_000;
-
-// ---------------------------------------------------------------------------
-// Bare run parsing: iterative, no recursion
-// ---------------------------------------------------------------------------
-
-struct SplitPoint {
-    byte_offset: usize,
-    separator: Separator,
+/// A symbol immediately followed by `<`: the angled enclosure that follows qualifies it.
+struct Qualifying {
+    symbol: Symbol,
+    start: usize,
 }
 
-/// The kind whose capability parses bare runs into protoforms.
-trait BareRunParsing {
-    fn find_split_points(run: &str) -> Vec<SplitPoint>;
-    fn parse_bare_run(
-        run: &str,
-        run_start: usize,
-        base_path: &[Integer],
-    ) -> (Protoform, Vec<(Path, Extent)>);
+/// An open context on the reader's stack.
+enum Frame {
+    /// An enclosure read up to here: its children so far, and the symbol it qualifies if angled after one.
+    Enclosing {
+        enclosure: Enclosure,
+        opened: usize,
+        children: Vec<Situated<Protoform>>,
+        qualifying: Option<Qualifying>,
+    },
+    /// A head and its separator, awaiting the one structure that is its body.
+    Heading {
+        head: Head,
+        at: Situation,
+        separator: Separator,
+        start: usize,
+    },
 }
 
-struct BareRunParser;
+/// The reader's state: the text, the offset, the open frames, the finished top-level structures.
+struct Reader<'a> {
+    text: &'a str,
+    offset: usize,
+    frames: Vec<Frame>,
+    qualifying: Option<Qualifying>,
+    done: Vec<Situated<Protoform>>,
+}
 
-impl BareRunParsing for BareRunParser {
-    fn find_split_points(run: &str) -> Vec<SplitPoint> {
-        let chars: Vec<(usize, char)> = run.char_indices().collect();
-        let mut points = Vec::new();
-        for i in 0..chars.len() {
-            let (byte_offset, c) = chars[i];
-            if let Some(sep) = Separator::identify(c) {
-                // A valid split point: not at edges, neighbors are not separators
-                if i == 0 || i == chars.len() - 1 {
-                    continue;
+/// The kind whose capability builds a fault at a byte span.
+trait Faulting {
+    fn fault(&self, start: usize, end: usize, problem: Problem) -> Fault;
+}
+
+impl Faulting for Reader<'_> {
+    fn fault(&self, start: usize, end: usize, problem: Problem) -> Fault {
+        Fault {
+            extent: Extent(start as Integer, end as Integer),
+            problem,
+        }
+    }
+}
+
+/// The kind whose capability yields the glyph at an offset.
+trait Peeking {
+    fn glyph_at(&self, offset: usize) -> Option<char>;
+}
+
+impl Peeking for Reader<'_> {
+    fn glyph_at(&self, offset: usize) -> Option<char> {
+        self.text.get(offset..)?.chars().next()
+    }
+}
+
+/// The kind whose capability hands a finished structure to the frame that awaits it.
+trait Delivering {
+    fn deliver(&mut self, structure: Situated<Protoform>);
+}
+
+impl Delivering for Reader<'_> {
+    fn deliver(&mut self, mut structure: Situated<Protoform>) {
+        loop {
+            match self.frames.pop() {
+                Some(Frame::Heading {
+                    head,
+                    at,
+                    separator,
+                    start,
+                }) => {
+                    let Situated(body_at, body) = structure;
+                    let extent = Extent(start as Integer, body_at.extent.1);
+                    structure = Situated(
+                        Situation {
+                            extent,
+                            children: vec![at, body_at],
+                        },
+                        Protoform::Headed(head, separator, Box::new(body)),
+                    );
                 }
-                if Separator::identify(chars[i - 1].1).is_some() {
-                    continue;
+                Some(Frame::Enclosing {
+                    enclosure,
+                    opened,
+                    mut children,
+                    qualifying,
+                }) => {
+                    children.push(structure);
+                    self.frames.push(Frame::Enclosing {
+                        enclosure,
+                        opened,
+                        children,
+                        qualifying,
+                    });
+                    return;
                 }
-                if Separator::identify(chars[i + 1].1).is_some() {
-                    continue;
+                None => {
+                    self.done.push(structure);
+                    return;
                 }
-                points.push(SplitPoint {
-                    byte_offset,
-                    separator: sep,
-                });
             }
         }
-        points
-    }
-
-    fn parse_bare_run(
-        run: &str,
-        run_start: usize,
-        base_path: &[Integer],
-    ) -> (Protoform, Vec<(Path, Extent)>) {
-        let points = Self::find_split_points(run);
-        let run_end = run_start + run.len();
-        let full_extent = Extent(run_start as Integer, run_end as Integer);
-        let mut situations = vec![(base_path.to_vec(), full_extent)];
-
-        if points.is_empty() {
-            return (Protoform::Bare(Head::Bare(run.to_owned())), situations);
-        }
-
-        // Collect segments: (head_text, separator, body_start_byte_in_source)
-        let mut segments: Vec<(&str, Separator, usize)> = Vec::new();
-        let mut remaining = run;
-        let mut offset = 0usize;
-        for point in &points {
-            let local_offset = point.byte_offset - offset;
-            let head_text = &remaining[..local_offset];
-            let sep_len = point.separator.glyph().len_utf8();
-            let body_start = run_start + point.byte_offset + sep_len;
-            segments.push((head_text, point.separator, body_start));
-            remaining = &remaining[local_offset + sep_len..];
-            offset = point.byte_offset + sep_len;
-        }
-
-        // Compute sub-situations: each body at [base, 0, 0, ...]
-        for (depth, segment) in segments.iter().enumerate() {
-            let mut body_path = base_path.to_vec();
-            body_path.extend(std::iter::repeat_n(0, depth + 1));
-            situations.push((body_path, Extent(segment.2 as Integer, run_end as Integer)));
-        }
-
-        // Build chain from right to left
-        let mut result = Protoform::Bare(Head::Bare(remaining.to_owned()));
-        for (head_text, sep, _) in segments.into_iter().rev() {
-            result = Protoform::Headed(Head::Bare(head_text.to_owned()), sep, Box::new(result));
-        }
-
-        (result, situations)
     }
 }
 
-// ---------------------------------------------------------------------------
-// attach_body: iterative, replaces the deepest Bare with a Headed
-// ---------------------------------------------------------------------------
-
-/// The kind whose capability attaches a body to the deepest node of a chain.
-trait Attaching {
-    fn attach_body(chain: Protoform, separator: Separator, body: Protoform) -> Protoform;
-    fn chain_depth(pf: &Protoform) -> usize;
+/// The kind whose capabilities read one shape each, from the offset to its completion.
+trait Reading {
+    fn read_comment(&mut self);
+    fn read_run(&mut self);
+    fn read_open(&mut self, enclosure: Enclosure);
+    fn read_close(&mut self, enclosure: Enclosure) -> Result<(), Fault>;
+    fn read_bounded(&mut self, boundary: Boundary) -> Result<(), Fault>;
+    fn read_quoted(&mut self) -> Result<String, Fault>;
+    fn read_parenthesized(&mut self) -> Result<String, Fault>;
+    fn qualify(&mut self, symbol: Symbol, start: usize, constraints: Situated<Protoform>);
 }
 
-struct BodyAttacher;
+/// The kind whose capability pushes the heads of a run's leading pieces as frames.
+trait HeadPushing {
+    fn push_heads(&mut self, pieces: &[Piece<'_>]);
+}
 
-impl Attaching for BodyAttacher {
-    fn attach_body(chain: Protoform, separator: Separator, body: Protoform) -> Protoform {
-        let mut segments: Vec<(Head, Separator)> = Vec::new();
-        let mut current = chain;
-        loop {
-            match current {
-                Protoform::Headed(h, s, inner) => {
-                    segments.push((h, s));
-                    current = *inner;
-                }
-                Protoform::Bare(h) => {
-                    let mut result = Protoform::Headed(h, separator, Box::new(body));
-                    for (h, s) in segments.into_iter().rev() {
-                        result = Protoform::Headed(h, s, Box::new(result));
-                    }
-                    return result;
-                }
+impl HeadPushing for Reader<'_> {
+    fn push_heads(&mut self, pieces: &[Piece<'_>]) {
+        for piece in pieces {
+            let end = piece.start as usize + piece.text.len();
+            self.frames.push(Frame::Heading {
+                head: Head::Symbol(piece.text.to_owned()),
+                at: Situation {
+                    extent: Extent(piece.start, end as Integer),
+                    children: vec![],
+                },
+                separator: piece.separator.unwrap_or(Separator::Period),
+                start: piece.start as usize,
+            });
+        }
+    }
+}
+
+impl Reading for Reader<'_> {
+    fn read_comment(&mut self) {
+        while let Some(glyph) = self.glyph_at(self.offset) {
+            if glyph == '\n' {
+                return;
+            }
+            self.offset += glyph.len_utf8();
+        }
+    }
+
+    fn read_run(&mut self) {
+        let start = self.offset;
+        let mut end = start;
+        let mut following = None;
+        while let Some(glyph) = self.glyph_at(end) {
+            match glyph.classify() {
+                Glyph::Plain | Glyph::Separate(_) => end += glyph.len_utf8(),
                 other => {
-                    let _ = other;
-                    let mut result =
-                        Protoform::Headed(Head::Bare(String::new()), separator, Box::new(body));
-                    for (h, s) in segments.into_iter().rev() {
-                        result = Protoform::Headed(h, s, Box::new(result));
-                    }
-                    return result;
-                }
-            }
-        }
-    }
-
-    fn chain_depth(pf: &Protoform) -> usize {
-        let mut depth = 0;
-        let mut current = pf;
-        loop {
-            match current {
-                Protoform::Headed(_, _, body) => {
-                    depth += 1;
-                    current = body.as_ref();
-                }
-                _ => return depth,
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Frame: one nesting level on the explicit stack
-// ---------------------------------------------------------------------------
-
-enum FrameKind {
-    Root,
-    Enclosure(Enclosure),
-    QualifiedAngle(String),
-}
-
-struct Pending {
-    chain: Protoform,
-    separator: Separator,
-    chain_start: usize,
-    sub_situations: Vec<(Path, Extent)>,
-}
-
-struct Frame {
-    kind: FrameKind,
-    opener_pos: usize,
-    children: Vec<Protoform>,
-    child_index: Integer,
-    path: Path,
-    situations: Vec<(Path, Extent)>,
-    pending: Option<Pending>,
-}
-
-/// The kind whose capabilities manage frame children and situations.
-trait Framing {
-    fn child_path(&self) -> Path;
-    fn add_child(
-        &mut self,
-        pf: Protoform,
-        start: usize,
-        end: usize,
-        sub_situations: Vec<(Path, Extent)>,
-    );
-    fn flush_pending(&mut self);
-    fn body_path_for_pending(&self) -> Path;
-}
-
-impl Framing for Frame {
-    fn child_path(&self) -> Path {
-        let mut p = self.path.clone();
-        p.push(self.child_index);
-        p
-    }
-
-    fn add_child(
-        &mut self,
-        pf: Protoform,
-        start: usize,
-        end: usize,
-        sub_situations: Vec<(Path, Extent)>,
-    ) {
-        if let Some(pending) = self.pending.take() {
-            let combined = BodyAttacher::attach_body(pending.chain, pending.separator, pf);
-            let child_path = self.child_path();
-            self.situations.push((
-                child_path,
-                Extent(pending.chain_start as Integer, end as Integer),
-            ));
-            self.situations.extend(pending.sub_situations);
-            self.situations.extend(sub_situations);
-            self.children.push(combined);
-            self.child_index += 1;
-        } else {
-            let child_path = self.child_path();
-            self.situations
-                .push((child_path, Extent(start as Integer, end as Integer)));
-            self.situations.extend(sub_situations);
-            self.children.push(pf);
-            self.child_index += 1;
-        }
-    }
-
-    fn flush_pending(&mut self) {
-        if let Some(pending) = self.pending.take() {
-            let child_path = self.child_path();
-            self.situations.push((
-                child_path,
-                Extent(
-                    pending.chain_start as Integer,
-                    pending.chain_start as Integer,
-                ),
-            ));
-            self.situations.extend(pending.sub_situations);
-            self.children.push(pending.chain);
-            self.child_index += 1;
-        }
-    }
-
-    fn body_path_for_pending(&self) -> Path {
-        match &self.pending {
-            Some(pending) => {
-                let depth = BodyAttacher::chain_depth(&pending.chain);
-                let mut path = self.child_path();
-                path.extend(std::iter::repeat_n(0, depth + 1));
-                path
-            }
-            None => self.child_path(),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Delineator and its traits
-// ---------------------------------------------------------------------------
-
-struct Delineator<'a> {
-    source: &'a str,
-    pos: usize,
-    stack: Vec<Frame>,
-}
-
-/// The kind whose capabilities traverse text character by character.
-trait Traversing {
-    fn remaining(&self) -> &str;
-    fn peek(&self) -> Option<char>;
-    fn advance(&mut self) -> Option<char>;
-    fn skip_whitespace_and_comments(&mut self);
-    fn is_structural(c: char) -> bool;
-}
-
-impl Traversing for Delineator<'_> {
-    fn remaining(&self) -> &str {
-        &self.source[self.pos..]
-    }
-
-    fn peek(&self) -> Option<char> {
-        self.remaining().chars().next()
-    }
-
-    fn advance(&mut self) -> Option<char> {
-        let c = self.remaining().chars().next()?;
-        self.pos += c.len_utf8();
-        Some(c)
-    }
-
-    fn skip_whitespace_and_comments(&mut self) {
-        loop {
-            let before = self.pos;
-            while let Some(c) = self.peek() {
-                if c.is_whitespace() {
-                    self.advance();
-                } else {
+                    following = Some(other);
                     break;
                 }
             }
-            if self.peek() == Some(';') {
-                while let Some(c) = self.advance() {
-                    if c == '\n' {
-                        break;
-                    }
-                }
-                continue;
-            }
-            if self.pos == before {
-                break;
-            }
+        }
+        self.offset = end;
+        let run = Run {
+            text: &self.text[start..end],
+            start: start as Integer,
+        };
+        let pieces = run.pieces();
+        let last = pieces.len() - 1;
+        let heads_are_symbols = pieces[..last].iter().all(Symbolic::is_symbol);
+        let opens_body = matches!(following, Some(Glyph::Open(_) | Glyph::Bound(_)));
+        let qualifies = following == Some(Glyph::Open(Enclosure::Angled));
+        if last > 0 && heads_are_symbols && !pieces[last].is_symbol() && opens_body {
+            self.push_heads(&pieces[..last]);
+        } else if heads_are_symbols && pieces[last].is_symbol() && qualifies {
+            self.push_heads(&pieces[..last]);
+            self.qualifying = Some(Qualifying {
+                symbol: pieces[last].text.to_owned(),
+                start: pieces[last].start as usize,
+            });
+        } else if heads_are_symbols && pieces[last].is_symbol() {
+            self.push_heads(&pieces[..last]);
+            let piece = pieces[last];
+            self.deliver(Situated(
+                Situation {
+                    extent: Extent(piece.start, end as Integer),
+                    children: vec![],
+                },
+                Protoform::Bare(Head::Symbol(piece.text.to_owned())),
+            ));
+        } else {
+            self.deliver(Situated(
+                Situation {
+                    extent: Extent(start as Integer, end as Integer),
+                    children: vec![],
+                },
+                Protoform::Bare(Head::Symbol(run.text.to_owned())),
+            ));
         }
     }
 
-    fn is_structural(c: char) -> bool {
-        c.is_whitespace()
-            || Enclosure::from_opener(c).is_some()
-            || Enclosure::from_closer(c).is_some()
-            || Boundary::from_opener(c).is_some()
-            || Boundary::from_closer(c).is_some()
-            || c == ';'
-    }
-}
-
-/// The kind whose capability reads text into a delineation.
-trait Delineating {
-    fn delineate(&mut self) -> Result<Delineation, Fault>;
-}
-
-impl Delineating for Delineator<'_> {
-    fn delineate(&mut self) -> Result<Delineation, Fault> {
-        self.stack.push(Frame {
-            kind: FrameKind::Root,
-            opener_pos: 0,
-            children: Vec::new(),
-            child_index: 0,
-            path: vec![],
-            situations: Vec::new(),
-            pending: None,
+    fn read_open(&mut self, enclosure: Enclosure) {
+        let qualifying = self.qualifying.take();
+        self.frames.push(Frame::Enclosing {
+            enclosure,
+            opened: self.offset,
+            children: vec![],
+            qualifying,
         });
-
-        loop {
-            self.skip_whitespace_and_comments();
-
-            if self.pos >= self.source.len() {
-                let top = self.stack.last_mut().unwrap();
-                top.flush_pending();
-                if self.stack.len() > 1 {
-                    let frame = self.stack.last().unwrap();
-                    let problem = match &frame.kind {
-                        FrameKind::Root => unreachable!(),
-                        FrameKind::Enclosure(enc) => Problem::Unclosed(*enc),
-                        FrameKind::QualifiedAngle(_) => Problem::Unclosed(Enclosure::Angled),
-                    };
-                    return Err(Fault {
-                        extent: Extent(frame.opener_pos as Integer, self.source.len() as Integer),
-                        problem,
-                    });
-                }
-                break;
-            }
-
-            let c = self.peek().unwrap();
-
-            // Closers
-            if let Some(enc) = Enclosure::from_closer(c) {
-                let top_matches = match &self.stack.last().unwrap().kind {
-                    FrameKind::Enclosure(e) => *e == enc,
-                    FrameKind::QualifiedAngle(_) => enc == Enclosure::Angled,
-                    FrameKind::Root => false,
-                };
-                if top_matches {
-                    self.advance();
-                    self.pop_frame()?;
-                    continue;
-                }
-                let start = self.pos as Integer;
-                self.advance();
-                return Err(Fault {
-                    extent: Extent(start, self.pos as Integer),
-                    problem: Problem::Unopened,
-                });
-            }
-            if Boundary::from_closer(c).is_some() {
-                let start = self.pos as Integer;
-                self.advance();
-                return Err(Fault {
-                    extent: Extent(start, self.pos as Integer),
-                    problem: Problem::Unopened,
-                });
-            }
-
-            // Enclosure openers (non-angle at top level, or standalone angle)
-            if let Some(enc) = Enclosure::from_opener(c) {
-                if self.stack.len() >= DEPTH_LIMIT {
-                    return Err(Fault {
-                        extent: Extent(self.pos as Integer, self.pos as Integer + 1),
-                        problem: Problem::Unclosed(enc),
-                    });
-                }
-                let opener_pos = self.pos;
-                self.advance();
-                let frame_path = self.stack.last().unwrap().body_path_for_pending();
-                self.stack.push(Frame {
-                    kind: FrameKind::Enclosure(enc),
-                    opener_pos,
-                    children: Vec::new(),
-                    child_index: 0,
-                    path: frame_path,
-                    situations: Vec::new(),
-                    pending: None,
-                });
-                continue;
-            }
-
-            // Boundary openers
-            if let Some(bnd) = Boundary::from_opener(c) {
-                let (pf, start) = match bnd {
-                    Boundary::CurlyQuotes => self.read_curly_quotes()?,
-                    Boundary::Parentheses => self.read_parentheses()?,
-                };
-                let end = self.pos;
-                let parent = self.stack.last_mut().unwrap();
-                parent.add_child(pf, start, end, vec![]);
-                continue;
-            }
-
-            // Bare run
-            self.handle_bare_run()?;
-        }
-
-        let root = self.stack.pop().unwrap();
-        let mut situation = Situation::new();
-        for (path, extent) in root.situations {
-            situation.insert(path, extent);
-        }
-        Ok(Delineation {
-            protoforms: root.children,
-            situation,
-        })
+        self.offset += enclosure.opener().len_utf8();
     }
-}
 
-// ---------------------------------------------------------------------------
-// Boundary reading
-// ---------------------------------------------------------------------------
+    fn read_close(&mut self, enclosure: Enclosure) -> Result<(), Fault> {
+        let glyph_end = self.offset + enclosure.closer().len_utf8();
+        let (opened, children, qualifying) = match self.frames.pop() {
+            Some(Frame::Enclosing {
+                enclosure: open,
+                opened,
+                children,
+                qualifying,
+            }) if open == enclosure => (opened, children, qualifying),
+            other => {
+                if let Some(frame) = other {
+                    self.frames.push(frame);
+                }
+                return Err(self.fault(self.offset, glyph_end, Problem::Unopened(enclosure)));
+            }
+        };
+        self.offset = glyph_end;
+        let mut situations = Vec::with_capacity(children.len());
+        let mut forms = Vec::with_capacity(children.len());
+        for Situated(at, form) in children {
+            situations.push(at);
+            forms.push(form);
+        }
+        let structure = Situated(
+            Situation {
+                extent: Extent(opened as Integer, glyph_end as Integer),
+                children: situations,
+            },
+            Protoform::Enclosed(enclosure, forms),
+        );
+        match qualifying {
+            Some(Qualifying { symbol, start }) => self.qualify(symbol, start, structure),
+            None => self.deliver(structure),
+        }
+        Ok(())
+    }
 
-/// The kind whose capabilities read opaque boundary content.
-trait BoundaryReading {
-    fn read_curly_quotes(&mut self) -> Result<(Protoform, usize), Fault>;
-    fn read_parentheses(&mut self) -> Result<(Protoform, usize), Fault>;
-}
+    fn qualify(&mut self, symbol: Symbol, start: usize, constraints: Situated<Protoform>) {
+        let Situated(constraints_at, mut constraints_form) = constraints;
+        let end = constraints_at.extent.1 as usize;
+        let forms = match &mut constraints_form {
+            Protoform::Enclosed(_, forms) => std::mem::take(forms),
+            _ => vec![],
+        };
+        let mut at = constraints_at;
+        at.extent = Extent(start as Integer, end as Integer);
+        let head = Head::Qualified(symbol, forms);
+        let separator = match self.glyph_at(end).map(Classifying::classify) {
+            Some(Glyph::Separate(separator)) => separator,
+            _ => return self.deliver(Situated(at, Protoform::Bare(head))),
+        };
+        let after = self
+            .glyph_at(end + separator.glyph().len_utf8())
+            .map(Classifying::classify);
+        if matches!(after, Some(Glyph::Open(_) | Glyph::Bound(_) | Glyph::Plain)) {
+            self.offset = end + separator.glyph().len_utf8();
+            self.frames.push(Frame::Heading {
+                head,
+                at,
+                separator,
+                start,
+            });
+        } else {
+            self.deliver(Situated(at, Protoform::Bare(head)));
+        }
+    }
 
-impl BoundaryReading for Delineator<'_> {
-    fn read_curly_quotes(&mut self) -> Result<(Protoform, usize), Fault> {
-        let start = self.pos;
-        self.advance();
-        let content_start = self.pos;
+    fn read_bounded(&mut self, boundary: Boundary) -> Result<(), Fault> {
+        let opened = self.offset;
+        let content = match boundary {
+            Boundary::CurlyQuotes => self.read_quoted()?,
+            Boundary::Parentheses => self.read_parenthesized()?,
+        };
+        self.deliver(Situated(
+            Situation {
+                extent: Extent(opened as Integer, self.offset as Integer),
+                children: vec![],
+            },
+            Protoform::Opaque(boundary, Text(content)),
+        ));
+        Ok(())
+    }
+
+    fn read_quoted(&mut self) -> Result<String, Fault> {
+        let opened = self.offset;
         let closer = Boundary::CurlyQuotes.closer();
-        loop {
-            match self.advance() {
-                Some(c) if c == closer => break,
-                Some(_) => continue,
-                None => {
-                    return Err(Fault {
-                        extent: Extent(start as Integer, self.source.len() as Integer),
-                        problem: Problem::UnclosedBoundary(Boundary::CurlyQuotes),
-                    });
-                }
+        let mut here = opened + Boundary::CurlyQuotes.opener().len_utf8();
+        let content_start = here;
+        while let Some(glyph) = self.glyph_at(here) {
+            if glyph == closer {
+                self.offset = here + closer.len_utf8();
+                return Ok(self.text[content_start..here].to_owned());
             }
+            here += glyph.len_utf8();
         }
-        let content = self.source[content_start..self.pos - closer.len_utf8()].to_owned();
-        Ok((Protoform::Opaque(Boundary::CurlyQuotes, content), start))
+        Err(self.fault(
+            opened,
+            self.text.len(),
+            Problem::Unterminated(Boundary::CurlyQuotes),
+        ))
     }
 
-    fn read_parentheses(&mut self) -> Result<(Protoform, usize), Fault> {
-        let start = self.pos;
-        self.advance();
-        let mut content = String::new();
-        let mut depth = 1u32;
+    fn read_parenthesized(&mut self) -> Result<String, Fault> {
+        let opened = self.offset;
         let opener = Boundary::Parentheses.opener();
         let closer = Boundary::Parentheses.closer();
-        loop {
-            match self.advance() {
-                Some('\\') => match self.advance() {
-                    Some(c) if c == opener || c == closer || c == '\\' => {
-                        content.push(c);
+        let escape = Mark::Escape.glyph();
+        let stray = Boundary::CurlyQuotes.closer();
+        let mut here = opened + opener.len_utf8();
+        let mut depth = 0usize;
+        let mut content = String::new();
+        while let Some(glyph) = self.glyph_at(here) {
+            here += glyph.len_utf8();
+            if glyph == escape {
+                match self.glyph_at(here) {
+                    Some(next) if next == opener || next == closer || next == escape => {
+                        content.push(next);
+                        here += next.len_utf8();
                     }
-                    Some(c) => {
-                        content.push('\\');
-                        content.push(c);
-                    }
-                    None => {
-                        return Err(Fault {
-                            extent: Extent(start as Integer, self.source.len() as Integer),
-                            problem: Problem::UnclosedBoundary(Boundary::Parentheses),
-                        });
-                    }
-                },
-                Some(c) if c == opener => {
-                    depth += 1;
-                    content.push(c);
+                    Some(_) => content.push(glyph),
+                    None => break,
                 }
-                Some(c) if c == closer => {
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
-                    content.push(c);
+            } else if glyph == opener {
+                depth += 1;
+                content.push(glyph);
+            } else if glyph == closer {
+                if depth == 0 {
+                    self.offset = here;
+                    return Ok(content);
                 }
-                Some(c) => content.push(c),
-                None => {
-                    return Err(Fault {
-                        extent: Extent(start as Integer, self.source.len() as Integer),
-                        problem: Problem::UnclosedBoundary(Boundary::Parentheses),
-                    });
-                }
+                depth -= 1;
+                content.push(glyph);
+            } else if glyph == stray {
+                return Err(self.fault(
+                    here - glyph.len_utf8(),
+                    here,
+                    Problem::Stray(Boundary::CurlyQuotes),
+                ));
+            } else {
+                content.push(glyph);
             }
         }
-        Ok((Protoform::Opaque(Boundary::Parentheses, content), start))
+        Err(self.fault(
+            opened,
+            self.text.len(),
+            Problem::Unterminated(Boundary::Parentheses),
+        ))
     }
 }
 
-// ---------------------------------------------------------------------------
-// Bare run handling
-// ---------------------------------------------------------------------------
-
-/// The kind whose capabilities handle bare runs and qualified heads.
-trait BareRunHandling {
-    fn handle_bare_run(&mut self) -> Result<(), Fault>;
-    fn handle_bare_then_angle(&mut self, run: &str, run_start: usize) -> Result<(), Fault>;
-    fn pop_frame(&mut self) -> Result<(), Fault>;
-    fn handle_post_qualified(
-        &mut self,
-        pf: Protoform,
-        chain_start: usize,
-        sub_situations: Vec<(Path, Extent)>,
-    ) -> Result<(), Fault>;
-    fn set_or_combine_pending(
-        &mut self,
-        chain: Protoform,
-        sep: Separator,
-        chain_start: usize,
-        sub_situations: Vec<(Path, Extent)>,
-    );
+/// The kind whose capability reads the whole text into its delineation.
+trait Delineating {
+    fn delineate(self) -> Result<Delineation, Fault>;
 }
 
-impl BareRunHandling for Delineator<'_> {
-    fn handle_bare_run(&mut self) -> Result<(), Fault> {
-        let start = self.pos;
-        while let Some(c) = self.peek() {
-            if Self::is_structural(c) {
-                break;
-            }
-            self.advance();
-        }
-        let run = self.source[start..self.pos].to_owned();
-        if run.is_empty() {
-            return Ok(());
-        }
-
-        // Check if ends with separator + opener follows (before qualified head check)
-        let chars_vec: Vec<(usize, char)> = run.char_indices().collect();
-        if let Some(&(last_byte, last_char)) = chars_vec.last() {
-            if let Some(trailing_sep) = Separator::identify(last_char) {
-                if let Some(next_c) = self.peek() {
-                    let is_opener = Enclosure::from_opener(next_c).is_some()
-                        || Boundary::from_opener(next_c).is_some();
-                    if is_opener {
-                        let head_str = &run[..last_byte];
-                        if head_str.is_empty() {
-                            // Lone separator before opener: stays bare
-                            let parent = self.stack.last_mut().unwrap();
-                            let base_path = parent.child_path();
-                            let (pf, subs) = BareRunParser::parse_bare_run(&run, start, &base_path);
-                            parent.add_child(pf, start, self.pos, subs);
-                            return Ok(());
-                        }
-                        let parent = self.stack.last_mut().unwrap();
-                        let base_path = parent.child_path();
-                        let (head_chain, head_subs) =
-                            BareRunParser::parse_bare_run(head_str, start, &base_path);
-                        self.set_or_combine_pending(head_chain, trailing_sep, start, head_subs);
-
-                        // Push frame for body
-                        if let Some(enc) = Enclosure::from_opener(next_c) {
-                            if self.stack.len() >= DEPTH_LIMIT {
-                                return Err(Fault {
-                                    extent: Extent(self.pos as Integer, self.pos as Integer + 1),
-                                    problem: Problem::Unclosed(enc),
-                                });
-                            }
-                            let opener_pos = self.pos;
-                            self.advance();
-                            let frame_path = self.stack.last().unwrap().body_path_for_pending();
-                            self.stack.push(Frame {
-                                kind: FrameKind::Enclosure(enc),
-                                opener_pos,
-                                children: Vec::new(),
-                                child_index: 0,
-                                path: frame_path,
-                                situations: Vec::new(),
-                                pending: None,
-                            });
-                            return Ok(());
-                        }
-                        if let Some(bnd) = Boundary::from_opener(next_c) {
-                            let (body, body_start) = match bnd {
-                                Boundary::CurlyQuotes => self.read_curly_quotes()?,
-                                Boundary::Parentheses => self.read_parentheses()?,
-                            };
-                            let end = self.pos;
-                            let parent = self.stack.last_mut().unwrap();
-                            parent.add_child(body, body_start, end, vec![]);
-                            return Ok(());
-                        }
-                    }
+impl Delineating for Reader<'_> {
+    fn delineate(mut self) -> Result<Delineation, Fault> {
+        while let Some(glyph) = self.glyph_at(self.offset) {
+            match glyph.classify() {
+                Glyph::Space => self.offset += glyph.len_utf8(),
+                Glyph::Comment => self.read_comment(),
+                Glyph::Open(enclosure) => self.read_open(enclosure),
+                Glyph::Close(enclosure) => self.read_close(enclosure)?,
+                Glyph::Bound(boundary) => self.read_bounded(boundary)?,
+                Glyph::Unbound(boundary) => {
+                    return Err(self.fault(
+                        self.offset,
+                        self.offset + glyph.len_utf8(),
+                        Problem::Stray(boundary),
+                    ));
                 }
+                Glyph::Separate(_) | Glyph::Plain => self.read_run(),
             }
         }
-
-        // Check if followed by angle opener (qualified head)
-        // Only when the run does NOT end with a separator
-        if self.peek() == Some(Enclosure::Angled.opener()) {
-            return self.handle_bare_then_angle(&run, start);
-        }
-
-        // Plain bare run
-        let end = self.pos;
-        let parent = self.stack.last_mut().unwrap();
-        let base_path = parent.child_path();
-        let (pf, subs) = BareRunParser::parse_bare_run(&run, start, &base_path);
-        parent.add_child(pf, start, end, subs);
-        Ok(())
-    }
-
-    fn handle_bare_then_angle(&mut self, run: &str, run_start: usize) -> Result<(), Fault> {
-        let split_points = BareRunParser::find_split_points(run);
-
-        let (prefix_chain_data, symbol) = if split_points.is_empty() {
-            (None, run.to_owned())
-        } else {
-            let last = &split_points[split_points.len() - 1];
-            let sep_len = last.separator.glyph().len_utf8();
-            let symbol_start = last.byte_offset + sep_len;
-            let symbol = run[symbol_start..].to_owned();
-            let prefix_str = &run[..last.byte_offset];
-            let parent = self.stack.last().unwrap();
-            let base_path = parent.child_path();
-            let (prefix, prefix_subs) =
-                BareRunParser::parse_bare_run(prefix_str, run_start, &base_path);
-            (Some((prefix, last.separator, prefix_subs)), symbol)
-        };
-
-        if let Some((prefix, sep, subs)) = prefix_chain_data {
-            self.set_or_combine_pending(prefix, sep, run_start, subs);
-        }
-
-        if self.stack.len() >= DEPTH_LIMIT {
-            return Err(Fault {
-                extent: Extent(self.pos as Integer, self.pos as Integer + 1),
-                problem: Problem::Unclosed(Enclosure::Angled),
-            });
-        }
-        self.advance(); // consume '<'
-        let frame_path = self.stack.last().unwrap().body_path_for_pending();
-        self.stack.push(Frame {
-            kind: FrameKind::QualifiedAngle(symbol),
-            opener_pos: run_start,
-            children: Vec::new(),
-            child_index: 0,
-            path: frame_path,
-            situations: Vec::new(),
-            pending: None,
-        });
-        Ok(())
-    }
-
-    fn pop_frame(&mut self) -> Result<(), Fault> {
-        let mut frame = self.stack.pop().unwrap();
-        frame.flush_pending();
-
-        match frame.kind {
-            FrameKind::Root => unreachable!(),
-            FrameKind::Enclosure(enc) => {
-                let enclosed = Protoform::Enclosed(enc, frame.children);
-                let start = frame.opener_pos;
-                let end = self.pos;
-                let parent = self.stack.last_mut().unwrap();
-                parent.situations.extend(frame.situations);
-                parent.add_child(enclosed, start, end, vec![]);
-            }
-            FrameKind::QualifiedAngle(symbol) => {
-                let qualified_head = Head::Qualified(symbol, frame.children);
-                let qualified_pf = Protoform::Bare(qualified_head);
-                let chain_start = frame.opener_pos;
-                let parent = self.stack.last_mut().unwrap();
-                parent.situations.extend(frame.situations);
-
-                let (current_pf, sub_subs) = if let Some(pending) = parent.pending.take() {
-                    let combined =
-                        BodyAttacher::attach_body(pending.chain, pending.separator, qualified_pf);
-                    (combined, pending.sub_situations)
-                } else {
-                    (qualified_pf, vec![])
-                };
-
-                self.handle_post_qualified(current_pf, chain_start, sub_subs)?;
+        while let Some(frame) = self.frames.pop() {
+            if let Frame::Enclosing {
+                enclosure, opened, ..
+            } = frame
+            {
+                return Err(self.fault(opened, self.text.len(), Problem::Unclosed(enclosure)));
             }
         }
-        Ok(())
-    }
-
-    fn handle_post_qualified(
-        &mut self,
-        current_pf: Protoform,
-        chain_start: usize,
-        sub_situations: Vec<(Path, Extent)>,
-    ) -> Result<(), Fault> {
-        if let Some(c) = self.peek() {
-            if let Some(sep) = Separator::identify(c) {
-                let sep_pos = self.pos;
-                self.advance();
-                if let Some(next_c) = self.peek() {
-                    let can_be_body = !next_c.is_whitespace()
-                        && Enclosure::from_closer(next_c).is_none()
-                        && Boundary::from_closer(next_c).is_none()
-                        && next_c != ';';
-                    if can_be_body {
-                        self.set_or_combine_pending(current_pf, sep, chain_start, sub_situations);
-
-                        if let Some(enc) = Enclosure::from_opener(next_c) {
-                            if self.stack.len() >= DEPTH_LIMIT {
-                                return Err(Fault {
-                                    extent: Extent(self.pos as Integer, self.pos as Integer + 1),
-                                    problem: Problem::Unclosed(enc),
-                                });
-                            }
-                            let opener_pos = self.pos;
-                            self.advance();
-                            let frame_path = self.stack.last().unwrap().body_path_for_pending();
-                            self.stack.push(Frame {
-                                kind: FrameKind::Enclosure(enc),
-                                opener_pos,
-                                children: Vec::new(),
-                                child_index: 0,
-                                path: frame_path,
-                                situations: Vec::new(),
-                                pending: None,
-                            });
-                            return Ok(());
-                        }
-                        if let Some(bnd) = Boundary::from_opener(next_c) {
-                            let (body, body_start) = match bnd {
-                                Boundary::CurlyQuotes => self.read_curly_quotes()?,
-                                Boundary::Parentheses => self.read_parentheses()?,
-                            };
-                            let end = self.pos;
-                            let parent = self.stack.last_mut().unwrap();
-                            parent.add_child(body, body_start, end, vec![]);
-                            return Ok(());
-                        }
-                        // Body is a bare word: pending set, main loop reads it
-                        return Ok(());
-                    }
-                }
-                // No valid body: un-advance
-                self.pos = sep_pos;
-            }
-        }
-        // Add as standalone
-        let end = self.pos;
-        let parent = self.stack.last_mut().unwrap();
-        parent.add_child(current_pf, chain_start, end, sub_situations);
-        Ok(())
-    }
-
-    fn set_or_combine_pending(
-        &mut self,
-        chain: Protoform,
-        sep: Separator,
-        chain_start: usize,
-        sub_situations: Vec<(Path, Extent)>,
-    ) {
-        let parent = self.stack.last_mut().unwrap();
-        if let Some(existing) = parent.pending.take() {
-            let combined = BodyAttacher::attach_body(existing.chain, existing.separator, chain);
-            let mut merged_subs = existing.sub_situations;
-            merged_subs.extend(sub_situations);
-            parent.pending = Some(Pending {
-                chain: combined,
-                separator: sep,
-                chain_start: existing.chain_start,
-                sub_situations: merged_subs,
-            });
-        } else {
-            parent.pending = Some(Pending {
-                chain,
-                separator: sep,
-                chain_start,
-                sub_situations,
-            });
-        }
+        Ok(Delineation(self.done))
     }
 }
 
-// ---------------------------------------------------------------------------
-// Protosizable for Text: the delineation entry point
-// ---------------------------------------------------------------------------
-
-impl Protosizable for Text {
+impl Protosizable for str {
     type Fault = Fault;
 
     fn protosize(&self) -> Result<Delineation, Fault> {
-        let mut d = Delineator {
-            source: self,
-            pos: 0,
-            stack: Vec::new(),
-        };
-        d.delineate()
+        Reader {
+            text: self,
+            offset: 0,
+            frames: Vec::new(),
+            qualifying: None,
+            done: Vec::new(),
+        }
+        .delineate()
     }
 }
 
-impl<T, C> Protosizable for crate::Potential<T, C> {
+impl Protosizable for String {
     type Fault = Fault;
 
     fn protosize(&self) -> Result<Delineation, Fault> {
-        use crate::Texted as _;
-        <Text as Protosizable>::protosize(&self.text().to_owned())
+        self.as_str().protosize()
     }
 }

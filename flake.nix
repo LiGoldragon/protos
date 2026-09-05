@@ -37,6 +37,13 @@
             fi
             touch $out
           '';
+          no-zst-behavior = pkgs.runCommand "protos-no-zst-behavior" { } ''
+            if grep -R -n -E '^[[:space:]]*(pub[[:space:]]+)?struct[[:space:]]+[[:alpha:]_][[:alnum:]_]*[[:space:]]*;' ${src}/src; then
+              echo "behavioral Rust nouns must carry data" >&2
+              exit 1
+            fi
+            touch $out
+          '';
           no-forbidden-vocabulary = pkgs.runCommand "protos-no-forbidden-vocabulary" { } ''
             if grep -R -n -i -E 'encode|decode|codec|transcode' ${src}/src; then
               echo "Protos names must use the ruled form vocabulary" >&2

@@ -25,12 +25,3 @@ pub trait Actualizable<A: Sized> {
     type Budget;
     fn actualize(&self, input: Self::Budget) -> Result<A, Self::Fault>;
 }
-pub trait Route<A: Sized> {
-    type Fault;
-    type Budget;
-    fn run(
-        &self,
-        input_0: protos::Text,
-        input_1: Self::Budget,
-    ) -> Result<A, Self::Fault>;
-}

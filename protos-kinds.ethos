@@ -1,7 +1,7 @@
 ; protos: the kinds each layer bears, named by where the capability goes.
 ; Sized names the unnamed constraint of a kind; Situated<Sized> is the concept a structure conceives.
 ; Glyphing and Delimiting yield Rust char, and Incorporable, Pathed, Locating,
-; and Texted expose borrowed Rust references. Ethos has no declaration form for
+; Texted, and Route expose borrowed Rust references. Ethos has no declaration form for
 ; those representations, so their associations are omitted rather than given a
 ; false owned Text or Vector shape.
 Kinds
@@ -15,5 +15,4 @@ Kinds
   Protosizable.{ [] [ Fault ] [] [ protosize.[ Result<Delineation Fault> ] ] }
   Conceivable<Sized>.{ [] [ Fault ] [] [ conceive.[ Result<Situated<Sized> Fault> ] ] }
   Actualizable<Sized>.{ [] [ Fault Budget ] [] [ actualize.{ [ Budget ] [ Result<Sized Fault> ] } ] }
-  Route<Sized>.{ [] [ Fault Budget ] [] [ run.{ [ Text Budget ] [ Result<Sized Fault> ] } ] }
   ]

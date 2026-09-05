@@ -2,8 +2,8 @@
 //! each shape announcing its type and its context reading to its completion.
 
 use crate::anatomy::{
-    Boundary, Delineation, Enclosure, Extent, Fault, Head, Integer, Opaque, Problem, Protoform,
-    Separator, Situated, Situation, Symbol,
+    Bare, Boundary, Delineation, Enclosure, Extent, Fault, Head, Integer, Opaque, Problem,
+    Protoform, Separator, Situated, Situation, Symbol,
 };
 use crate::glyph::{Classifying, Glyph};
 use crate::kinds::Protosizable;
@@ -145,7 +145,9 @@ impl HeadPushing for Reader<'_> {
         for piece in pieces {
             let end = piece.start as usize + piece.text.len();
             self.frames.push(Frame::Heading {
-                head: Head::Symbol(piece.text.to_owned()),
+                head: Head::Symbol(
+                    Symbol::try_from(piece.text).expect("a nonempty run piece is a symbol"),
+                ),
                 at: Situation {
                     extent: Extent(piece.start, end as Integer),
                     children: vec![],
@@ -195,7 +197,8 @@ impl Reading for Reader<'_> {
         } else if heads_are_symbols && pieces[last].is_symbol() && qualifies {
             self.push_heads(&pieces[..last]);
             self.qualifying = Some(Qualifying {
-                symbol: pieces[last].text.to_owned(),
+                symbol: Symbol::try_from(pieces[last].text)
+                    .expect("a nonempty run piece is a symbol"),
                 start: pieces[last].start as usize,
             });
         } else if heads_are_symbols && pieces[last].is_symbol() {
@@ -206,7 +209,9 @@ impl Reading for Reader<'_> {
                     extent: Extent(piece.start, end as Integer),
                     children: vec![],
                 },
-                Protoform::Bare(Head::Symbol(piece.text.to_owned())),
+                Protoform::Bare(Head::Symbol(
+                    Symbol::try_from(piece.text).expect("a nonempty run piece is a symbol"),
+                )),
             ));
         } else {
             self.deliver(Situated(
@@ -214,7 +219,7 @@ impl Reading for Reader<'_> {
                     extent: Extent(start as Integer, end as Integer),
                     children: vec![],
                 },
-                Protoform::Bare(Head::Symbol(run.text.to_owned())),
+                Protoform::Bare(Head::Bare(Bare::try_from(run.text).expect("a run is bare"))),
             ));
         }
     }

@@ -69,8 +69,23 @@ impl fmt::Display for Decimal {
 /// A truth value.
 pub type Boolean = bool;
 
-/// A symbol: a non-empty run with no whitespace, delimiter or separator glyph.
-pub type Symbol = String;
+/// A head symbol: a non-empty run of plain glyphs.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Symbol(pub(crate) String);
+
+/// A bare run: non-empty plain glyphs and separators, whose position gives its
+/// separator glyphs their meaning.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Bare(pub(crate) String);
+
+/// Why text cannot become a structural bare run or symbol.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BareRefusal {
+    /// The glyph that does not belong to the requested structural form.
+    pub glyph: char,
+    /// Its byte offset in the refused text.
+    pub offset: Integer,
+}
 
 /// Text that can be quoted: a string carrying no closing curly quote (U+201D).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -148,6 +163,8 @@ pub enum Boundary {
 pub enum Head {
     /// A symbol alone.
     Symbol(Symbol),
+    /// A bare run whose separators are data in its position.
+    Bare(Bare),
     /// A symbol immediately followed by its constraints: `Vector<Text>`.
     Qualified(Symbol, Vec<Protoform>),
 }

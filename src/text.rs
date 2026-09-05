@@ -2,7 +2,8 @@
 
 use std::fmt;
 
-use crate::anatomy::{Boundary, Integer, Opaque, Refusal, Text};
+use crate::anatomy::{Bare, BareRefusal, Boundary, Integer, Opaque, Refusal, Symbol, Text};
+use crate::glyph::{Classifying, Glyph};
 use crate::kinds::Delimiting;
 
 impl TryFrom<String> for Text {
@@ -27,6 +28,73 @@ impl TryFrom<&str> for Text {
 
     fn try_from(string: &str) -> Result<Self, Refusal> {
         Text::try_from(string.to_owned())
+    }
+}
+
+impl TryFrom<&str> for Bare {
+    type Error = BareRefusal;
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        if string.is_empty() {
+            return Err(BareRefusal {
+                glyph: '\0',
+                offset: 0,
+            });
+        }
+        for (offset, glyph) in string.char_indices() {
+            if !matches!(glyph.classify(), Glyph::Plain | Glyph::Separate(_)) {
+                return Err(BareRefusal {
+                    glyph,
+                    offset: offset as Integer,
+                });
+            }
+        }
+        Ok(Self(string.to_owned()))
+    }
+}
+
+impl TryFrom<String> for Bare {
+    type Error = BareRefusal;
+
+    fn try_from(string: String) -> Result<Self, Self::Error> {
+        Self::try_from(string.as_str()).map(|_| Self(string))
+    }
+}
+
+impl TryFrom<&str> for Symbol {
+    type Error = BareRefusal;
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        let bare = Bare::try_from(string)?;
+        for (offset, glyph) in bare.0.char_indices() {
+            if matches!(glyph.classify(), Glyph::Separate(_)) {
+                return Err(BareRefusal {
+                    glyph,
+                    offset: offset as Integer,
+                });
+            }
+        }
+        Ok(Self(bare.0))
+    }
+}
+
+impl TryFrom<String> for Symbol {
+    type Error = BareRefusal;
+
+    fn try_from(string: String) -> Result<Self, Self::Error> {
+        Self::try_from(string.as_str()).map(|_| Self(string))
+    }
+}
+
+impl AsRef<str> for Bare {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for Symbol {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }
 

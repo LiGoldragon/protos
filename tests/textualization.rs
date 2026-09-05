@@ -2,15 +2,18 @@
 
 use proptest::prelude::*;
 use protos::{
-    Boundary, Delineation, Enclosure, Extent, Head, Locating, Opaque, Protoform, Protosizable,
-    Refusal, Separator, Situated, Situating, Text, Textualizable,
+    Bare, Boundary, Delineation, Enclosure, Extent, Head, Locating, Opaque, Protoform,
+    Protosizable, Refusal, Separator, Situated, Situating, Symbol, Text, Textualizable,
 };
 
 fn sym(s: &str) -> Head {
-    Head::Symbol(s.to_owned())
+    Head::Symbol(Symbol::try_from(s).unwrap())
 }
 fn bare(s: &str) -> Protoform {
-    Protoform::Bare(sym(s))
+    match Symbol::try_from(s) {
+        Ok(symbol) => Protoform::Bare(Head::Symbol(symbol)),
+        Err(_) => Protoform::Bare(Head::Bare(Bare::try_from(s).unwrap())),
+    }
 }
 fn dot(h: &str, body: Protoform) -> Protoform {
     Protoform::Headed(sym(h), Separator::Period, Box::new(body))
@@ -98,7 +101,7 @@ fn heads_and_chains() {
 fn qualified_heads() {
     assert_eq!(
         agrees(Protoform::Bare(Head::Qualified(
-            "Vector".to_owned(),
+            Symbol::try_from("Vector").unwrap(),
             vec![bare("Text")]
         ))),
         "Vector<Text>"
@@ -106,7 +109,7 @@ fn qualified_heads() {
     assert_eq!(
         agrees(Protoform::Headed(
             Head::Qualified(
-                "A".to_owned(),
+                Symbol::try_from("A").unwrap(),
                 vec![bare("B"), enclosed(Enclosure::Bracketed, vec![bare("C")])]
             ),
             Separator::Period,

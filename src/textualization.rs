@@ -130,11 +130,15 @@ impl<'a> Stepping<'a> for Writer<'a> {
         let start = self.out.len();
         match head {
             Head::Symbol(symbol) => {
-                self.out.push_str(symbol);
+                self.out.push_str(symbol.as_ref());
+                self.finish(start, 0);
+            }
+            Head::Bare(bare) => {
+                self.out.push_str(bare.as_ref());
                 self.finish(start, 0);
             }
             Head::Qualified(symbol, constraints) => {
-                self.out.push_str(symbol);
+                self.out.push_str(symbol.as_ref());
                 self.out.push(Enclosure::Angled.opener());
                 self.steps.push(Step::Finish {
                     start,

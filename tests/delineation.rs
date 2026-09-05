@@ -1,15 +1,18 @@
 //! Reading: every rule of the reader, every fault, every extent.
 
 use protos::{
-    Boundary, Delineation, Enclosure, Extent, Fault, Head, Locating, Opaque, Problem, Protoform,
-    Protosizable, Separator, Situated, Situation,
+    Bare, Boundary, Delineation, Enclosure, Extent, Fault, Head, Locating, Opaque, Problem,
+    Protoform, Protosizable, Separator, Situated, Situation, Symbol,
 };
 
 fn sym(s: &str) -> Head {
-    Head::Symbol(s.to_owned())
+    Head::Symbol(Symbol::try_from(s).unwrap())
 }
 fn bare(s: &str) -> Protoform {
-    Protoform::Bare(sym(s))
+    match Symbol::try_from(s) {
+        Ok(symbol) => Protoform::Bare(Head::Symbol(symbol)),
+        Err(_) => Protoform::Bare(Head::Bare(Bare::try_from(s).unwrap())),
+    }
 }
 fn headed(h: &str, sep: Separator, body: Protoform) -> Protoform {
     Protoform::Headed(sym(h), sep, Box::new(body))
@@ -30,7 +33,7 @@ fn parens(s: &str) -> Protoform {
     Protoform::Opaque(Boundary::Parentheses, Opaque::from(s))
 }
 fn qualified(s: &str, constraints: Vec<Protoform>) -> Head {
-    Head::Qualified(s.to_owned(), constraints)
+    Head::Qualified(Symbol::try_from(s).unwrap(), constraints)
 }
 
 fn read(text: &str) -> Delineation {

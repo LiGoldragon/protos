@@ -1,6 +1,6 @@
 //! Iterative drop for the protoform tree: a deep tree never recurses on its way out.
 
-use crate::anatomy::{Head, Protoform};
+use crate::anatomy::{Bare, Head, Protoform};
 
 /// The kind whose capability moves a node's children out onto a worklist, leaving the node a leaf.
 pub(crate) trait Shedding {
@@ -23,7 +23,7 @@ impl Shedding for Protoform {
                 head.shed(work);
                 work.push(std::mem::replace(
                     body.as_mut(),
-                    Protoform::Bare(Head::Symbol(String::new())),
+                    Protoform::Bare(Head::Bare(Bare::try_from("_").expect("underscore is bare"))),
                 ));
             }
             Protoform::Enclosed(_, children) => work.append(children),

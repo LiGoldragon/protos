@@ -5,7 +5,7 @@
 ; where another declared shape refers to them.
 Types
 [ std::marker:Copyable.Copy
-  crate:[ Situated Symbol Bare Word Opaque Text Textualizable Situating Locating Classifying ] ]
+  crate:[ Situated Symbol Bare Word Opaque Text Textualizable Situating Locating Classifying Conceivable Protosizable ] ]
 [ Path.Vector<Integer>
   Extent.{ Integer Integer }
   Situation.{ Extent Vector<Situation> }
@@ -19,6 +19,7 @@ Types
   Delineation.{ Vector<Situated<Protoform>> }
   Problem.[ Unclosed.Enclosure Unopened.Enclosure Unterminated.Boundary Stray.Boundary ]
   Fault.{ Extent Problem } ]
-[ Protoform.[ Textualizable Situating ]
-  Delineation.[ Textualizable ]
+[ Text.[ Protosizable ]
+  Protoform.[ Textualizable Situating Protosizable Conceivable<Delineation> ]
+  Delineation.[ Textualizable Protosizable Conceivable<Delineation> ]
   Situation.[ Locating ] ]

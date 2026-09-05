@@ -493,14 +493,26 @@ impl datom_codec::Datomic for Fault {
     }
 }
 const _: () = {
+    fn assert_text_protosizable<T: crate::Protosizable>() {}
+    let _ = assert_text_protosizable::<crate::Text>;
+};
+const _: () = {
     fn assert_protoform_textualizable<T: crate::Textualizable>() {}
     let _ = assert_protoform_textualizable::<Protoform>;
     fn assert_protoform_situating<T: crate::Situating>() {}
     let _ = assert_protoform_situating::<Protoform>;
+    fn assert_protoform_protosizable<T: crate::Protosizable>() {}
+    let _ = assert_protoform_protosizable::<Protoform>;
+    fn assert_protoform_conceivable_delineation<T: crate::Conceivable<Delineation>>() {}
+    let _ = assert_protoform_conceivable_delineation::<Protoform>;
 };
 const _: () = {
     fn assert_delineation_textualizable<T: crate::Textualizable>() {}
     let _ = assert_delineation_textualizable::<Delineation>;
+    fn assert_delineation_protosizable<T: crate::Protosizable>() {}
+    let _ = assert_delineation_protosizable::<Delineation>;
+    fn assert_delineation_conceivable_delineation<T: crate::Conceivable<Delineation>>() {}
+    let _ = assert_delineation_conceivable_delineation::<Delineation>;
 };
 const _: () = {
     fn assert_situation_locating<T: crate::Locating>() {}

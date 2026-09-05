@@ -1,40 +1,27 @@
-# protos
+# Protos
 
-Universal structural substrate for the Protos family. This crate owns
-the sole character reader (delineation) and the sole character writer
-(canonical print). All dialects ride on it.
+The universal structural substrate. Every dialect shares the
+context-switching parse, the delimiters, the heads, and the recursive
+structure. Protos is only about structure: anatomy, not interpretation.
 
-## Four layers
+## Layers
 
-Text, Protoform, Concept, Corporate. Descent may fault; ascent cannot.
-Spans are found on the way in and computed on the way out.
+| Layer | Type | Descent (may fault) | Ascent (cannot fault) |
+|---|---|---|---|
+| Text | `Text` | `Protosizable::protosize` | |
+| Protoform | `Protoform`, `Delineation` | `Conceivable<C>::conceive` | `Textualizable::textualize` |
+| Concept | the dialect's data model | `Incorporable<T>::incorporate` | `Protosizable::protosize` |
+| Corporate | the Rust value | | `Conceivable<C>::conceive` |
 
-## Types
-
-Intrinsic scalars: `Text` (String), `Integer` (i64), `Decimal` (f64),
-`Boolean` (bool), `Symbol` (Text).
-
-Structural types: `Extent`, `Path`, `Situation`, `Separator`,
-`Enclosure` (Braced, Bracketed, Angled), `Boundary` (CurlyQuotes,
-Parentheses), `Head` (Bare, Qualified), `Protoform` (Headed, Enclosed,
-Opaque, Bare), `Delineation`, `Fault`, `Problem`, `Potential<T>`,
-`Situated<F>`.
-
-## Kinds (traits)
-
-`Textualizable` (textualize), `Protosizable` (protosize),
-`Conceivable<C>` (conceive), `Incorporable<C>` (incorporate),
-`Actualizable<T>` (actualize), `Situating` (situate).
+`Actualizable<T>::actualize` chains the whole descent.
 
 ## Delimiters
 
-Five pairs in two families. Structural: `{ }` braces, `[ ]` brackets,
-`< >` angles. Opaque: curly quotes (content-opaque) and `( )`
-parentheses (read by balance). A single `;` opens a comment to end of
-line; comments are never printed.
+Five delimiter pairs: three structural (braces, brackets, angles) and
+two opaque (curly quotes, parentheses).
 
-## Canonical print
+## Separators
 
-Spaced: `{ a b }`, `[ a b ]`. Empty: `{}`, `[]`, `<>`. Angled always
-tight: `<a b>`. Head.body with separator glyph directly. Opaque
-verbatim. One line.
+Period `.`, exclamation `!`, colon `:`. A separator splits a head from
+its body when both sides are non-empty and neither neighbor is a
+separator. Otherwise the run stays bare.

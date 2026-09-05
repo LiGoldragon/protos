@@ -146,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "protos"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "proptest",
 ]

@@ -1,19 +1,14 @@
-; protos.ethos — the substrate's own types
 Types
 []
-[ Text Integer Decimal Boolean
-  Symbol.Text
-  Extent.{ Integer Integer }
-  Path.Vector<Integer>
+[ Extent.{ Integer Integer }
   Separator.[ Period Exclamation Colon ]
   Enclosure.[ Braced Bracketed Angled ]
   Boundary.[ CurlyQuotes Parentheses ]
   Head.[ Bare.Symbol Qualified.{ Symbol Vector<Protoform> } ]
-  Protoform.[ Headed.{ Head Separator Protoform }
-              Enclosed.{ Enclosure Vector<Protoform> }
-              Opaque.{ Boundary Text }
-              Bare.Head ]
+  Protoform.[ Headed.{ Head Separator Box<Protoform> } Enclosed.{ Enclosure Vector<Protoform> } Opaque.{ Boundary Text } Bare.Head ]
   Delineation.{ Vector<Protoform> }
-  Problem.[ Unclosed.Enclosure UnclosedBoundary.Boundary Unopened MissingBody MissingHead ]
-  Fault.{ Extent Problem } ]
-[ Text.[ Protosizable ] Protoform.[ Textualizable ] Delineation.[ Textualizable Situating ] ]
+  Problem.[ Unclosed.Enclosure UnclosedBoundary.Boundary Unopened ]
+  Fault.{ Extent Problem }
+  Situated<Sized>.{ Option<Extent> Sized } ]
+[ Protoform.[ Textualizable ]
+  Delineation.[ Textualizable Situating ] ]

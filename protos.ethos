@@ -1,4 +1,4 @@
-; protos.ethos — the substrate's own declaration
+; protos.ethos — the substrate's own types
 Types
 []
 [ Text Integer Decimal Boolean
@@ -16,10 +16,4 @@ Types
   Delineation.{ Vector<Protoform> }
   Problem.[ Unclosed.Enclosure UnclosedBoundary.Boundary Unopened MissingBody MissingHead ]
   Fault.{ Extent Problem } ]
-[ Textualizable.[ textualize.[ Text ] ]
-  Protosizable.{ [] [ Fault ] [] [ protosize.[ Result<Delineation Fault> ] ] }
-  Conceivable.{ [] [ Fault ] [] [ conceive.[ Result<Self Fault> ] ] }
-  Incorporable<Sized>.{ [] [ Fault ] [] [ incorporate.[ Result<Sized Fault> ] ] }
-  Actualizable.{ [] [ Fault ] [] [ actualize.[ Result<Self Fault> ] ] }
-  Situating.[ situate.{ [ Path ] [ Option<Extent> ] } ] ]
 [ Text.[ Protosizable ] Protoform.[ Textualizable ] Delineation.[ Textualizable Situating ] ]

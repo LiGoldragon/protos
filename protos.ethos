@@ -1,11 +1,12 @@
 Types
-[]
-[ Extent.{ Integer Integer }
+[ crate:[ Textualizable Situating ] ]
+[ Symbol.Text
+  Extent.{ Integer Integer }
   Separator.[ Period Exclamation Colon ]
   Enclosure.[ Braced Bracketed Angled ]
   Boundary.[ CurlyQuotes Parentheses ]
   Head.[ Bare.Symbol Qualified.{ Symbol Vector<Protoform> } ]
-  Protoform.[ Headed.{ Head Separator Box<Protoform> } Enclosed.{ Enclosure Vector<Protoform> } Opaque.{ Boundary Text } Bare.Head ]
+  Protoform.[ Headed.{ Head Separator Protoform } Enclosed.{ Enclosure Vector<Protoform> } Opaque.{ Boundary Text } Bare.Head ]
   Delineation.{ Vector<Protoform> }
   Problem.[ Unclosed.Enclosure UnclosedBoundary.Boundary Unopened ]
   Fault.{ Extent Problem }

@@ -9,10 +9,7 @@ fn sym(s: &str) -> Head {
     Head::Symbol(Symbol::try_from(s).unwrap())
 }
 fn bare(s: &str) -> Protoform {
-    match Symbol::try_from(s) {
-        Ok(symbol) => Protoform::Bare(Head::Symbol(symbol)),
-        Err(_) => Protoform::Bare(Head::Bare(Bare::try_from(s).unwrap())),
-    }
+    Protoform::Bare(Bare::try_from(s).unwrap())
 }
 fn headed(h: &str, sep: Separator, body: Protoform) -> Protoform {
     Protoform::Headed(sym(h), sep, Box::new(body))
@@ -27,10 +24,10 @@ fn bracketed(children: Vec<Protoform>) -> Protoform {
     Protoform::Enclosed(Enclosure::Bracketed, children)
 }
 fn quoted(s: &str) -> Protoform {
-    Protoform::Opaque(Boundary::CurlyQuotes, Opaque::from(s))
+    Protoform::Quoted(protos::Text::try_from(s).unwrap())
 }
 fn parens(s: &str) -> Protoform {
-    Protoform::Opaque(Boundary::Parentheses, Opaque::from(s))
+    Protoform::Parenthesized(Opaque::from(s))
 }
 fn qualified(s: &str, constraints: Vec<Protoform>) -> Head {
     Head::Qualified(Symbol::try_from(s).unwrap(), constraints)
@@ -162,7 +159,10 @@ fn adjacency_without_one_trailing_separator_yields_siblings() {
     assert_eq!(forms("a{ 1 }"), vec![bare("a"), braced(vec![bare("1")])]);
     assert_eq!(
         forms("a<b>c"),
-        vec![Protoform::Bare(qualified("a", vec![bare("b")])), bare("c")]
+        vec![
+            Protoform::Qualified(Symbol::try_from("a").unwrap(), vec![bare("b")]),
+            bare("c")
+        ]
     );
 }
 
@@ -171,20 +171,23 @@ fn qualified_head_alone() {
     let text = "Vector<Text>";
     assert_eq!(
         forms(text),
-        vec![Protoform::Bare(qualified("Vector", vec![bare("Text")]))]
+        vec![Protoform::Qualified(
+            Symbol::try_from("Vector").unwrap(),
+            vec![bare("Text")]
+        )]
     );
     let s = situation(text);
     assert_eq!(s.locate(&[]), Some(Extent(0, 12)));
     assert_eq!(s.locate(&[0]), Some(Extent(7, 11)));
     assert_eq!(
         forms("Processable<[Clonable Sendable] Serializable>"),
-        vec![Protoform::Bare(qualified(
-            "Processable",
+        vec![Protoform::Qualified(
+            Symbol::try_from("Processable").unwrap(),
             vec![
                 bracketed(vec![bare("Clonable"), bare("Sendable")]),
                 bare("Serializable")
             ]
-        ))]
+        )]
     );
 }
 
@@ -215,12 +218,15 @@ fn qualified_head_with_body() {
     );
     assert_eq!(
         forms("A.B<C>"),
-        vec![dot("A", Protoform::Bare(qualified("B", vec![bare("C")])))]
+        vec![dot(
+            "A",
+            Protoform::Qualified(Symbol::try_from("B").unwrap(), vec![bare("C")])
+        )]
     );
     assert_eq!(
         forms("A<B>. C"),
         vec![
-            Protoform::Bare(qualified("A", vec![bare("B")])),
+            Protoform::Qualified(Symbol::try_from("A").unwrap(), vec![bare("B")]),
             bare("."),
             bare("C")
         ]

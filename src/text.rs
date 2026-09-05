@@ -2,9 +2,10 @@
 
 use std::fmt;
 
-use crate::anatomy::{Bare, BareRefusal, Boundary, Integer, Opaque, Refusal, Symbol, Text};
+use crate::anatomy::{Bare, BareRefusal, Boundary, Integer, Opaque, Refusal, Symbol, Text, Word};
 use crate::glyph::{Classifying, Glyph};
 use crate::kinds::Delimiting;
+use crate::run::{Run, Splitting, Symbolic};
 
 impl TryFrom<String> for Text {
     type Error = Refusal;
@@ -31,7 +32,7 @@ impl TryFrom<&str> for Text {
     }
 }
 
-impl TryFrom<&str> for Bare {
+impl TryFrom<&str> for Word {
     type Error = BareRefusal;
 
     fn try_from(string: &str) -> Result<Self, Self::Error> {
@@ -53,7 +54,7 @@ impl TryFrom<&str> for Bare {
     }
 }
 
-impl TryFrom<String> for Bare {
+impl TryFrom<String> for Word {
     type Error = BareRefusal;
 
     fn try_from(string: String) -> Result<Self, Self::Error> {
@@ -65,8 +66,8 @@ impl TryFrom<&str> for Symbol {
     type Error = BareRefusal;
 
     fn try_from(string: &str) -> Result<Self, Self::Error> {
-        let bare = Bare::try_from(string)?;
-        for (offset, glyph) in bare.0.char_indices() {
+        let word = Word::try_from(string)?;
+        for (offset, glyph) in word.0.char_indices() {
             if matches!(glyph.classify(), Glyph::Separate(_)) {
                 return Err(BareRefusal {
                     glyph,
@@ -74,7 +75,7 @@ impl TryFrom<&str> for Symbol {
                 });
             }
         }
-        Ok(Self(bare.0))
+        Ok(Self(word.0))
     }
 }
 
@@ -86,7 +87,47 @@ impl TryFrom<String> for Symbol {
     }
 }
 
+impl TryFrom<&str> for Bare {
+    type Error = BareRefusal;
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        let word = Word::try_from(string)?;
+        let run = Run {
+            text: word.as_ref(),
+            start: 0,
+        };
+        let pieces = run.pieces();
+        let last = pieces.len() - 1;
+        if last > 0 && pieces[..last].iter().all(Symbolic::is_symbol) && pieces[last].is_symbol() {
+            let (offset, glyph) = word
+                .0
+                .char_indices()
+                .find(|(_, glyph)| matches!(glyph.classify(), Glyph::Separate(_)))
+                .expect("a headed run has a separator");
+            return Err(BareRefusal {
+                glyph,
+                offset: offset as Integer,
+            });
+        }
+        Ok(Self(word.0))
+    }
+}
+
+impl TryFrom<String> for Bare {
+    type Error = BareRefusal;
+
+    fn try_from(string: String) -> Result<Self, Self::Error> {
+        Self::try_from(string.as_str()).map(|_| Self(string))
+    }
+}
+
 impl AsRef<str> for Bare {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for Word {
     fn as_ref(&self) -> &str {
         &self.0
     }

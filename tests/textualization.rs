@@ -3,17 +3,14 @@
 use proptest::prelude::*;
 use protos::{
     Bare, Boundary, Delineation, Enclosure, Extent, Head, Locating, Opaque, Protoform,
-    Protosizable, Refusal, Separator, Situated, Situating, Symbol, Text, Textualizable,
+    Protosizable, Refusal, Separator, Situated, Situating, Symbol, Text, Textualizable, Word,
 };
 
 fn sym(s: &str) -> Head {
     Head::Symbol(Symbol::try_from(s).unwrap())
 }
 fn bare(s: &str) -> Protoform {
-    match Symbol::try_from(s) {
-        Ok(symbol) => Protoform::Bare(Head::Symbol(symbol)),
-        Err(_) => Protoform::Bare(Head::Bare(Bare::try_from(s).unwrap())),
-    }
+    Protoform::Bare(Bare::try_from(s).unwrap())
 }
 fn dot(h: &str, body: Protoform) -> Protoform {
     Protoform::Headed(sym(h), Separator::Period, Box::new(body))
@@ -22,7 +19,10 @@ fn enclosed(e: Enclosure, children: Vec<Protoform>) -> Protoform {
     Protoform::Enclosed(e, children)
 }
 fn opaque(b: Boundary, s: &str) -> Protoform {
-    Protoform::Opaque(b, Opaque::from(s))
+    match b {
+        Boundary::CurlyQuotes => Protoform::Quoted(Text::try_from(s).unwrap()),
+        Boundary::Parentheses => Protoform::Parenthesized(Opaque::from(s)),
+    }
 }
 
 /// The writer's situation must be the reader's situation of the written text.
@@ -100,10 +100,10 @@ fn heads_and_chains() {
 #[test]
 fn qualified_heads() {
     assert_eq!(
-        agrees(Protoform::Bare(Head::Qualified(
+        agrees(Protoform::Qualified(
             Symbol::try_from("Vector").unwrap(),
             vec![bare("Text")]
-        ))),
+        )),
         "Vector<Text>"
     );
     assert_eq!(
@@ -194,6 +194,13 @@ fn text_refuses_the_closing_curly_quote() {
     let text = Text::try_from("a “ b ( ) { } ; \\").unwrap();
     assert_eq!(text.as_ref(), "a “ b ( ) { } ; \\");
     assert_eq!(String::from(text), "a “ b ( ) { } ; \\");
+}
+
+#[test]
+fn bare_admits_only_the_reader_bare_anatomy() {
+    assert!(Bare::try_from("a:b").is_err());
+    assert!(Bare::try_from("a..b").is_ok());
+    assert!(Word::try_from("a:b").is_ok());
 }
 
 proptest! {

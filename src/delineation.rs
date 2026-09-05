@@ -209,9 +209,7 @@ impl Reading for Reader<'_> {
                     extent: Extent(piece.start, end as Integer),
                     children: vec![],
                 },
-                Protoform::Bare(Head::Symbol(
-                    Symbol::try_from(piece.text).expect("a nonempty run piece is a symbol"),
-                )),
+                Protoform::Bare(Bare::try_from(piece.text).expect("a nonempty run piece is bare")),
             ));
         } else {
             self.deliver(Situated(
@@ -219,7 +217,7 @@ impl Reading for Reader<'_> {
                     extent: Extent(start as Integer, end as Integer),
                     children: vec![],
                 },
-                Protoform::Bare(Head::Bare(Bare::try_from(run.text).expect("a run is bare"))),
+                Protoform::Bare(Bare::try_from(run.text).expect("a run is bare")),
             ));
         }
     }
@@ -285,10 +283,9 @@ impl Reading for Reader<'_> {
         };
         let mut at = constraints_at;
         at.extent = Extent(start as Integer, end as Integer);
-        let head = Head::Qualified(symbol, forms);
         let separator = match self.glyph_at(end).map(Classifying::classify) {
             Some(Glyph::Separate(separator)) => separator,
-            _ => return self.deliver(Situated(at, Protoform::Bare(head))),
+            _ => return self.deliver(Situated(at, Protoform::Qualified(symbol, forms))),
         };
         let after = self
             .glyph_at(end + separator.glyph().len_utf8())
@@ -296,29 +293,34 @@ impl Reading for Reader<'_> {
         if matches!(after, Some(Glyph::Open(_) | Glyph::Bound(_) | Glyph::Plain)) {
             self.offset = end + separator.glyph().len_utf8();
             self.frames.push(Frame::Heading {
-                head,
+                head: Head::Qualified(symbol, forms),
                 at,
                 separator,
                 start,
             });
         } else {
-            self.deliver(Situated(at, Protoform::Bare(head)));
+            self.deliver(Situated(at, Protoform::Qualified(symbol, forms)));
         }
     }
 
     fn read_bounded(&mut self, boundary: Boundary) -> Result<(), Fault> {
         use crate::opaque::Bounding;
         let opened = self.offset;
-        let content = match boundary {
-            Boundary::CurlyQuotes => self.read_quoted()?,
-            Boundary::Parentheses => self.read_parenthesized()?,
+        let structure = match boundary {
+            Boundary::CurlyQuotes => Protoform::Quoted(
+                crate::Text::try_from(self.read_quoted()?)
+                    .expect("the quoted reader stops at the closing quote"),
+            ),
+            Boundary::Parentheses => {
+                Protoform::Parenthesized(Opaque::from(self.read_parenthesized()?))
+            }
         };
         self.deliver(Situated(
             Situation {
                 extent: Extent(opened as Integer, self.offset as Integer),
                 children: vec![],
             },
-            Protoform::Opaque(boundary, Opaque::from(content)),
+            structure,
         ));
         Ok(())
     }

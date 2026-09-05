@@ -14,6 +14,7 @@
 
 mod actualization;
 mod anatomy;
+mod deep;
 mod delineation;
 mod dropping;
 mod glyph;
@@ -27,7 +28,7 @@ mod textualization;
 pub use anatomy::{
     Bare, BareRefusal, Boolean, Boundary, Decimal, DecimalRefusal, Delineation, Enclosure, Extent,
     Fault, Head, Integer, Opaque, Path, Potential, Problem, Protoform, Refusal, Separator,
-    Situated, Situation, Symbol, Text,
+    Situated, Situation, Symbol, Text, Word,
 };
 pub use glyph::{Classifying, Glyph};
 pub use kinds::{

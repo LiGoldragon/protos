@@ -25,7 +25,7 @@ pub trait Serial: Sized + Copy {
 }
 
 /// The kind whose capability writes its canonical text.
-pub trait Textualizable {
+pub trait Textualizable<C = Delineation> {
     /// The canonical text.
     fn textualize(&self) -> String;
 }

@@ -1,10 +1,12 @@
 ; protos: the universal structural substrate. Its types, and what they bear.
-; Situated and Potential are generic and have no Declaration form; a glyph is written Text.
+; Situated and Potential are generic and have no Declaration form. Rust's
+; String-backed scalar wrappers (Symbol, Bare, Word, Opaque and Text), chars,
+; and borrowed handles also have no Declaration form and are named here only
+; where another declared shape refers to them.
 Types
 [ std::marker:Copyable.Copy
-  crate:[ Situated Textualizable Situating Locating Classifying ] ]
-[ Symbol.Text
-  Path.Vector<Integer>
+  crate:[ Situated Symbol Bare Word Opaque Text Textualizable Situating Locating Classifying ] ]
+[ Path.Vector<Integer>
   Extent.{ Integer Integer }
   Situation.{ Extent Vector<Situation> }
   Refusal.{ Text Integer }
@@ -13,7 +15,7 @@ Types
   Boundary.[ CurlyQuotes Parentheses ]
   Glyph.[ Space Comment Open.Enclosure Close.Enclosure Bound.Boundary Unbound.Boundary Separate.Separator Plain ]
   Head.[ Symbol.Symbol Qualified.{ Symbol Vector<Protoform> } ]
-  Protoform.[ Headed.{ Head Separator Protoform } Enclosed.{ Enclosure Vector<Protoform> } Opaque.{ Boundary Text } Bare.Head ]
+  Protoform.[ Headed.{ Head Separator Protoform } Enclosed.{ Enclosure Vector<Protoform> } Quoted.Text Parenthesized.Opaque Bare.Bare Qualified.{ Symbol Vector<Protoform> } ]
   Delineation.{ Vector<Situated<Protoform>> }
   Problem.[ Unclosed.Enclosure Unopened.Enclosure Unterminated.Boundary Stray.Boundary ]
   Fault.{ Extent Problem } ]

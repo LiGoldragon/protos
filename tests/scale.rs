@@ -4,7 +4,7 @@
 
 use std::process::Command;
 
-use protos::{Bare, Enclosure, Head, Protoform, Protosizable, Situating, Textualizable};
+use protos::{Bare, Enclosure, Protoform, Protosizable, Situating, Textualizable};
 
 const SIZES: [usize; 3] = [1_000, 10_000, 100_000];
 const MODES: [&str; 6] = [
@@ -68,7 +68,7 @@ fn probe(mode: &str, n: usize) {
         "write-vector" => {
             let mut children = Vec::with_capacity(n);
             for _ in 0..n {
-                children.push(Protoform::Bare(Head::Bare(Bare::try_from("1").unwrap())));
+                children.push(Protoform::Bare(Bare::try_from("1").unwrap()));
             }
             let form = Protoform::Enclosed(Enclosure::Bracketed, children);
             let text = form.textualize();

@@ -3,8 +3,9 @@
 use std::fmt;
 use std::marker::PhantomData;
 
-use crate::anatomy::{Delineation, Potential, Situated};
+use crate::anatomy::{Delineation, Extent, Potential, Protoform, Situated, Situation};
 use crate::kinds::{Actualizable, Conceivable, Incorporable, Protosizable, Texted};
+use std::convert::Infallible;
 
 impl<T, C> From<String> for Potential<T, C> {
     fn from(text: String) -> Self {
@@ -43,6 +44,64 @@ impl<T, C> PartialEq for Potential<T, C> {
 }
 
 impl<T, C> Eq for Potential<T, C> {}
+
+impl Conceivable<Delineation> for Protoform {
+    type Fault = Infallible;
+
+    fn conceive(&self) -> Result<Situated<Delineation>, Self::Fault> {
+        Ok(Situated(
+            Situation {
+                extent: Extent(0, 0),
+                children: vec![],
+            },
+            Delineation(vec![Situated(
+                Situation {
+                    extent: Extent(0, 0),
+                    children: vec![],
+                },
+                self.clone(),
+            )]),
+        ))
+    }
+}
+
+impl Protosizable for Protoform {
+    type Fault = Infallible;
+
+    fn protosize(&self) -> Result<Delineation, Self::Fault> {
+        Ok(self.conceive().expect("infallible protoform projection").1)
+    }
+}
+
+impl Conceivable<Delineation> for Delineation {
+    type Fault = Infallible;
+
+    fn conceive(&self) -> Result<Situated<Delineation>, Self::Fault> {
+        Ok(Situated(
+            Situation {
+                extent: Extent(0, 0),
+                children: vec![],
+            },
+            self.clone(),
+        ))
+    }
+}
+
+impl Conceivable<Delineation> for Situated<Protoform> {
+    type Fault = Infallible;
+
+    fn conceive(&self) -> Result<Situated<Delineation>, Self::Fault> {
+        Ok(Situated(self.0.clone(), Delineation(vec![self.clone()])))
+    }
+}
+
+impl Protosizable for Delineation {
+    type Fault = Infallible;
+
+    fn protosize(&self) -> Result<Delineation, Self::Fault> {
+        Ok(self.clone())
+    }
+}
 
 /// The descent: protosize the text, conceive the concept, incorporate the value.
 impl<T, C> Actualizable<T> for Potential<T, C>

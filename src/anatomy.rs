@@ -73,10 +73,15 @@ pub type Boolean = bool;
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Symbol(pub(crate) String);
 
-/// A bare run: non-empty plain glyphs and separators, whose position gives its
-/// separator glyphs their meaning.
+/// A structural bare run: non-empty plain glyphs and separators that the
+/// reader itself leaves bare rather than delineating as a headed chain.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bare(pub(crate) String);
+
+/// A datom word run: non-empty plain glyphs and separators, whose meaning is
+/// supplied by the position that carries it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Word(pub(crate) String);
 
 /// Why text cannot become a structural bare run or symbol.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -115,7 +120,6 @@ pub struct Extent(pub Integer, pub Integer);
 pub type Path = Vec<Integer>;
 
 /// Where a structure and each of its children lie in the text: a tree parallel to the structure.
-#[derive(Debug, PartialEq, Eq)]
 pub struct Situation {
     /// The structure's own span.
     pub extent: Extent,
@@ -124,7 +128,6 @@ pub struct Situation {
 }
 
 /// A value paired with its situation.
-#[derive(Debug, PartialEq, Eq)]
 pub struct Situated<T>(pub Situation, pub T);
 
 /// A separator between a head and its body.
@@ -159,31 +162,30 @@ pub enum Boundary {
 }
 
 /// The head of a structure: a symbol, possibly qualified by constraints in angle brackets.
-#[derive(Debug, PartialEq, Eq)]
 pub enum Head {
     /// A symbol alone.
     Symbol(Symbol),
-    /// A bare run whose separators are data in its position.
-    Bare(Bare),
     /// A symbol immediately followed by its constraints: `Vector<Text>`.
     Qualified(Symbol, Vec<Protoform>),
 }
 
 /// One unit of structural text.
-#[derive(Debug, PartialEq, Eq)]
 pub enum Protoform {
     /// A head, a separator and a body.
     Headed(Head, Separator, Box<Protoform>),
     /// Structures between the delimiters of an enclosure.
     Enclosed(Enclosure, Vec<Protoform>),
-    /// Content between the delimiters of a boundary.
-    Opaque(Boundary, Opaque),
-    /// A head alone.
-    Bare(Head),
+    /// Text between curly quotes. [`Text`] excludes the closing quote.
+    Quoted(Text),
+    /// Content between balanced parentheses.
+    Parenthesized(Opaque),
+    /// A bare run whose separators are data in its position.
+    Bare(Bare),
+    /// A qualified head with no body.
+    Qualified(Symbol, Vec<Protoform>),
 }
 
 /// The structural survey of a text: its top-level structures, each situated.
-#[derive(Debug, PartialEq, Eq)]
 pub struct Delineation(pub Vec<Situated<Protoform>>);
 
 /// What can go wrong in the structure of a text.

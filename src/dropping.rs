@@ -23,12 +23,12 @@ impl Shedding for Protoform {
                 head.shed(work);
                 work.push(std::mem::replace(
                     body.as_mut(),
-                    Protoform::Bare(Head::Bare(Bare::try_from("_").expect("underscore is bare"))),
+                    Protoform::Bare(Bare::try_from("_").expect("underscore is bare")),
                 ));
             }
             Protoform::Enclosed(_, children) => work.append(children),
-            Protoform::Bare(head) => head.shed(work),
-            Protoform::Opaque(..) => {}
+            Protoform::Qualified(_, constraints) => work.append(constraints),
+            Protoform::Bare(_) | Protoform::Quoted(_) | Protoform::Parenthesized(_) => {}
         }
     }
 }

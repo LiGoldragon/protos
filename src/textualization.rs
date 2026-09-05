@@ -5,8 +5,9 @@ use crate::anatomy::{
     Boundary, Delineation, Enclosure, Extent, Head, Integer, Protoform, Situated, Situation,
 };
 use crate::glyph::Mark;
+use crate::kinds::{Conceivable, Protosizable, Situating, Textualizable};
 use crate::kinds::{Delimiting, Glyphing};
-use crate::kinds::{Situating, Textualizable};
+use std::convert::Infallible;
 
 /// The kind whose capability says whether an enclosure's content is spaced from its delimiters.
 trait Spacing {
@@ -88,6 +89,7 @@ struct Writer<'a> {
 trait Stepping<'a> {
     fn begin(&mut self, form: &'a Protoform);
     fn head(&mut self, head: &'a Head);
+    fn qualified(&mut self, symbol: &'a crate::Symbol, constraints: &'a [Protoform]);
     fn finish(&mut self, start: usize, arity: usize);
     fn schedule(&mut self, forms: &'a [Protoform]);
     fn write(self) -> Situated<String>;
@@ -118,11 +120,19 @@ impl<'a> Stepping<'a> for Writer<'a> {
                     self.schedule(children);
                 }
             }
-            Protoform::Opaque(boundary, text) => {
-                text.write_within(*boundary, &mut self.out);
+            Protoform::Quoted(text) => {
+                text.write_within(Boundary::CurlyQuotes, &mut self.out);
                 self.finish(start, 0);
             }
-            Protoform::Bare(head) => self.head(head),
+            Protoform::Parenthesized(text) => {
+                text.write_within(Boundary::Parentheses, &mut self.out);
+                self.finish(start, 0);
+            }
+            Protoform::Bare(bare) => {
+                self.out.push_str(bare.as_ref());
+                self.finish(start, 0);
+            }
+            Protoform::Qualified(symbol, constraints) => self.qualified(symbol, constraints),
         }
     }
 
@@ -133,21 +143,20 @@ impl<'a> Stepping<'a> for Writer<'a> {
                 self.out.push_str(symbol.as_ref());
                 self.finish(start, 0);
             }
-            Head::Bare(bare) => {
-                self.out.push_str(bare.as_ref());
-                self.finish(start, 0);
-            }
-            Head::Qualified(symbol, constraints) => {
-                self.out.push_str(symbol.as_ref());
-                self.out.push(Enclosure::Angled.opener());
-                self.steps.push(Step::Finish {
-                    start,
-                    arity: constraints.len(),
-                });
-                self.steps.push(Step::Glyph(Enclosure::Angled.closer()));
-                self.schedule(constraints);
-            }
+            Head::Qualified(symbol, constraints) => self.qualified(symbol, constraints),
         }
+    }
+
+    fn qualified(&mut self, symbol: &'a crate::Symbol, constraints: &'a [Protoform]) {
+        let start = self.out.len();
+        self.out.push_str(symbol.as_ref());
+        self.out.push(Enclosure::Angled.opener());
+        self.steps.push(Step::Finish {
+            start,
+            arity: constraints.len(),
+        });
+        self.steps.push(Step::Glyph(Enclosure::Angled.closer()));
+        self.schedule(constraints);
     }
 
     fn finish(&mut self, start: usize, arity: usize) {
@@ -196,8 +205,12 @@ impl Situating for Protoform {
     }
 }
 
-impl Textualizable for Protoform {
-    fn textualize(&self) -> String {
+trait Writing {
+    fn write_text(&self) -> String;
+}
+
+impl Writing for Protoform {
+    fn write_text(&self) -> String {
         self.situate().1
     }
 }
@@ -208,21 +221,36 @@ impl Situating for Situated<Protoform> {
     }
 }
 
-impl Textualizable for Situated<Protoform> {
-    fn textualize(&self) -> String {
-        self.1.textualize()
+impl Writing for Situated<Protoform> {
+    fn write_text(&self) -> String {
+        self.1.write_text()
     }
 }
 
-impl Textualizable for Delineation {
-    fn textualize(&self) -> String {
+impl Writing for Delineation {
+    fn write_text(&self) -> String {
         let mut out = String::new();
         for (index, structure) in self.0.iter().enumerate() {
             if index > 0 {
                 out.push(' ');
             }
-            out.push_str(&structure.textualize());
+            out.push_str(&structure.write_text());
         }
         out
+    }
+}
+
+impl<T, C> Textualizable<C> for T
+where
+    T: Conceivable<C, Fault = Infallible>,
+    C: Protosizable<Fault = Infallible>,
+{
+    fn textualize(&self) -> String {
+        self.conceive()
+            .expect("an infallible ascent cannot fault")
+            .1
+            .protosize()
+            .expect("an infallible structural projection cannot fault")
+            .write_text()
     }
 }

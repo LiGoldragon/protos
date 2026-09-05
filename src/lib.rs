@@ -248,9 +248,9 @@ pub trait Conceivable<C> {
     fn conceive(&self) -> Result<C, Self::Fault>;
 }
 
-pub trait Incorporable<C>: Sized {
+pub trait Incorporable<T> {
     type Fault;
-    fn incorporate(concept: C) -> Result<Self, Self::Fault>;
+    fn incorporate(self) -> Result<T, Self::Fault>;
 }
 
 pub trait Actualizable<T: Sized> {
@@ -890,26 +890,26 @@ impl<C> Protosizable for Potential<(), C> {
 
 impl<C, T> Actualizable<T> for Potential<T, C>
 where
-    C: Sized,
-    T: Incorporable<C>,
+    C: Incorporable<T>,
     Delineation: Conceivable<C>,
-    T::Fault: From<Fault> + From<<Delineation as Conceivable<C>>::Fault> + Pathed,
+    <C as Incorporable<T>>::Fault:
+        From<Fault> + From<<Delineation as Conceivable<C>>::Fault> + Pathed,
 {
-    type Fault = Situated<T::Fault>;
+    type Fault = Situated<<C as Incorporable<T>>::Fault>;
 
-    fn actualize(&self) -> Result<T, Situated<T::Fault>> {
+    fn actualize(&self) -> Result<T, Self::Fault> {
         let delineation = self.text().to_owned().protosize().map_err(|f| {
             let extent = Some(f.extent);
-            Situated(extent, T::Fault::from(f))
+            Situated(extent, <C as Incorporable<T>>::Fault::from(f))
         })?;
 
-        let concept = delineation.conceive().map_err(|f| {
-            let fault = T::Fault::from(f);
+        let concept: C = delineation.conceive().map_err(|f| {
+            let fault = <C as Incorporable<T>>::Fault::from(f);
             let extent = delineation.situate(fault.path());
             Situated(extent, fault)
         })?;
 
-        T::incorporate(concept).map_err(|f| {
+        concept.incorporate().map_err(|f| {
             let extent = delineation.situate(f.path());
             Situated(extent, f)
         })

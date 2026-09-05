@@ -19,7 +19,7 @@ Types
 [ Textualizable.[ textualize.[ Text ] ]
   Protosizable.{ [] [ Fault ] [] [ protosize.[ Result<Delineation Fault> ] ] }
   Conceivable.{ [] [ Fault ] [] [ conceive.[ Result<Self Fault> ] ] }
-  Incorporable.{ [] [ Fault ] [] [ incorporate:{ [ Self ] [ Result<Self Fault> ] } ] }
+  Incorporable<Sized>.{ [] [ Fault ] [] [ incorporate.[ Result<Sized Fault> ] ] }
   Actualizable.{ [] [ Fault ] [] [ actualize.[ Result<Self Fault> ] ] }
   Situating.[ situate.{ [ Path ] [ Option<Extent> ] } ] ]
 [ Text.[ Protosizable ] Protoform.[ Textualizable ] Delineation.[ Textualizable Situating ] ]

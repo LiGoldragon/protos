@@ -150,9 +150,9 @@ pub(crate) trait Identifying: Serial + Glyphing {
 
 impl<G: Serial + Glyphing> Identifying for G {}
 
-/// What a character is to the reader.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Glyph {
+/// What a character is to protos.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Glyph {
     /// Whitespace between structures.
     Space,
     /// The comment opener.
@@ -171,8 +171,8 @@ pub(crate) enum Glyph {
     Plain,
 }
 
-/// The kind whose capability classifies a character for the reader.
-pub(crate) trait Classifying {
+/// The kind whose capability classifies a character: what it is to protos.
+pub trait Classifying {
     /// What the character is.
     fn classify(self) -> Glyph;
 }

@@ -25,8 +25,9 @@ mod text;
 mod textualization;
 
 pub use anatomy::{
-    Boolean, Boundary, Decimal, Delineation, Enclosure, Extent, Fault, Head, Integer, Opaque, Path,
-    Potential, Problem, Protoform, Refusal, Separator, Situated, Situation, Symbol, Text,
+    Boolean, Boundary, Decimal, DecimalRefusal, Delineation, Enclosure, Extent, Fault, Head,
+    Integer, Opaque, Path, Potential, Problem, Protoform, Refusal, Separator, Situated, Situation,
+    Symbol, Text,
 };
 pub use glyph::{Classifying, Glyph};
 pub use kinds::{

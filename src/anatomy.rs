@@ -1,12 +1,70 @@
 //! The types of every layer: text, situation, delimiters, protoform, fault.
 
-use std::marker::PhantomData;
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 
 /// A signed 64-bit integer.
 pub type Integer = i64;
 
-/// A 64-bit floating-point number.
-pub type Decimal = f64;
+/// A finite 64-bit decimal value.
+///
+/// A corporate value must have canonical readable text, so IEEE infinities and
+/// NaN never inhabit this type.
+#[derive(Clone, Copy, Default)]
+pub struct Decimal(f64);
+
+/// Why a floating-point value cannot become a [`Decimal`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DecimalRefusal {
+    /// The value is NaN or an infinity.
+    Nonfinite,
+}
+
+impl TryFrom<f64> for Decimal {
+    type Error = DecimalRefusal;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        value
+            .is_finite()
+            .then_some(Self(value))
+            .ok_or(DecimalRefusal::Nonfinite)
+    }
+}
+
+impl From<Decimal> for f64 {
+    fn from(decimal: Decimal) -> f64 {
+        decimal.0
+    }
+}
+
+impl PartialEq for Decimal {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits()
+    }
+}
+
+impl Eq for Decimal {}
+
+impl Hash for Decimal {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state);
+    }
+}
+
+impl fmt::Debug for Decimal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl fmt::Display for Decimal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 /// A truth value.
 pub type Boolean = bool;

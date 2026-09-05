@@ -1,13 +1,18 @@
+; protos: the kinds each layer bears, named by where the capability goes.
+; Sized names the unnamed constraint of a kind; Situated<Sized> is the concept a structure conceives.
 Kinds
-[ crate:[ Delineation Extent ] ]
+[ std::marker:Copyable.Copy
+  crate:[ Delineation Extent Glyph Situation Situated ] ]
 [ Glyphing.[ glyph.[ Text ] ]
   Delimiting.[ opener.[ Text ] closer.[ Text ] ]
-  Identifying.[ identify:[ Option<Self> ] ]
-  Recognizing.[ from_opener:[ Option<Self> ] from_closer:[ Option<Self> ] ]
+  Serial.{ [ Sized Copyable ] [] [] [ first:[ Self ] after.[ Option<Self> ] ] }
+  Classifying.[ classify.[ Glyph ] ]
   Textualizable.[ textualize.[ Text ] ]
-  Protosizable.{ [] [ Fault ] [] [ protosize.{ [] [ Result<Delineation Fault> ] } ] }
-  Conceivable<Sized>.{ [] [ Fault ] [] [ conceive.{ [] [ Result<Sized Fault> ] } ] }
-  Incorporable<Sized>.{ [] [ Fault ] [] [ incorporate.{ [] [ Result<Sized Fault> ] } ] }
-  Actualizable<Sized>.{ [] [ Fault ] [] [ actualize.{ [] [ Result<Sized Fault> ] } ] }
-  Situating.[ situate.{ [ Integer ] [ Option<Extent> ] } ]
+  Situating.[ situate.[ Situated<Text> ] ]
+  Protosizable.{ [] [ Fault ] [] [ protosize.[ Result<Delineation Fault> ] ] }
+  Conceivable<Sized>.{ [] [ Fault ] [] [ conceive.[ Result<Situated<Sized> Fault> ] ] }
+  Incorporable<Sized>.{ [] [ Fault ] [] [ incorporate.{ [ Situation ] [ Result<Sized Fault> ] } ] }
+  Actualizable<Sized>.{ [] [ Fault ] [] [ actualize.[ Result<Sized Fault> ] ] }
+  Pathed.[ path.[ Vector<Integer> ] within.{ [ Integer ] [ Self ] } ]
+  Locating.[ locate.{ [ Vector<Integer> ] [ Option<Extent> ] } part.{ [ Integer ] [ Situation ] } ]
   Texted.[ text.[ Text ] ] ]

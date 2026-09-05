@@ -27,6 +27,7 @@ pub use anatomy::{
     Boolean, Boundary, Decimal, Delineation, Enclosure, Extent, Fault, Head, Integer, Path,
     Potential, Problem, Protoform, Refusal, Separator, Situated, Situation, Symbol, Text,
 };
+pub use glyph::{Classifying, Glyph};
 pub use kinds::{
     Actualizable, Conceivable, Delimiting, Glyphing, Incorporable, Locating, Pathed, Protosizable,
     Serial, Situating, Texted, Textualizable,

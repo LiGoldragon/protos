@@ -81,7 +81,8 @@ the glyph and its offset.
 | `glyph` | each delimiter's glyphs; classification by walking the variants | `Glyphing`, `Delimiting`, `Serial`, `Classifying` |
 | `text` | `Text` and its refusal | |
 | `run` | a bare run split into its pieces | |
-| `delineation` | the reader | `Protosizable` |
+| `delineation` | the reader: frames, runs, heads, enclosures | `Protosizable` |
+| `opaque` | the opaque regions: quotes, parentheses by balance | |
 | `textualization` | the writer, with the situation | `Situating`, `Textualizable` |
 | `situation` | lookup by path; iterative drop | `Locating` |
 | `actualization` | `Potential` and the descent | `Actualizable` |

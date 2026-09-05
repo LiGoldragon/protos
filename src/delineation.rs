@@ -5,7 +5,7 @@ use crate::anatomy::{
     Boundary, Delineation, Enclosure, Extent, Fault, Head, Integer, Problem, Protoform, Separator,
     Situated, Situation, Symbol, Text,
 };
-use crate::glyph::{Classifying, Glyph, Mark};
+use crate::glyph::{Classifying, Glyph};
 use crate::kinds::Protosizable;
 use crate::kinds::{Delimiting, Glyphing};
 use crate::run::{Piece, Run, Splitting, Symbolic};
@@ -35,16 +35,16 @@ enum Frame {
 }
 
 /// The reader's state: the text, the offset, the open frames, the finished top-level structures.
-struct Reader<'a> {
-    text: &'a str,
-    offset: usize,
+pub(crate) struct Reader<'a> {
+    pub(crate) text: &'a str,
+    pub(crate) offset: usize,
     frames: Vec<Frame>,
     qualifying: Option<Qualifying>,
     done: Vec<Situated<Protoform>>,
 }
 
 /// The kind whose capability builds a fault at a byte span.
-trait Faulting {
+pub(crate) trait Faulting {
     fn fault(&self, start: usize, end: usize, problem: Problem) -> Fault;
 }
 
@@ -58,7 +58,7 @@ impl Faulting for Reader<'_> {
 }
 
 /// The kind whose capability yields the glyph at an offset.
-trait Peeking {
+pub(crate) trait Peeking {
     fn glyph_at(&self, offset: usize) -> Option<char>;
 }
 
@@ -124,8 +124,6 @@ trait Reading {
     fn read_open(&mut self, enclosure: Enclosure);
     fn read_close(&mut self, enclosure: Enclosure) -> Result<(), Fault>;
     fn read_bounded(&mut self, boundary: Boundary) -> Result<(), Fault>;
-    fn read_quoted(&mut self) -> Result<String, Fault>;
-    fn read_parenthesized(&mut self) -> Result<String, Fault>;
     fn qualify(&mut self, symbol: Symbol, start: usize, constraints: Situated<Protoform>);
 }
 
@@ -292,6 +290,7 @@ impl Reading for Reader<'_> {
     }
 
     fn read_bounded(&mut self, boundary: Boundary) -> Result<(), Fault> {
+        use crate::opaque::Bounding;
         let opened = self.offset;
         let content = match boundary {
             Boundary::CurlyQuotes => self.read_quoted()?,
@@ -305,72 +304,6 @@ impl Reading for Reader<'_> {
             Protoform::Opaque(boundary, Text(content)),
         ));
         Ok(())
-    }
-
-    fn read_quoted(&mut self) -> Result<String, Fault> {
-        let opened = self.offset;
-        let closer = Boundary::CurlyQuotes.closer();
-        let mut here = opened + Boundary::CurlyQuotes.opener().len_utf8();
-        let content_start = here;
-        while let Some(glyph) = self.glyph_at(here) {
-            if glyph == closer {
-                self.offset = here + closer.len_utf8();
-                return Ok(self.text[content_start..here].to_owned());
-            }
-            here += glyph.len_utf8();
-        }
-        Err(self.fault(
-            opened,
-            self.text.len(),
-            Problem::Unterminated(Boundary::CurlyQuotes),
-        ))
-    }
-
-    fn read_parenthesized(&mut self) -> Result<String, Fault> {
-        let opened = self.offset;
-        let opener = Boundary::Parentheses.opener();
-        let closer = Boundary::Parentheses.closer();
-        let escape = Mark::Escape.glyph();
-        let stray = Boundary::CurlyQuotes.closer();
-        let mut here = opened + opener.len_utf8();
-        let mut depth = 0usize;
-        let mut content = String::new();
-        while let Some(glyph) = self.glyph_at(here) {
-            here += glyph.len_utf8();
-            if glyph == escape {
-                match self.glyph_at(here) {
-                    Some(next) if next == opener || next == closer || next == escape => {
-                        content.push(next);
-                        here += next.len_utf8();
-                    }
-                    Some(_) => content.push(glyph),
-                    None => break,
-                }
-            } else if glyph == opener {
-                depth += 1;
-                content.push(glyph);
-            } else if glyph == closer {
-                if depth == 0 {
-                    self.offset = here;
-                    return Ok(content);
-                }
-                depth -= 1;
-                content.push(glyph);
-            } else if glyph == stray {
-                return Err(self.fault(
-                    here - glyph.len_utf8(),
-                    here,
-                    Problem::Stray(Boundary::CurlyQuotes),
-                ));
-            } else {
-                content.push(glyph);
-            }
-        }
-        Err(self.fault(
-            opened,
-            self.text.len(),
-            Problem::Unterminated(Boundary::Parentheses),
-        ))
     }
 }
 

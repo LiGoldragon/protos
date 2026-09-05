@@ -18,6 +18,7 @@ mod delineation;
 mod dropping;
 mod glyph;
 mod kinds;
+mod opaque;
 mod run;
 mod situation;
 mod text;

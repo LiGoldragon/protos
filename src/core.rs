@@ -417,9 +417,19 @@ impl Printing for Protos {
                         out.push(glyph);
                     }
                 } else {
+                    let mut depth = 0usize;
                     for glyph in content.chars() {
-                        if matches!(glyph, '\\' | '(' | ')') {
+                        if glyph == '\\' {
                             out.push('\\');
+                        }
+                        if glyph == ')' && depth == 0 {
+                            out.push('\\');
+                        }
+                        if glyph == '(' {
+                            depth += 1;
+                        }
+                        if glyph == ')' && depth > 0 {
+                            depth -= 1;
                         }
                         out.push(glyph);
                     }

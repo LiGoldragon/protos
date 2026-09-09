@@ -1,4 +1,6 @@
-use protos::{Boundary, Enclosure, Protos, Protosizable, Textualizable};
+use protos::{
+    Boundary, BoundedProtosizable, Enclosure, Protos, Protosizable, ReaderBudget, Textualizable,
+};
 #[test]
 fn structural_forms_keep_their_own_extents() {
     let form = "Reviewer.{ 2024 17 }".protosize().expect("structure");
@@ -55,6 +57,12 @@ fn parentheses_escape_their_structural_glyphs() {
         let form = text.protosize().expect("escaped meaning");
         assert_eq!(form.textualize(), text);
     }
+}
+
+#[test]
+fn reader_budget_bounds_recursive_descent() {
+    let mut budget = ReaderBudget { remaining: 2 };
+    assert!("{ { Ada } }".protosize_with(&mut budget).is_err());
 }
 
 #[test]

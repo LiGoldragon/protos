@@ -60,6 +60,28 @@ pub enum Problem {
     Unexpected(char),
     MissingHead,
     MissingBody,
+    Budget,
+}
+/// The number of structural nodes one reading act may visit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReaderBudget {
+    pub remaining: usize,
+}
+pub trait ReaderBudgeting {
+    fn spend(&mut self) -> bool;
+}
+impl ReaderBudgeting for ReaderBudget {
+    fn spend(&mut self) -> bool {
+        if self.remaining == 0 {
+            false
+        } else {
+            self.remaining -= 1;
+            true
+        }
+    }
+}
+pub trait BoundedProtosizable {
+    fn protosize_with(&self, budget: &mut ReaderBudget) -> Result<Protos, Error>;
 }
 pub trait Protosizable {
     fn protosize(&self) -> Result<Protos, Error>;
@@ -131,6 +153,7 @@ impl Extenting for Protos {
 struct Reader<'a> {
     text: &'a str,
     offset: usize,
+    budget: &'a mut ReaderBudget,
 }
 trait Reading {
     fn whole(&mut self) -> Result<Protos, Error>;
@@ -158,6 +181,9 @@ impl Reading for Reader<'_> {
         }
     }
     fn node(&mut self) -> Result<Protos, Error> {
+        if !self.budget.spend() {
+            return Err(self.failure(Problem::Budget, self.offset));
+        }
         self.space();
         match self.glyph() {
             Some('{') => self.enclosed(Enclosure::Braced),
@@ -216,6 +242,15 @@ impl Reading for Reader<'_> {
                 } else {
                     content.push('\\');
                 }
+                continue;
+            }
+            if boundary == Boundary::Parentheses && glyph == '\\' {
+                self.step();
+                let Some(escaped) = self.glyph() else {
+                    return Err(self.failure(Problem::Unclosed(boundary.opener()), start));
+                };
+                content.push(escaped);
+                self.step();
                 continue;
             }
             if boundary == Boundary::Parentheses && glyph == '(' {
@@ -333,18 +368,32 @@ impl Reading for Reader<'_> {
 }
 impl Protosizable for String {
     fn protosize(&self) -> Result<Protos, Error> {
+        let mut budget = ReaderBudget { remaining: 4_096 };
+        self.protosize_with(&mut budget)
+    }
+}
+impl BoundedProtosizable for String {
+    fn protosize_with(&self, budget: &mut ReaderBudget) -> Result<Protos, Error> {
         Reader {
             text: self,
             offset: 0,
+            budget,
         }
         .whole()
     }
 }
 impl Protosizable for str {
     fn protosize(&self) -> Result<Protos, Error> {
+        let mut budget = ReaderBudget { remaining: 4_096 };
+        self.protosize_with(&mut budget)
+    }
+}
+impl BoundedProtosizable for str {
+    fn protosize_with(&self, budget: &mut ReaderBudget) -> Result<Protos, Error> {
         Reader {
             text: self,
             offset: 0,
+            budget,
         }
         .whole()
     }
@@ -368,7 +417,12 @@ impl Printing for Protos {
                         out.push(glyph);
                     }
                 } else {
-                    out.push_str(content);
+                    for glyph in content.chars() {
+                        if matches!(glyph, '\\' | '(' | ')') {
+                            out.push('\\');
+                        }
+                        out.push(glyph);
+                    }
                 }
                 out.push(boundary.closer());
             }

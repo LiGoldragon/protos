@@ -1,6 +1,7 @@
 use protos::{
     Boundary, BoundedProtosizable, Enclosure, Protos, Protosizable, ReaderBudget, Textualizable,
 };
+use std::process::Command;
 #[test]
 fn structural_forms_keep_their_own_extents() {
     let form = "Reviewer.{ 2024 17 }".protosize().expect("structure");
@@ -60,9 +61,78 @@ fn parentheses_escape_their_structural_glyphs() {
 }
 
 #[test]
+fn a_meaning_keeps_an_ordinary_backslash() {
+    let form = "(path\\segment)".protosize().expect("meaning");
+    assert_eq!(form.textualize(), "(path\\segment)");
+    assert!(matches!(
+        form,
+        Protos::Opaque { content, .. } if content == "path\\segment"
+    ));
+}
+
+#[test]
 fn reader_budget_bounds_recursive_descent() {
     let mut budget = ReaderBudget { remaining: 2 };
     assert!("{ { Ada } }".protosize_with(&mut budget).is_err());
+}
+
+#[test]
+fn bounded_depth_probe_child() {
+    if std::env::var_os("PROTOS_DEPTH_PROBE").is_none() {
+        return;
+    }
+    let text = format!("{}Ada{}", "{".repeat(100_001), "}".repeat(100_001));
+    let mut budget = ReaderBudget { remaining: 100_002 };
+    assert!(text.protosize_with(&mut budget).is_err());
+}
+
+#[test]
+fn depth_is_bounded_independently_of_node_budget() {
+    let text = format!("[ {}]", "Ada ".repeat(10_000));
+    let mut budget = ReaderBudget { remaining: 10_001 };
+    let form = text.protosize_with(&mut budget).expect("wide structure");
+    assert!(matches!(form, Protos::Enclosed { children, .. } if children.len() == 10_000));
+}
+
+#[test]
+fn deeply_constructed_forms_print_without_recursion() {
+    let mut form = Protos::Bare {
+        extent: protos::Extent { start: 0, end: 1 },
+        text: String::from("Ada"),
+    };
+    for _ in 0..100_001 {
+        form = Protos::Headed {
+            extent: protos::Extent { start: 0, end: 1 },
+            head: protos::Symbol(String::from("A")),
+            separator: protos::Separator::Period,
+            body: Box::new(form),
+        };
+    }
+    let text = form.textualize();
+    assert_eq!(text.len(), 200_005);
+    assert!(text.ends_with("Ada"));
+    std::mem::forget(form);
+}
+
+#[test]
+fn depth_probe_is_bounded_by_memory_and_time() {
+    let executable = std::env::current_exe().expect("test executable");
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg("ulimit -v 262144; exec timeout 30 \"$0\" \"$@\"")
+        .arg(executable)
+        .arg("--exact")
+        .arg("bounded_depth_probe_child")
+        .arg("--nocapture")
+        .env("PROTOS_DEPTH_PROBE", "1")
+        .output()
+        .expect("bounded child process");
+    assert!(
+        output.status.success(),
+        "deep reader probe failed: {}\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

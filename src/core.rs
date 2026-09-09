@@ -61,6 +61,7 @@ pub enum Problem {
     MissingHead,
     MissingBody,
     Budget,
+    Depth,
 }
 /// The number of structural nodes one reading act may visit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -154,7 +155,9 @@ struct Reader<'a> {
     text: &'a str,
     offset: usize,
     budget: &'a mut ReaderBudget,
+    depth: usize,
 }
+const MAXIMUM_READER_DEPTH: usize = 256;
 trait Reading {
     fn whole(&mut self) -> Result<Protos, Error>;
     fn node(&mut self) -> Result<Protos, Error>;
@@ -184,8 +187,12 @@ impl Reading for Reader<'_> {
         if !self.budget.spend() {
             return Err(self.failure(Problem::Budget, self.offset));
         }
+        if self.depth == MAXIMUM_READER_DEPTH {
+            return Err(self.failure(Problem::Depth, self.offset));
+        }
+        self.depth += 1;
         self.space();
-        match self.glyph() {
+        let result = match self.glyph() {
             Some('{') => self.enclosed(Enclosure::Braced),
             Some('[') => self.enclosed(Enclosure::Bracketed),
             Some('<') => self.enclosed(Enclosure::Angled),
@@ -197,7 +204,9 @@ impl Reading for Reader<'_> {
             )),
             Some(_) => self.bare_or_headed(),
             None => Err(self.failure(Problem::MissingBody, self.offset)),
-        }
+        };
+        self.depth -= 1;
+        result
     }
     fn enclosed(&mut self, enclosure: Enclosure) -> Result<Protos, Error> {
         let start = self.offset;
@@ -249,6 +258,9 @@ impl Reading for Reader<'_> {
                 let Some(escaped) = self.glyph() else {
                     return Err(self.failure(Problem::Unclosed(boundary.opener()), start));
                 };
+                if !matches!(escaped, '\\' | '(' | ')') {
+                    content.push('\\');
+                }
                 content.push(escaped);
                 self.step();
                 continue;
@@ -378,6 +390,7 @@ impl BoundedProtosizable for String {
             text: self,
             offset: 0,
             budget,
+            depth: 0,
         }
         .whole()
     }
@@ -394,89 +407,98 @@ impl BoundedProtosizable for str {
             text: self,
             offset: 0,
             budget,
+            depth: 0,
         }
         .whole()
     }
+}
+enum PrintStep<'a> {
+    Form(&'a Protos),
+    Text(&'a str),
+    Glyph(char),
+    Space,
 }
 trait Printing {
     fn print(&self, out: &mut String);
 }
 impl Printing for Protos {
     fn print(&self, out: &mut String) {
-        match self {
-            Self::Bare { text, .. } => out.push_str(text),
-            Self::Opaque {
-                boundary, content, ..
-            } => {
-                out.push(boundary.opener());
-                if *boundary == Boundary::Guillemets {
-                    for glyph in content.chars() {
-                        if glyph == '»' {
-                            out.push('\\');
+        let mut steps = vec![PrintStep::Form(self)];
+        while let Some(step) = steps.pop() {
+            match step {
+                PrintStep::Text(text) => out.push_str(text),
+                PrintStep::Glyph(glyph) => out.push(glyph),
+                PrintStep::Space => out.push(' '),
+                PrintStep::Form(form) => match form {
+                    Self::Bare { text, .. } => out.push_str(text),
+                    Self::Opaque {
+                        boundary, content, ..
+                    } => {
+                        out.push(boundary.opener());
+                        if *boundary == Boundary::Guillemets {
+                            for glyph in content.chars() {
+                                if glyph == '»' {
+                                    out.push('\\');
+                                }
+                                out.push(glyph);
+                            }
+                        } else {
+                            let mut opens = Vec::new();
+                            let mut escaped = Vec::new();
+                            for (index, glyph) in content.char_indices() {
+                                if glyph == '(' {
+                                    opens.push(index);
+                                } else if glyph == ')' && opens.pop().is_none() {
+                                    escaped.push(index);
+                                }
+                            }
+                            escaped.extend(opens);
+                            let glyphs: Vec<_> = content.char_indices().collect();
+                            for (position, (index, glyph)) in glyphs.iter().enumerate() {
+                                let next = glyphs.get(position + 1).map(|(_, glyph)| *glyph);
+                                if (*glyph == '\\' && matches!(next, None | Some('\\' | '(' | ')')))
+                                    || escaped.contains(index)
+                                {
+                                    out.push('\\');
+                                }
+                                out.push(*glyph);
+                            }
                         }
-                        out.push(glyph);
+                        out.push(boundary.closer());
                     }
-                } else {
-                    let mut opens = Vec::new();
-                    let mut escaped = Vec::new();
-                    for (index, glyph) in content.char_indices() {
-                        if glyph == '(' {
-                            opens.push(index);
-                        } else if glyph == ')' && opens.pop().is_none() {
-                            escaped.push(index);
+                    Self::Enclosed {
+                        enclosure,
+                        children,
+                        ..
+                    } => {
+                        out.push(enclosure.opener());
+                        steps.push(PrintStep::Glyph(enclosure.closer()));
+                        if !children.is_empty() {
+                            if *enclosure != Enclosure::Angled {
+                                steps.push(PrintStep::Space);
+                            }
+                            for (index, child) in children.iter().enumerate().rev() {
+                                steps.push(PrintStep::Form(child));
+                                if index > 0 {
+                                    steps.push(PrintStep::Space);
+                                }
+                            }
+                            if *enclosure != Enclosure::Angled {
+                                steps.push(PrintStep::Space);
+                            }
                         }
                     }
-                    escaped.extend(opens);
-                    let mut depth = 0usize;
-                    for (index, glyph) in content.char_indices() {
-                        if glyph == '\\' {
-                            out.push('\\');
-                        }
-                        if escaped.contains(&index) {
-                            out.push('\\');
-                        }
-                        if glyph == '(' {
-                            depth += 1;
-                        }
-                        if glyph == ')' && depth > 0 {
-                            depth -= 1;
-                        }
-                        out.push(glyph);
+                    Self::Headed {
+                        head,
+                        separator,
+                        body,
+                        ..
+                    } => {
+                        steps.push(PrintStep::Form(body));
+                        steps.push(PrintStep::Glyph(separator.glyph()));
+                        steps.push(PrintStep::Text(&head.0));
                     }
-                }
-                out.push(boundary.closer());
-            }
-            Self::Enclosed {
-                enclosure,
-                children,
-                ..
-            } => {
-                out.push(enclosure.opener());
-                if !children.is_empty() {
-                    if *enclosure != Enclosure::Angled {
-                        out.push(' ');
-                    }
-                    for (index, child) in children.iter().enumerate() {
-                        if index > 0 {
-                            out.push(' ');
-                        }
-                        child.print(out);
-                    }
-                    if *enclosure != Enclosure::Angled {
-                        out.push(' ');
-                    }
-                }
-                out.push(enclosure.closer());
-            }
-            Self::Headed {
-                head,
-                separator,
-                body,
-                ..
-            } => {
-                out.push_str(&head.0);
-                out.push(separator.glyph());
-                body.print(out);
+                },
             }
         }
     }

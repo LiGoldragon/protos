@@ -1,39 +1,42 @@
-//! Iterative drop for the protoform tree: a deep tree never recurses on its way out.
+//! Iterative destruction for structural trees.
 
-use crate::anatomy::{Bare, Head, Protoform};
+use crate::{Extent, Protos};
 
-/// The kind whose capability moves a node's children out onto a worklist, leaving the node a leaf.
-pub(crate) trait Shedding {
-    /// Shed the children onto the worklist.
-    fn shed(&mut self, work: &mut Vec<Protoform>);
+trait Emptying {
+    fn empty() -> Self;
 }
 
-impl Shedding for Head {
-    fn shed(&mut self, work: &mut Vec<Protoform>) {
-        if let Head::Qualified(_, constraints) = self {
-            work.append(constraints);
+impl Emptying for Protos {
+    fn empty() -> Self {
+        Self::Bare {
+            extent: Extent { start: 0, end: 0 },
+            text: String::new(),
         }
     }
 }
 
-impl Shedding for Protoform {
-    fn shed(&mut self, work: &mut Vec<Protoform>) {
+trait Shedding {
+    fn shed(&mut self, work: &mut Vec<Protos>);
+}
+
+impl Shedding for Protos {
+    fn shed(&mut self, work: &mut Vec<Protos>) {
         match self {
-            Protoform::Headed(head, _, body) => {
-                head.shed(work);
-                work.push(std::mem::replace(
-                    body.as_mut(),
-                    Protoform::Bare(Bare::try_from("_").expect("underscore is bare")),
-                ));
+            Self::Headed {
+                constraints, body, ..
+            } => {
+                if let Some(constraints) = constraints.take() {
+                    work.push(*constraints);
+                }
+                work.push(*std::mem::replace(body, Box::new(Self::empty())));
             }
-            Protoform::Enclosed(_, children) => work.append(children),
-            Protoform::Qualified(_, constraints) => work.append(constraints),
-            Protoform::Bare(_) | Protoform::Quoted(_) | Protoform::Parenthesized(_) => {}
+            Self::Enclosed { children, .. } => work.append(children),
+            Self::Opaque { .. } | Self::Bare { .. } => {}
         }
     }
 }
 
-impl Drop for Protoform {
+impl Drop for Protos {
     fn drop(&mut self) {
         let mut work = Vec::new();
         self.shed(&mut work);

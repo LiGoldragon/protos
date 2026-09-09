@@ -6,18 +6,18 @@ use std::process::Command;
 fn structural_forms_keep_their_own_extents() {
     let form = "Reviewer.{ 2024 17 }".protosize().expect("structure");
     assert_eq!(form.textualize(), "Reviewer.{ 2024 17 }");
-    let Protos::Headed { body, .. } = form else {
+    let Protos::Headed { body, .. } = &form else {
         panic!("headed")
     };
     let Protos::Enclosed {
         enclosure,
         children,
         ..
-    } = *body
+    } = body.as_ref()
     else {
         panic!("enclosed")
     };
-    assert_eq!(enclosure, Enclosure::Braced);
+    assert_eq!(*enclosure, Enclosure::Braced);
     assert_eq!(children.len(), 2);
 }
 #[test]
@@ -65,7 +65,7 @@ fn a_meaning_keeps_an_ordinary_backslash() {
     let form = "(path\\segment)".protosize().expect("meaning");
     assert_eq!(form.textualize(), "(path\\segment)");
     assert!(matches!(
-        form,
+        &form,
         Protos::Opaque { content, .. } if content == "path\\segment"
     ));
 }
@@ -91,7 +91,7 @@ fn depth_is_bounded_independently_of_node_budget() {
     let text = format!("[ {}]", "Ada ".repeat(10_000));
     let mut budget = ReaderBudget { remaining: 10_001 };
     let form = text.protosize_with(&mut budget).expect("wide structure");
-    assert!(matches!(form, Protos::Enclosed { children, .. } if children.len() == 10_000));
+    assert!(matches!(&form, Protos::Enclosed { children, .. } if children.len() == 10_000));
 }
 
 #[test]
@@ -112,7 +112,25 @@ fn deeply_constructed_forms_print_without_recursion() {
     let text = form.textualize();
     assert_eq!(text.len(), 200_005);
     assert!(text.ends_with("Ada"));
-    std::mem::forget(form);
+    drop(form);
+}
+
+#[test]
+fn deeply_constructed_forms_drop_without_recursion() {
+    let mut form = Protos::Bare {
+        extent: protos::Extent { start: 0, end: 1 },
+        text: String::from("Ada"),
+    };
+    for _ in 0..100_000 {
+        form = Protos::Headed {
+            extent: protos::Extent { start: 0, end: 1 },
+            head: protos::Symbol(String::from("A")),
+            constraints: None,
+            separator: protos::Separator::Period,
+            body: Box::new(form),
+        };
+    }
+    drop(form);
 }
 
 #[test]
@@ -162,18 +180,18 @@ fn qualified_names_are_one_structural_form() {
         constraints: Some(constraints),
         body,
         ..
-    } = form
+    } = &form
     else {
         panic!("qualified heading")
     };
     assert_eq!(head.0, "Processable");
     assert!(matches!(
-        *constraints,
+        constraints.as_ref(),
         Protos::Enclosed { enclosure: Enclosure::Angled, children, .. }
         if children.len() == 2
     ));
     assert!(matches!(
-        *body,
+        body.as_ref(),
         Protos::Enclosed { children, .. }
         if matches!(children.as_slice(), [Protos::Bare { text, .. }, Protos::Enclosed { enclosure: Enclosure::Angled, .. }] if text == "Vector")
     ));

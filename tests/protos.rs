@@ -50,6 +50,14 @@ fn parentheses_are_one_balanced_opaque_structure() {
 }
 
 #[test]
+fn parentheses_escape_their_structural_glyphs() {
+    for text in ["(x\\))", "(\\()"] {
+        let form = text.protosize().expect("escaped meaning");
+        assert_eq!(form.textualize(), text);
+    }
+}
+
+#[test]
 fn angle_brackets_remain_structural() {
     let form = "<Thing Other>".protosize().expect("structural angle");
     assert_eq!(form.textualize(), "<Thing Other>");

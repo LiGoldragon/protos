@@ -208,6 +208,9 @@ impl Reading for Reader<'_> {
             if boundary == Boundary::Guillemets && glyph == '\\' {
                 self.step();
                 if let Some(escaped) = self.glyph() {
+                    if escaped != boundary.closer() {
+                        content.push('\\');
+                    }
                     content.push(escaped);
                     self.step();
                 } else {
@@ -359,7 +362,7 @@ impl Printing for Protos {
                 out.push(boundary.opener());
                 if *boundary == Boundary::Guillemets {
                     for glyph in content.chars() {
-                        if glyph == '»' || glyph == '\\' {
+                        if glyph == '»' {
                             out.push('\\');
                         }
                         out.push(glyph);

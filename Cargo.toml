@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/LiGoldragon/protos"
 description = "Universal structural substrate for the Protos family."
 publish = false
+autotests = false
 
 [lib]
 name = "protos"
@@ -23,3 +24,7 @@ dead_code = "warn"
 [[test]]
 name = "scale"
 harness = false
+
+[[test]]
+name = "protos"
+path = "tests/protos.rs"

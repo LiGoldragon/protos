@@ -417,12 +417,22 @@ impl Printing for Protos {
                         out.push(glyph);
                     }
                 } else {
+                    let mut opens = Vec::new();
+                    let mut escaped = Vec::new();
+                    for (index, glyph) in content.char_indices() {
+                        if glyph == '(' {
+                            opens.push(index);
+                        } else if glyph == ')' && opens.pop().is_none() {
+                            escaped.push(index);
+                        }
+                    }
+                    escaped.extend(opens);
                     let mut depth = 0usize;
-                    for glyph in content.chars() {
+                    for (index, glyph) in content.char_indices() {
                         if glyph == '\\' {
                             out.push('\\');
                         }
-                        if glyph == ')' && depth == 0 {
+                        if escaped.contains(&index) {
                             out.push('\\');
                         }
                         if glyph == '(' {

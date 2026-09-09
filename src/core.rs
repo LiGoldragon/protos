@@ -86,7 +86,8 @@ pub trait BoundedProtosizable {
     fn protosize_with(&self, budget: &mut ReaderBudget) -> Result<Protos, Error>;
 }
 pub trait Protosizable {
-    fn protosize(&self) -> Result<Protos, Error>;
+    type Output;
+    fn protosize(&self) -> Self::Output;
 }
 pub trait Textualizable {
     fn textualize(&self) -> String;
@@ -430,7 +431,8 @@ impl Reading for Reader<'_> {
     }
 }
 impl Protosizable for String {
-    fn protosize(&self) -> Result<Protos, Error> {
+    type Output = Result<Protos, Error>;
+    fn protosize(&self) -> Self::Output {
         let mut budget = ReaderBudget { remaining: 4_096 };
         self.protosize_with(&mut budget)
     }
@@ -447,7 +449,8 @@ impl BoundedProtosizable for String {
     }
 }
 impl Protosizable for str {
-    fn protosize(&self) -> Result<Protos, Error> {
+    type Output = Result<Protos, Error>;
+    fn protosize(&self) -> Self::Output {
         let mut budget = ReaderBudget { remaining: 4_096 };
         self.protosize_with(&mut budget)
     }

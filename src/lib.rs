@@ -32,6 +32,6 @@ pub use anatomy::{
 };
 pub use glyph::{Classifying, Glyph};
 pub use kinds::{
-    Actualizable, Conceivable, Delimiting, Glyphing, Incorporable, Locating, Pathed, Protosizable,
+    Actualizable, Conceivable, Delimiting, Glyphing, Incorporable, Locating, Pathed, Protosizable, Route,
     Serial, Situating, Texted, Textualizable,
 };

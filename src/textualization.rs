@@ -246,11 +246,14 @@ where
     C: Protosizable<Fault = Infallible>,
 {
     fn textualize(&self) -> String {
-        self.conceive()
-            .expect("an infallible ascent cannot fault")
-            .1
-            .protosize()
-            .expect("an infallible structural projection cannot fault")
-            .write_text()
+        let concept = match self.conceive() {
+            Ok(concept) => concept,
+            Err(never) => match never {},
+        };
+        let delineation = match concept.1.protosize() {
+            Ok(delineation) => delineation,
+            Err(never) => match never {},
+        };
+        delineation.write_text()
     }
 }

@@ -29,6 +29,7 @@ pub enum Protos {
     Headed {
         extent: Extent,
         head: Symbol,
+        constraints: Option<Box<Protos>>,
         separator: Separator,
         body: Box<Protos>,
     },
@@ -164,6 +165,13 @@ trait Reading {
     fn enclosed(&mut self, enclosure: Enclosure) -> Result<Protos, Error>;
     fn opaque(&mut self, boundary: Boundary) -> Result<Protos, Error>;
     fn bare_or_headed(&mut self) -> Result<Protos, Error>;
+    fn headed(
+        &mut self,
+        head: Symbol,
+        constraints: Option<Protos>,
+        start: usize,
+        separator: Separator,
+    ) -> Result<Protos, Error>;
     fn space(&mut self);
     fn glyph(&self) -> Option<char>;
     fn step(&mut self);
@@ -299,7 +307,7 @@ impl Reading for Reader<'_> {
             if glyph.is_whitespace()
                 || matches!(
                     glyph,
-                    '{' | '}' | '[' | ']' | '<' | '>' | '«' | '»' | '(' | ')' | ';'
+                    '{' | '}' | '[' | ']' | '>' | '«' | '»' | '(' | ')' | ';'
                 )
             {
                 break;
@@ -321,16 +329,40 @@ impl Reading for Reader<'_> {
                 {
                     return Err(self.failure(Problem::MissingBody, self.offset));
                 }
-                let body = self.node()?;
-                return Ok(Protos::Headed {
-                    extent: Extent {
-                        start,
-                        end: body.extent().end,
-                    },
-                    head: Symbol(run),
-                    separator,
-                    body: Box::new(body),
-                });
+                return self.headed(Symbol(run), None, start, separator);
+            }
+            if glyph == '<' {
+                if run.is_empty() {
+                    return Err(self.failure(Problem::MissingHead, start));
+                }
+                let angle_start = self.offset;
+                let remaining = self.budget.remaining;
+                let constraints = self.enclosed(Enclosure::Angled)?;
+                let separator = match self.glyph() {
+                    Some('.') => Separator::Period,
+                    Some('!') => Separator::Exclamation,
+                    Some(':') => Separator::Colon,
+                    _ => {
+                        self.offset = angle_start;
+                        self.budget.remaining = remaining;
+                        return Ok(Protos::Bare {
+                            extent: Extent {
+                                start,
+                                end: angle_start,
+                            },
+                            text: run,
+                        });
+                    }
+                };
+                self.step();
+                if self.glyph().is_none()
+                    || self.glyph().is_some_and(|next| {
+                        next.is_whitespace() || matches!(next, '}' | ']' | '>' | '»' | ')')
+                    })
+                {
+                    return Err(self.failure(Problem::MissingBody, self.offset));
+                }
+                return self.headed(Symbol(run), Some(constraints), start, separator);
             }
             run.push(glyph);
             self.step();
@@ -346,6 +378,25 @@ impl Reading for Reader<'_> {
                 text: run,
             })
         }
+    }
+    fn headed(
+        &mut self,
+        head: Symbol,
+        constraints: Option<Protos>,
+        start: usize,
+        separator: Separator,
+    ) -> Result<Protos, Error> {
+        let body = self.node()?;
+        Ok(Protos::Headed {
+            extent: Extent {
+                start,
+                end: body.extent().end,
+            },
+            head,
+            constraints: constraints.map(Box::new),
+            separator,
+            body: Box::new(body),
+        })
     }
     fn space(&mut self) {
         loop {
@@ -490,12 +541,16 @@ impl Printing for Protos {
                     }
                     Self::Headed {
                         head,
+                        constraints,
                         separator,
                         body,
                         ..
                     } => {
                         steps.push(PrintStep::Form(body));
                         steps.push(PrintStep::Glyph(separator.glyph()));
+                        if let Some(constraints) = constraints {
+                            steps.push(PrintStep::Form(constraints));
+                        }
                         steps.push(PrintStep::Text(&head.0));
                     }
                 },

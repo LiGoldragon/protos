@@ -22,10 +22,17 @@ to.
 
 ## Structure
 
-`Protoform` is every unit of the text: `Headed` (a head, a separator, a body),
+`Protos` is every unit of the text: `Headed` (a head, separator, and body),
 `Enclosed` (structures between `{ }`, `[ ]` or `< >`), `Opaque` (content between
-`“ ”` or `( )`), `Bare` (a head alone). A `Head` is a `Symbol`, or a symbol
-`Qualified` by constraints in angle brackets: `Vector<Text>`.
+`« »` or `( )`), and `Bare` (a head alone). Every `Protos` node carries its
+own `Extent`.
+
+A `Headed` form has a `Symbol` head and an optional extent-bearing angled
+`Enclosed` form in `constraints`. This holds the anatomy of
+`Processable<[Clonable Sendable] Serializable>.[ ... ]`, with no type or kind
+meaning. `Vector<String>` without a following heading separator remains the
+adjacent structural forms `Bare("Vector")` and angled `Enclosed` for its
+conceptual reader to relate.
 
 ## Situation
 
@@ -59,9 +66,9 @@ non-empty run with no separator.
 - Curly quotes are opaque to the first `”`; parentheses are read by balance,
   with `\(` `\)` `\\` unescaped.
 
-Faults are structural only: `Unclosed`, `Unopened`, `Unterminated`, `Stray`,
-each at its extent. There is no depth limit: every walk (read, write, drop) is
-iterative with an explicit stack, so depth is bounded by the text's size.
+Faults are structural only and carry their extent. The reader has a fixed
+structural-depth boundary independent of its public node budget; the writer
+uses an explicit stack and accepts arbitrarily deep constructed trees.
 
 ## Writing
 

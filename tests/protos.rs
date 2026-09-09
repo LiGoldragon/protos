@@ -104,6 +104,7 @@ fn deeply_constructed_forms_print_without_recursion() {
         form = Protos::Headed {
             extent: protos::Extent { start: 0, end: 1 },
             head: protos::Symbol(String::from("A")),
+            constraints: None,
             separator: protos::Separator::Period,
             body: Box::new(form),
         };
@@ -145,5 +146,35 @@ fn angle_brackets_remain_structural() {
             enclosure: Enclosure::Angled,
             ..
         }
+    ));
+}
+
+#[test]
+fn qualified_names_are_one_structural_form() {
+    let text = "Processable<[Clonable Sendable] Serializable>.[ Vector<String> ]";
+    let form = text.protosize().expect("qualified headed form");
+    assert_eq!(
+        form.textualize(),
+        "Processable<[ Clonable Sendable ] Serializable>.[ Vector <String> ]"
+    );
+    let Protos::Headed {
+        head,
+        constraints: Some(constraints),
+        body,
+        ..
+    } = form
+    else {
+        panic!("qualified heading")
+    };
+    assert_eq!(head.0, "Processable");
+    assert!(matches!(
+        *constraints,
+        Protos::Enclosed { enclosure: Enclosure::Angled, children, .. }
+        if children.len() == 2
+    ));
+    assert!(matches!(
+        *body,
+        Protos::Enclosed { children, .. }
+        if matches!(children.as_slice(), [Protos::Bare { text, .. }, Protos::Enclosed { enclosure: Enclosure::Angled, .. }] if text == "Vector")
     ));
 }

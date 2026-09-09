@@ -22,9 +22,5 @@ unused = { level = "warn", priority = -1 }
 dead_code = "warn"
 
 [[test]]
-name = "scale"
-harness = false
-
-[[test]]
 name = "protos"
 path = "tests/protos.rs"

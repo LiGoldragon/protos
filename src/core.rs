@@ -310,6 +310,44 @@ impl Reading for Reader<'_> {
     }
     fn bare_or_headed(&mut self) -> Result<Protos, Error> {
         let start = self.offset;
+        let run_end = self.text[start..]
+            .char_indices()
+            .find_map(|(relative, glyph)| {
+                (glyph.is_whitespace()
+                    || matches!(
+                        glyph,
+                        '{' | '}' | '[' | ']' | '<' | '>' | '«' | '»' | '(' | ')' | ';'
+                    ))
+                .then_some(start + relative)
+            })
+            .unwrap_or(self.text.len());
+        let whole_run = &self.text[start..run_end];
+        let trailing_separators = whole_run
+            .chars()
+            .rev()
+            .take_while(|glyph| matches!(glyph, '.' | '!' | ':'))
+            .count();
+        let segments_are_symbols = whole_run
+            .split(['.', '!', ':'])
+            .all(|segment| !segment.is_empty());
+        let opens_body = trailing_separators == 1
+            && whole_run[..whole_run.len() - 1]
+                .split(['.', '!', ':'])
+                .all(|segment| !segment.is_empty())
+            && self.text[run_end..]
+                .chars()
+                .next()
+                .is_some_and(|glyph| matches!(glyph, '{' | '[' | '<' | '«' | '('));
+        if !segments_are_symbols && !opens_body {
+            self.offset = run_end;
+            return Ok(Protos::Bare {
+                extent: Extent {
+                    start,
+                    end: self.offset,
+                },
+                text: whole_run.to_owned(),
+            });
+        }
         let mut run = String::new();
         while let Some(glyph) = self.glyph() {
             if glyph.is_whitespace()

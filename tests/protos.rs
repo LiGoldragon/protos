@@ -30,6 +30,53 @@ fn structural_forms_keep_their_own_extents() {
     assert_eq!(*enclosure, Enclosure::Braced);
     assert_eq!(children.len(), 2);
 }
+
+#[test]
+fn invalid_separator_chains_remain_one_bare_run() {
+    for text in [
+        "a.",
+        ".a",
+        "a..b",
+        "a.b.",
+        "..",
+        ".codex/agents/worker.toml",
+        ".猫/龍.",
+    ] {
+        let form = text.protosize().expect("bare run");
+        assert!(
+            matches!(&form, Protos::Bare { text: value, .. } if value == text),
+            "{text}: {form:?}"
+        );
+        assert_eq!(form.textualize(), text);
+    }
+}
+
+#[test]
+fn complete_separator_chains_remain_headed_with_exact_extents() {
+    for text in [
+        "lower.case",
+        "Upper.Case",
+        "a:b:c",
+        "a!b!c",
+        "https://example.org/a",
+        "猫.龍",
+        "Observed.Locks.[]",
+        "Reviewer.{ 2024 17 }",
+        "Some.(x)",
+    ] {
+        let form = text.protosize().expect("headed structure");
+        assert!(matches!(&form, Protos::Headed { .. }), "{text}: {form:?}");
+        assert_eq!(
+            form_extent(&form),
+            Extent {
+                start: 0,
+                end: text.len()
+            }
+        );
+        assert_eq!(form.textualize(), text);
+    }
+}
+
 #[test]
 fn opaque_guillemets_escape_their_closer() {
     let form = "«she said \\»no\\» and left»".protosize().expect("string");

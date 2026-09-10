@@ -1,6 +1,8 @@
-; The Protos structural substrate's public data anatomy.
+; The Protos structural substrate's representable public data anatomy. Borrowed
+; reader helpers and tuple wrapper implementation details are not reflected as
+; separate Ethos shapes.
 Library
-[ crate:[ Protos Symbol Extent Separator Enclosure Boundary Error Problem ReaderBudget ] ]
+[]
 [ Extent.{ Integer Integer }
   Symbol.String
   Separator.[ Period Exclamation Colon ]

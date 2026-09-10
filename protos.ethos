@@ -13,8 +13,10 @@ Library
            Opaque.{ Extent Boundary String }
            Bare.{ Extent String } ]
   Error.{ Extent Problem }
-  Problem.[ Empty Multiple Unclosed.Character Unexpected.Character MissingHead MissingBody Budget Depth ]
+  Problem.[ Empty Multiple Unclosed.String Unexpected.String MissingHead MissingBody Budget Depth ]
   ReaderBudget.{ Integer } ]
 [ Textualizable.[ textualize.[ String ] ]
   Canonicalizable.[] ]
 []
+; Rust char payloads are represented as one-character String positions because
+; Character is not an Ethos intrinsic.

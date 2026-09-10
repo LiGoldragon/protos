@@ -1,7 +1,17 @@
 use protos::{
-    Boundary, BoundedProtosizable, Enclosure, Protos, Protosizable, ReaderBudget, Textualizable,
+    Boundary, BoundedProtosizable, Canonicalizing, Enclosure, Extent, Protos, Protosizable,
+    ReaderBudget, Separator, Symbol, Textualizable,
 };
 use std::process::Command;
+
+fn form_extent(form: &Protos) -> Extent {
+    match form {
+        Protos::Headed { extent, .. }
+        | Protos::Enclosed { extent, .. }
+        | Protos::Opaque { extent, .. }
+        | Protos::Bare { extent, .. } => *extent,
+    }
+}
 #[test]
 fn structural_forms_keep_their_own_extents() {
     let form = "Reviewer.{ 2024 17 }".protosize().expect("structure");
@@ -131,6 +141,119 @@ fn deeply_constructed_forms_drop_without_recursion() {
         };
     }
     drop(form);
+}
+
+#[test]
+fn canonicalization_assigns_utf8_extents_without_reading() {
+    let mut form = Protos::Headed {
+        extent: Extent { start: 99, end: 99 },
+        head: Symbol("H".into()),
+        constraints: Some(Box::new(Protos::Enclosed {
+            extent: Extent { start: 99, end: 99 },
+            enclosure: Enclosure::Angled,
+            children: vec![
+                Protos::Bare {
+                    extent: Extent { start: 99, end: 99 },
+                    text: "A".into(),
+                },
+                Protos::Bare {
+                    extent: Extent { start: 99, end: 99 },
+                    text: "B".into(),
+                },
+            ],
+        })),
+        separator: Separator::Period,
+        body: Box::new(Protos::Enclosed {
+            extent: Extent { start: 99, end: 99 },
+            enclosure: Enclosure::Braced,
+            children: vec![
+                Protos::Opaque {
+                    extent: Extent { start: 99, end: 99 },
+                    boundary: Boundary::Guillemets,
+                    content: "é»".into(),
+                },
+                Protos::Opaque {
+                    extent: Extent { start: 99, end: 99 },
+                    boundary: Boundary::Parentheses,
+                    content: "x)".into(),
+                },
+                Protos::Enclosed {
+                    extent: Extent { start: 99, end: 99 },
+                    enclosure: Enclosure::Bracketed,
+                    children: vec![],
+                },
+            ],
+        }),
+    };
+    form.canonicalize();
+    let text = form.textualize();
+    assert_eq!(text, "H<A B>.{ «é\\»» (x\\)) [] }");
+    let Protos::Headed {
+        extent,
+        constraints: Some(constraints),
+        body,
+        ..
+    } = &form
+    else {
+        panic!("headed form")
+    };
+    assert_eq!(&text[extent.start..extent.end], text);
+    let constraints_extent = form_extent(constraints);
+    assert_eq!(
+        &text[constraints_extent.start..constraints_extent.end],
+        "<A B>"
+    );
+    let Protos::Enclosed {
+        extent, children, ..
+    } = body.as_ref()
+    else {
+        panic!("braced body")
+    };
+    assert_eq!(&text[extent.start..extent.end], "{ «é\\»» (x\\)) [] }");
+    for (child, expected) in children.iter().zip(["«é\\»»", "(x\\))", "[]"]) {
+        let child_extent = form_extent(child);
+        assert_eq!(&text[child_extent.start..child_extent.end], expected);
+    }
+}
+
+#[test]
+fn canonicalization_is_iterative_for_wide_and_deep_structures() {
+    let mut wide = Protos::Enclosed {
+        extent: Extent { start: 0, end: 0 },
+        enclosure: Enclosure::Bracketed,
+        children: (0..5_000)
+            .map(|_| Protos::Bare {
+                extent: Extent { start: 0, end: 0 },
+                text: "é".into(),
+            })
+            .collect(),
+    };
+    wide.canonicalize();
+    let wide_text = wide.textualize();
+    assert_eq!(form_extent(&wide).end, wide_text.len());
+
+    let mut deep = Protos::Bare {
+        extent: Extent { start: 0, end: 0 },
+        text: "x".into(),
+    };
+    for _ in 0..100_000 {
+        deep = Protos::Headed {
+            extent: Extent { start: 0, end: 0 },
+            head: Symbol("V".into()),
+            constraints: None,
+            separator: Separator::Period,
+            body: Box::new(deep),
+        };
+    }
+    deep.canonicalize();
+    assert_eq!(
+        form_extent(&deep),
+        Extent {
+            start: 0,
+            end: 200_001
+        }
+    );
+    drop(deep);
 }
 
 #[test]

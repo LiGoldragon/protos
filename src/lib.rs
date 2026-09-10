@@ -2,6 +2,6 @@
 mod core;
 mod dropping;
 pub use core::{
-    Boundary, BoundedProtosizable, Enclosure, Error, Extent, Problem, Protos, Protosizable,
-    ReaderBudget, Separator, Symbol, Textualizable,
+    Boundary, BoundedProtosizable, Canonicalizing, Enclosure, Error, Extent, Problem, Protos,
+    Protosizable, ReaderBudget, Separator, Symbol, Textualizable,
 };

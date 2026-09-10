@@ -92,6 +92,13 @@ pub trait Protosizable {
 pub trait Textualizable {
     fn textualize(&self) -> String;
 }
+/// Assign the UTF-8 byte extents of this tree's canonical textual form.
+///
+/// Parsing retains the source extents it read. This capability is for a tree
+/// built structurally, whose context is the canonical text it will print.
+pub trait Canonicalizing {
+    fn canonicalize(&mut self);
+}
 
 trait Glyphing {
     fn opener(self) -> char;
@@ -566,6 +573,98 @@ impl Textualizable for Protos {
         let mut out = String::new();
         self.print(&mut out);
         out
+    }
+}
+enum CanonicalStep<'a> {
+    Form(&'a mut Protos),
+    Text(&'a str),
+    Glyph(char),
+    Space,
+    End(&'a mut Extent),
+}
+trait CanonicalizingTree {
+    fn canonicalize_tree(&mut self);
+}
+impl CanonicalizingTree for Protos {
+    fn canonicalize_tree(&mut self) {
+        let mut offset = 0;
+        let mut steps = vec![CanonicalStep::Form(self)];
+        while let Some(step) = steps.pop() {
+            match step {
+                CanonicalStep::Text(text) => offset += text.len(),
+                CanonicalStep::Glyph(glyph) => offset += glyph.len_utf8(),
+                CanonicalStep::Space => offset += ' '.len_utf8(),
+                CanonicalStep::End(extent) => extent.end = offset,
+                CanonicalStep::Form(form) => match form {
+                    Self::Bare { extent, text } => {
+                        extent.start = offset;
+                        offset += text.len();
+                        extent.end = offset;
+                    }
+                    Self::Opaque {
+                        extent,
+                        boundary,
+                        content,
+                    } => {
+                        extent.start = offset;
+                        // Opaque nodes are leaves, so the shared writer is
+                        // bounded by their content and cannot traverse a tree.
+                        let opaque = Self::Opaque {
+                            extent: *extent,
+                            boundary: *boundary,
+                            content: content.clone(),
+                        };
+                        offset += opaque.textualize().len();
+                        extent.end = offset;
+                    }
+                    Self::Enclosed {
+                        extent,
+                        enclosure,
+                        children,
+                    } => {
+                        extent.start = offset;
+                        offset += enclosure.opener().len_utf8();
+                        steps.push(CanonicalStep::End(extent));
+                        steps.push(CanonicalStep::Glyph(enclosure.closer()));
+                        if !children.is_empty() {
+                            if *enclosure != Enclosure::Angled {
+                                steps.push(CanonicalStep::Space);
+                            }
+                            for (index, child) in children.iter_mut().enumerate().rev() {
+                                steps.push(CanonicalStep::Form(child));
+                                if index > 0 {
+                                    steps.push(CanonicalStep::Space);
+                                }
+                            }
+                            if *enclosure != Enclosure::Angled {
+                                steps.push(CanonicalStep::Space);
+                            }
+                        }
+                    }
+                    Self::Headed {
+                        extent,
+                        head,
+                        constraints,
+                        separator,
+                        body,
+                    } => {
+                        extent.start = offset;
+                        steps.push(CanonicalStep::End(extent));
+                        steps.push(CanonicalStep::Form(body));
+                        steps.push(CanonicalStep::Glyph(separator.glyph()));
+                        if let Some(constraints) = constraints {
+                            steps.push(CanonicalStep::Form(constraints));
+                        }
+                        steps.push(CanonicalStep::Text(&head.0));
+                    }
+                },
+            }
+        }
+    }
+}
+impl Canonicalizing for Protos {
+    fn canonicalize(&mut self) {
+        self.canonicalize_tree();
     }
 }
 impl fmt::Display for Error {

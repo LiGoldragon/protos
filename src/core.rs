@@ -96,7 +96,7 @@ pub trait Textualizable {
 ///
 /// Parsing retains the source extents it read. This capability is for a tree
 /// built structurally, whose context is the canonical text it will print.
-pub trait Canonicalizing {
+pub trait Canonicalizable {
     fn canonicalize(&mut self);
 }
 
@@ -662,7 +662,7 @@ impl CanonicalizingTree for Protos {
         }
     }
 }
-impl Canonicalizing for Protos {
+impl Canonicalizable for Protos {
     fn canonicalize(&mut self) {
         self.canonicalize_tree();
     }

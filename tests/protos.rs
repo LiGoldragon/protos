@@ -1,5 +1,5 @@
 use protos::{
-    Boundary, BoundedProtosizable, Canonicalizing, Enclosure, Extent, Protos, Protosizable,
+    Boundary, BoundedProtosizable, Canonicalizable, Enclosure, Extent, Protos, Protosizable,
     ReaderBudget, Separator, Symbol, Textualizable,
 };
 use std::process::Command;

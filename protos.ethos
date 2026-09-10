@@ -14,5 +14,5 @@ Library
   Problem.[ Empty Multiple Unclosed.Character Unexpected.Character MissingHead MissingBody Budget Depth ]
   ReaderBudget.{ Integer } ]
 [ Textualizable.[ textualize.[ String ] ]
-  Canonicalizable.[ canonicalize![] ] ]
+  Canonicalizable.[] ]
 []

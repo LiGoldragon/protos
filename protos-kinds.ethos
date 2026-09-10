@@ -5,5 +5,5 @@ Library
 [ BoundedProtosizable.[ protosize_with!{ [ ReaderBudget ] [ Result<Protos Error> ] } ]
   Protosizable.{ [] [ Output ] [] [ protosize.[ Output ] ] }
   Textualizable.[ textualize.[ String ] ]
-  Canonicalizable.[ canonicalize![] ] ]
+  Canonicalizable.[] ]
 []

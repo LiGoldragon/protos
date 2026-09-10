@@ -1,18 +1,9 @@
-; protos: the kinds each layer bears, named by where the capability goes.
-; Sized names the unnamed constraint of a kind; Situated<Sized> is the concept a structure conceives.
-; Glyphing and Delimiting yield Rust char, and Incorporable, Pathed, Locating,
-; Texted, and Route expose borrowed Rust references. Ethos has no declaration form for
-; those representations, so their associations are omitted rather than given a
-; false owned Text or Vector shape.
-Kinds
-[ std::marker:Copyable.Copy
-  std::string:String
-  crate:[ Delineation Extent Glyph Situation Situated ] ]
-[ Serial.{ [ Sized Copyable ] [] [] [ first:[ Self ] after.[ Option<Self> ] ] }
-  Classifying.[ classify.[ Glyph ] ]
+; The currently public structural conversion kinds.
+Library
+[ crate:[ Protos Error ReaderBudget ] ]
+[]
+[ BoundedProtosizable.[ protosize_with!{ [ ReaderBudget ] [ Result<Protos Error> ] } ]
+  Protosizable.{ [] [ Output ] [] [ protosize.[ Output ] ] }
   Textualizable.[ textualize.[ String ] ]
-  Situating.[ situate.[ Situated<String> ] ]
-  Protosizable.{ [] [ Fault ] [] [ protosize.[ Result<Delineation Fault> ] ] }
-  Conceivable<Sized>.{ [] [ Fault ] [] [ conceive.[ Result<Situated<Sized> Fault> ] ] }
-  Actualizable<Sized>.{ [] [ Fault Budget ] [] [ actualize.{ [ Budget ] [ Result<Sized Fault> ] } ] }
-  ]
+  Canonicalizable.[ canonicalize![] ] ]
+[]

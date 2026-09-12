@@ -48,12 +48,12 @@ pub enum Protos {
         text: String,
     },
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Error {
     pub extent: Extent,
     pub problem: Problem,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Problem {
     Empty,
     Multiple,
@@ -65,7 +65,7 @@ pub enum Problem {
     Depth,
 }
 /// The number of structural nodes one reading act may visit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ReaderBudget {
     pub remaining: usize,
 }

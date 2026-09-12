@@ -1,27 +1,19 @@
-#![allow(dead_code)]
-pub trait Serial: Sized + std::marker::Copy {
-    fn first() -> Self;
-    fn after(&self) -> Option<Self>;
+#![allow(dead_code, non_camel_case_types, non_snake_case)]
+#[rustfmt::skip]
+pub trait BoundedProtosizable {
+    fn protosize_with(
+        &mut self,
+        input: crate::ReaderBudget,
+    ) -> std::result::Result<crate::Protos, crate::Error>;
 }
-pub trait Classifying {
-    fn classify(&self) -> crate::Glyph;
-}
-pub trait Textualizable {
-    fn textualize(&self) -> std::string::String;
-}
-pub trait Situating {
-    fn situate(&self) -> crate::Situated<std::string::String>;
-}
+#[rustfmt::skip]
 pub trait Protosizable {
-    type Fault;
-    fn protosize(&self) -> Result<crate::Delineation, Self::Fault>;
+    type Output;
+    fn protosize(&self) -> Self::Output;
 }
-pub trait Conceivable<A: Sized> {
-    type Fault;
-    fn conceive(&self) -> Result<crate::Situated<A>, Self::Fault>;
+#[rustfmt::skip]
+pub trait Textualizable {
+    fn textualize(&self) -> String;
 }
-pub trait Actualizable<A: Sized> {
-    type Fault;
-    type Budget;
-    fn actualize(&self, input: Self::Budget) -> Result<A, Self::Fault>;
-}
+#[rustfmt::skip]
+pub trait Canonicalizable {}

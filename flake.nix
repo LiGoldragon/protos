@@ -9,7 +9,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     ethos-zero = {
-      url = "github:LiGoldragon/ethos-zero/daf007296a19ad2f9c8a1e67e102b2e3f09db327";
+      url = "github:LiGoldragon/ethos-zero/da58504926dabe4680bb7863d812846b0f845d86";
     };
   };
 
@@ -58,6 +58,11 @@
             generator = ethos-zero.packages.${system}.default;
             declaration = ./protos.ethos;
             committed = ./generated-contract/protos.rs;
+          } (builtins.readFile ./checks/generated-contract.sh);
+          generated-kinds-contract = pkgs.runCommand "protos-generated-kinds-contract" {
+            generator = ethos-zero.packages.${system}.default;
+            declaration = ./protos-kinds.ethos;
+            committed = ./generated-contract/protos-kinds.rs;
           } (builtins.readFile ./checks/generated-contract.sh);
           doc = craneLib.cargoDoc (common // { RUSTDOCFLAGS = "-D warnings"; });
           fmt = craneLib.cargoFmt { inherit src; doInstallCargoArtifacts = false; };

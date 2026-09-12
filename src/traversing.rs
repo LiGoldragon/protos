@@ -1,26 +1,164 @@
-//! Iterative `Clone`, `PartialEq` and `Debug` for structural trees.
+//! Iterative `Clone`, `PartialEq` and `Drop` for structural trees.
 //!
 //! A structural tree is built as well as read. The reader bounds its own
 //! descent, but a tree composed in memory is as deep as the composition that
-//! built it, and every traversal of `Protos` is therefore written with an
-//! explicit stack — as destruction, printing and canonicalization already are.
+//! built it, so every traversal of `Protos` walks an explicit stack. All
+//! three read a node the same way: what it holds besides its children, and
+//! its children.
 
 use crate::{Boundary, Enclosure, Extent, Protos, Separator, Symbol};
-use std::fmt;
+
+/// A node minus its children: everything it holds itself, an enclosure's
+/// child count and a head's constraints standing for the children they lead
+/// to. Two nodes with equal aspects differ only in what their children are.
+#[derive(PartialEq, Eq)]
+pub(crate) enum Aspect<'a> {
+    Headed(Extent, &'a Symbol, bool, Separator),
+    Enclosed(Extent, Enclosure, usize),
+    Opaque(Extent, Boundary, &'a str),
+    Bare(Extent, &'a str),
+}
+
+pub(crate) trait Structuring {
+    /// This node's children, in rendering order: a head's constraints before
+    /// its body, an enclosure's children in their own order.
+    fn children(&self) -> Vec<&Protos>;
+    /// This node with its children left empty, ready to adopt them back.
+    fn skeleton(&self) -> Protos;
+    /// Take `children` back in the order `children` yields them.
+    fn adopt(&mut self, children: Vec<Protos>);
+    /// Hand this node's owned children to `work`, leaving it childless.
+    fn shed(&mut self, work: &mut Vec<Protos>);
+    /// The same children, to be written into.
+    fn children_mut(&mut self) -> Vec<&mut Protos>;
+    /// Where this node's own extent is written.
+    fn extent_mut(&mut self) -> &mut Extent;
+    /// Everything this node holds itself, its children apart.
+    fn aspect(&self) -> Aspect<'_>;
+    fn empty() -> Self;
+}
+impl Structuring for Protos {
+    fn children(&self) -> Vec<&Protos> {
+        match self {
+            Self::Headed {
+                constraints, body, ..
+            } => match constraints {
+                Some(constraints) => vec![constraints, body],
+                None => vec![body],
+            },
+            Self::Enclosed { children, .. } => children.iter().collect(),
+            Self::Opaque { .. } | Self::Bare { .. } => Vec::new(),
+        }
+    }
+    fn children_mut(&mut self) -> Vec<&mut Protos> {
+        match self {
+            Self::Headed {
+                constraints, body, ..
+            } => match constraints {
+                Some(constraints) => vec![constraints, body],
+                None => vec![body],
+            },
+            Self::Enclosed { children, .. } => children.iter_mut().collect(),
+            Self::Opaque { .. } | Self::Bare { .. } => Vec::new(),
+        }
+    }
+    fn extent_mut(&mut self) -> &mut Extent {
+        match self {
+            Self::Headed { extent, .. }
+            | Self::Enclosed { extent, .. }
+            | Self::Opaque { extent, .. }
+            | Self::Bare { extent, .. } => extent,
+        }
+    }
+    fn skeleton(&self) -> Protos {
+        match self.aspect() {
+            Aspect::Headed(extent, head, constrained, separator) => Self::Headed {
+                extent,
+                head: head.clone(),
+                constraints: constrained.then(|| Box::new(<Self as Structuring>::empty())),
+                separator,
+                body: Box::new(<Self as Structuring>::empty()),
+            },
+            Aspect::Enclosed(extent, enclosure, _) => Self::Enclosed {
+                extent,
+                enclosure,
+                children: Vec::new(),
+            },
+            Aspect::Opaque(extent, boundary, content) => Self::Opaque {
+                extent,
+                boundary,
+                content: content.to_owned(),
+            },
+            Aspect::Bare(extent, text) => Self::Bare {
+                extent,
+                text: text.to_owned(),
+            },
+        }
+    }
+    fn aspect(&self) -> Aspect<'_> {
+        match self {
+            Self::Headed {
+                extent,
+                head,
+                constraints,
+                separator,
+                ..
+            } => Aspect::Headed(*extent, head, constraints.is_some(), *separator),
+            Self::Enclosed {
+                extent,
+                enclosure,
+                children,
+            } => Aspect::Enclosed(*extent, *enclosure, children.len()),
+            Self::Opaque {
+                extent,
+                boundary,
+                content,
+            } => Aspect::Opaque(*extent, *boundary, content),
+            Self::Bare { extent, text } => Aspect::Bare(*extent, text),
+        }
+    }
+    fn adopt(&mut self, mut children: Vec<Protos>) {
+        match self {
+            Self::Headed {
+                constraints, body, ..
+            } => {
+                **body = children.pop().expect("a body");
+                if let Some(constraints) = constraints {
+                    **constraints = children.pop().expect("constraints");
+                }
+            }
+            Self::Enclosed { children: held, .. } => *held = children,
+            Self::Opaque { .. } | Self::Bare { .. } => {}
+        }
+    }
+    fn shed(&mut self, work: &mut Vec<Protos>) {
+        match self {
+            Self::Headed {
+                constraints, body, ..
+            } => {
+                if let Some(constraints) = constraints.take() {
+                    work.push(*constraints);
+                }
+                work.push(*std::mem::replace(
+                    body,
+                    Box::new(<Self as Structuring>::empty()),
+                ));
+            }
+            Self::Enclosed { children, .. } => work.append(children),
+            Self::Opaque { .. } | Self::Bare { .. } => {}
+        }
+    }
+    fn empty() -> Self {
+        Self::Bare {
+            extent: Extent { start: 0, end: 0 },
+            text: String::new(),
+        }
+    }
+}
 
 enum CloneStep<'a> {
     Visit(&'a Protos),
-    Headed {
-        extent: Extent,
-        head: &'a Symbol,
-        constrained: bool,
-        separator: Separator,
-    },
-    Enclosed {
-        extent: Extent,
-        enclosure: Enclosure,
-        count: usize,
-    },
+    Adopt(Protos, usize),
 }
 
 impl Clone for Protos {
@@ -29,84 +167,15 @@ impl Clone for Protos {
         let mut cloned: Vec<Self> = Vec::new();
         while let Some(step) = steps.pop() {
             match step {
-                CloneStep::Visit(form) => match form {
-                    Self::Headed {
-                        extent,
-                        head,
-                        constraints,
-                        separator,
-                        body,
-                    } => {
-                        steps.push(CloneStep::Headed {
-                            extent: *extent,
-                            head,
-                            constrained: constraints.is_some(),
-                            separator: *separator,
-                        });
-                        steps.push(CloneStep::Visit(body));
-                        if let Some(constraints) = constraints {
-                            steps.push(CloneStep::Visit(constraints));
-                        }
-                    }
-                    Self::Enclosed {
-                        extent,
-                        enclosure,
-                        children,
-                    } => {
-                        steps.push(CloneStep::Enclosed {
-                            extent: *extent,
-                            enclosure: *enclosure,
-                            count: children.len(),
-                        });
-                        for child in children.iter().rev() {
-                            steps.push(CloneStep::Visit(child));
-                        }
-                    }
-                    Self::Opaque {
-                        extent,
-                        boundary,
-                        content,
-                    } => cloned.push(Self::Opaque {
-                        extent: *extent,
-                        boundary: *boundary,
-                        content: content.clone(),
-                    }),
-                    Self::Bare { extent, text } => cloned.push(Self::Bare {
-                        extent: *extent,
-                        text: text.clone(),
-                    }),
-                },
-                CloneStep::Headed {
-                    extent,
-                    head,
-                    constrained,
-                    separator,
-                } => {
-                    let body = cloned.pop().expect("a cloned body");
-                    let constraints = if constrained {
-                        Some(Box::new(cloned.pop().expect("cloned constraints")))
-                    } else {
-                        None
-                    };
-                    cloned.push(Self::Headed {
-                        extent,
-                        head: head.clone(),
-                        constraints,
-                        separator,
-                        body: Box::new(body),
-                    });
+                CloneStep::Visit(node) => {
+                    let children = node.children();
+                    steps.push(CloneStep::Adopt(node.skeleton(), children.len()));
+                    steps.extend(children.into_iter().rev().map(CloneStep::Visit));
                 }
-                CloneStep::Enclosed {
-                    extent,
-                    enclosure,
-                    count,
-                } => {
+                CloneStep::Adopt(mut node, count) => {
                     let children = cloned.split_off(cloned.len() - count);
-                    cloned.push(Self::Enclosed {
-                        extent,
-                        enclosure,
-                        children,
-                    });
+                    node.adopt(children);
+                    cloned.push(node);
                 }
             }
         }
@@ -118,180 +187,22 @@ impl PartialEq for Protos {
     fn eq(&self, other: &Self) -> bool {
         let mut pairs = vec![(self, other)];
         while let Some((left, right)) = pairs.pop() {
-            match (left, right) {
-                (
-                    Self::Headed {
-                        extent: left_extent,
-                        head: left_head,
-                        constraints: left_constraints,
-                        separator: left_separator,
-                        body: left_body,
-                    },
-                    Self::Headed {
-                        extent: right_extent,
-                        head: right_head,
-                        constraints: right_constraints,
-                        separator: right_separator,
-                        body: right_body,
-                    },
-                ) => {
-                    if left_extent != right_extent
-                        || left_head != right_head
-                        || left_separator != right_separator
-                        || left_constraints.is_some() != right_constraints.is_some()
-                    {
-                        return false;
-                    }
-                    pairs.push((left_body, right_body));
-                    if let (Some(left), Some(right)) = (left_constraints, right_constraints) {
-                        pairs.push((left, right));
-                    }
-                }
-                (
-                    Self::Enclosed {
-                        extent: left_extent,
-                        enclosure: left_enclosure,
-                        children: left_children,
-                    },
-                    Self::Enclosed {
-                        extent: right_extent,
-                        enclosure: right_enclosure,
-                        children: right_children,
-                    },
-                ) => {
-                    if left_extent != right_extent
-                        || left_enclosure != right_enclosure
-                        || left_children.len() != right_children.len()
-                    {
-                        return false;
-                    }
-                    pairs.extend(left_children.iter().zip(right_children));
-                }
-                (
-                    Self::Opaque {
-                        extent: left_extent,
-                        boundary: left_boundary,
-                        content: left_content,
-                    },
-                    Self::Opaque {
-                        extent: right_extent,
-                        boundary: right_boundary,
-                        content: right_content,
-                    },
-                ) => {
-                    if left_extent != right_extent
-                        || left_boundary != right_boundary
-                        || left_content != right_content
-                    {
-                        return false;
-                    }
-                }
-                (
-                    Self::Bare {
-                        extent: left_extent,
-                        text: left_text,
-                    },
-                    Self::Bare {
-                        extent: right_extent,
-                        text: right_text,
-                    },
-                ) => {
-                    if left_extent != right_extent || left_text != right_text {
-                        return false;
-                    }
-                }
-                _ => return false,
+            if left.aspect() != right.aspect() {
+                return false;
             }
+            pairs.extend(left.children().into_iter().zip(right.children()));
         }
         true
     }
 }
 impl Eq for Protos {}
 
-enum ShowStep<'a> {
-    Form(&'a Protos),
-    Text(&'static str),
-    Owned(String),
-}
-
-trait Showing {
-    /// The steps that write one node, its children left as further nodes.
-    fn steps(&self) -> Vec<ShowStep<'_>>;
-    fn opaque(extent: Extent, boundary: Boundary, content: &str) -> String;
-}
-impl Showing for Protos {
-    fn steps(&self) -> Vec<ShowStep<'_>> {
-        match self {
-            Self::Headed {
-                extent,
-                head,
-                constraints,
-                separator,
-                body,
-            } => {
-                let mut steps = vec![ShowStep::Owned(format!(
-                    "Headed {{ extent: {extent:?}, head: {head:?}, constraints: "
-                ))];
-                match constraints {
-                    Some(constraints) => {
-                        steps.push(ShowStep::Text("Some("));
-                        steps.push(ShowStep::Form(constraints));
-                        steps.push(ShowStep::Text(")"));
-                    }
-                    None => steps.push(ShowStep::Text("None")),
-                }
-                steps.push(ShowStep::Owned(format!(
-                    ", separator: {separator:?}, body: "
-                )));
-                steps.push(ShowStep::Form(body));
-                steps.push(ShowStep::Text(" }"));
-                steps
-            }
-            Self::Enclosed {
-                extent,
-                enclosure,
-                children,
-            } => {
-                let mut steps = vec![ShowStep::Owned(format!(
-                    "Enclosed {{ extent: {extent:?}, enclosure: {enclosure:?}, children: ["
-                ))];
-                for (index, child) in children.iter().enumerate() {
-                    if index > 0 {
-                        steps.push(ShowStep::Text(", "));
-                    }
-                    steps.push(ShowStep::Form(child));
-                }
-                steps.push(ShowStep::Text("] }"));
-                steps
-            }
-            Self::Opaque {
-                extent,
-                boundary,
-                content,
-            } => vec![ShowStep::Owned(Self::opaque(*extent, *boundary, content))],
-            Self::Bare { extent, text } => vec![ShowStep::Owned(format!(
-                "Bare {{ extent: {extent:?}, text: {text:?} }}"
-            ))],
+impl Drop for Protos {
+    fn drop(&mut self) {
+        let mut work = Vec::new();
+        self.shed(&mut work);
+        while let Some(mut node) = work.pop() {
+            node.shed(&mut work);
         }
-    }
-    fn opaque(extent: Extent, boundary: Boundary, content: &str) -> String {
-        format!("Opaque {{ extent: {extent:?}, boundary: {boundary:?}, content: {content:?} }}")
-    }
-}
-
-impl fmt::Debug for Protos {
-    /// The one-line form, whatever the alternate flag asks. A tree is written
-    /// from an explicit stack so that depth cannot exhaust the machine, and an
-    /// indented form would carry that depth into the output.
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut steps = vec![ShowStep::Form(self)];
-        while let Some(step) = steps.pop() {
-            match step {
-                ShowStep::Text(text) => formatter.write_str(text)?,
-                ShowStep::Owned(text) => formatter.write_str(&text)?,
-                ShowStep::Form(form) => steps.extend(form.steps().into_iter().rev()),
-            }
-        }
-        Ok(())
     }
 }

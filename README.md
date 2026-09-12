@@ -57,8 +57,10 @@ non-empty run with no separator.
 Errors are structural only and carry their extent. The reader has a fixed
 structural-depth boundary independent of its public node budget, so a read tree
 is never deeper than that boundary; a built tree may be as deep as what built
-it, and every traversal of `Protos` — printing, canonicalizing, cloning,
-comparing, showing, dropping — uses an explicit stack for that reason.
+it, so every traversal of `Protos` walks an explicit stack. Printing, showing
+and canonical measurement are one machine over one step type, differing only in
+what a node renders into and where the pieces go; cloning, comparing and
+dropping are one statement of what a node holds besides its children.
 
 ## Opaque regions
 
@@ -87,9 +89,11 @@ regions verbatim with their glyphs; one line. Writing cannot error.
 
 | module | what | kind |
 |---|---|---|
-| `core` | the types, the reader, the writer, canonical extents | `Protosizable`, `BoundedProtosizable`, `Textualizable`, `Canonicalizable`, `ReaderBudgeting` |
-| `dropping` | iterative destruction of the tree | `Shedding`, `Emptying` |
-| `traversing` | iterative `Clone`, `PartialEq` and `Debug` | `Showing` |
+| `core` | the types and the reader | `Protosizable`, `BoundedProtosizable`, `ReaderBudgeting`, `Escaping`, `Glyphing` |
+| `rendering` | one stack machine for printing, showing and canonical extents | `Rendering`, `Sinking`, `Settling` |
+| `traversing` | iterative `Clone`, `PartialEq` and `Drop` | `Structuring` |
 
 No free functions, no inherent impls, no zero-sized bearers, no variant rosters:
-`nix flake check` carries the guards, with build, test, fmt, clippy and doc.
+`nix flake check` carries the guards, with build, test, fmt, clippy and doc, and
+regenerates both `.ethos` declarations from the pinned `ethos-zero` to hold the
+committed contracts against the generator.

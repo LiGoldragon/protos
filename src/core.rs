@@ -100,7 +100,7 @@ pub trait Canonicalizable {
     fn canonicalize(&mut self);
 }
 
-trait Glyphing {
+pub(crate) trait Glyphing {
     fn opener(self) -> char;
     fn closer(self) -> char;
 }
@@ -141,7 +141,7 @@ impl Glyphing for Boundary {
 /// followed by X. Escaping is minimal — the writer prefixes a backslash only
 /// where leaving the glyph bare would read back as something else — so an
 /// opaque region stays as close to verbatim as the boundary allows.
-trait Escaping {
+pub(crate) trait Escaping {
     /// The glyphs a backslash may escape, the backslash itself included.
     fn escapes(self) -> &'static [char];
     /// The content indices whose glyph the writer must escape.
@@ -196,7 +196,7 @@ impl Escaping for Boundary {
         out.push(self.closer());
     }
 }
-trait Separating {
+pub(crate) trait Separating {
     fn glyph(self) -> char;
 }
 impl Separating for Separator {
@@ -558,165 +558,6 @@ impl BoundedProtosizable for str {
             depth: 0,
         }
         .whole()
-    }
-}
-enum PrintStep<'a> {
-    Form(&'a Protos),
-    Text(&'a str),
-    Glyph(char),
-    Space,
-}
-trait Printing {
-    fn print(&self, out: &mut String);
-}
-impl Printing for Protos {
-    fn print(&self, out: &mut String) {
-        let mut steps = vec![PrintStep::Form(self)];
-        while let Some(step) = steps.pop() {
-            match step {
-                PrintStep::Text(text) => out.push_str(text),
-                PrintStep::Glyph(glyph) => out.push(glyph),
-                PrintStep::Space => out.push(' '),
-                PrintStep::Form(form) => match form {
-                    Self::Bare { text, .. } => out.push_str(text),
-                    Self::Opaque {
-                        boundary, content, ..
-                    } => boundary.print_opaque(content, out),
-                    Self::Enclosed {
-                        enclosure,
-                        children,
-                        ..
-                    } => {
-                        out.push(enclosure.opener());
-                        steps.push(PrintStep::Glyph(enclosure.closer()));
-                        if !children.is_empty() {
-                            if *enclosure != Enclosure::Angled {
-                                steps.push(PrintStep::Space);
-                            }
-                            for (index, child) in children.iter().enumerate().rev() {
-                                steps.push(PrintStep::Form(child));
-                                if index > 0 {
-                                    steps.push(PrintStep::Space);
-                                }
-                            }
-                            if *enclosure != Enclosure::Angled {
-                                steps.push(PrintStep::Space);
-                            }
-                        }
-                    }
-                    Self::Headed {
-                        head,
-                        constraints,
-                        separator,
-                        body,
-                        ..
-                    } => {
-                        steps.push(PrintStep::Form(body));
-                        steps.push(PrintStep::Glyph(separator.glyph()));
-                        if let Some(constraints) = constraints {
-                            steps.push(PrintStep::Form(constraints));
-                        }
-                        steps.push(PrintStep::Text(&head.0));
-                    }
-                },
-            }
-        }
-    }
-}
-impl Textualizable for Protos {
-    fn textualize(&self) -> String {
-        let mut out = String::new();
-        self.print(&mut out);
-        out
-    }
-}
-enum CanonicalStep<'a> {
-    Form(&'a mut Protos),
-    Text(&'a str),
-    Glyph(char),
-    Space,
-    End(&'a mut Extent),
-}
-trait CanonicalizingTree {
-    fn canonicalize_tree(&mut self);
-}
-impl CanonicalizingTree for Protos {
-    fn canonicalize_tree(&mut self) {
-        let mut offset = 0;
-        let mut steps = vec![CanonicalStep::Form(self)];
-        while let Some(step) = steps.pop() {
-            match step {
-                CanonicalStep::Text(text) => offset += text.len(),
-                CanonicalStep::Glyph(glyph) => offset += glyph.len_utf8(),
-                CanonicalStep::Space => offset += ' '.len_utf8(),
-                CanonicalStep::End(extent) => extent.end = offset,
-                CanonicalStep::Form(form) => match form {
-                    Self::Bare { extent, text } => {
-                        extent.start = offset;
-                        offset += text.len();
-                        extent.end = offset;
-                    }
-                    Self::Opaque {
-                        extent,
-                        boundary,
-                        content,
-                    } => {
-                        extent.start = offset;
-                        // An opaque node is a leaf, so measuring it by writing
-                        // it costs its own content and traverses no tree.
-                        let mut written = String::new();
-                        boundary.print_opaque(content, &mut written);
-                        offset += written.len();
-                        extent.end = offset;
-                    }
-                    Self::Enclosed {
-                        extent,
-                        enclosure,
-                        children,
-                    } => {
-                        extent.start = offset;
-                        offset += enclosure.opener().len_utf8();
-                        steps.push(CanonicalStep::End(extent));
-                        steps.push(CanonicalStep::Glyph(enclosure.closer()));
-                        if !children.is_empty() {
-                            if *enclosure != Enclosure::Angled {
-                                steps.push(CanonicalStep::Space);
-                            }
-                            for (index, child) in children.iter_mut().enumerate().rev() {
-                                steps.push(CanonicalStep::Form(child));
-                                if index > 0 {
-                                    steps.push(CanonicalStep::Space);
-                                }
-                            }
-                            if *enclosure != Enclosure::Angled {
-                                steps.push(CanonicalStep::Space);
-                            }
-                        }
-                    }
-                    Self::Headed {
-                        extent,
-                        head,
-                        constraints,
-                        separator,
-                        body,
-                    } => {
-                        extent.start = offset;
-                        steps.push(CanonicalStep::End(extent));
-                        steps.push(CanonicalStep::Form(body));
-                        steps.push(CanonicalStep::Glyph(separator.glyph()));
-                        if let Some(constraints) = constraints {
-                            steps.push(CanonicalStep::Form(constraints));
-                        }
-                        steps.push(CanonicalStep::Text(&head.0));
-                    }
-                },
-            }
-        }
-    }
-}
-impl Canonicalizable for Protos {
-    fn canonicalize(&mut self) {
-        self.canonicalize_tree();
     }
 }
 impl fmt::Display for Error {

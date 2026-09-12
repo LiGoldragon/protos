@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -24,7 +25,6 @@ pub enum Boundary {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Symbol(pub String);
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Protos {
     Headed {
         extent: Extent,
@@ -132,6 +132,68 @@ impl Glyphing for Boundary {
             Self::Guillemets => '»',
             Self::Parentheses => ')',
         }
+    }
+}
+/// The escape rule of an opaque boundary.
+///
+/// Inside an opaque region a backslash escapes the boundary's own glyphs and
+/// itself, and nothing else: `\X` for any other X is a literal backslash
+/// followed by X. Escaping is minimal — the writer prefixes a backslash only
+/// where leaving the glyph bare would read back as something else — so an
+/// opaque region stays as close to verbatim as the boundary allows.
+trait Escaping {
+    /// The glyphs a backslash may escape, the backslash itself included.
+    fn escapes(self) -> &'static [char];
+    /// The content indices whose glyph the writer must escape.
+    fn forced(self, content: &str) -> BTreeSet<usize>;
+    /// Write `content` between this boundary's glyphs.
+    fn print_opaque(self, content: &str, out: &mut String);
+}
+impl Escaping for Boundary {
+    fn escapes(self) -> &'static [char] {
+        match self {
+            Self::Guillemets => &['\\', '»'],
+            Self::Parentheses => &['\\', '(', ')'],
+        }
+    }
+    fn forced(self, content: &str) -> BTreeSet<usize> {
+        match self {
+            // Guillemets do not nest: every closer inside is content.
+            Self::Guillemets => content
+                .char_indices()
+                .filter_map(|(index, glyph)| (glyph == '»').then_some(index))
+                .collect(),
+            // Parentheses are read by balance, so a balanced pair is content
+            // and only an unmatched parenthesis needs the backslash.
+            Self::Parentheses => {
+                let mut opens = Vec::new();
+                let mut forced = BTreeSet::new();
+                for (index, glyph) in content.char_indices() {
+                    if glyph == '(' {
+                        opens.push(index);
+                    } else if glyph == ')' && opens.pop().is_none() {
+                        forced.insert(index);
+                    }
+                }
+                forced.extend(opens);
+                forced
+            }
+        }
+    }
+    fn print_opaque(self, content: &str, out: &mut String) {
+        let escapes = self.escapes();
+        let forced = self.forced(content);
+        out.push(self.opener());
+        let mut glyphs = content.char_indices().peekable();
+        while let Some((index, glyph)) = glyphs.next() {
+            let next = glyphs.peek().map(|(_, glyph)| *glyph);
+            let ambiguous = glyph == '\\' && next.is_none_or(|glyph| escapes.contains(&glyph));
+            if ambiguous || forced.contains(&index) {
+                out.push('\\');
+            }
+            out.push(glyph);
+        }
+        out.push(self.closer());
     }
 }
 trait Separating {
@@ -256,25 +318,12 @@ impl Reading for Reader<'_> {
             let Some(glyph) = self.glyph() else {
                 return Err(self.failure(Problem::Unclosed(boundary.opener()), start));
             };
-            if boundary == Boundary::Guillemets && glyph == '\\' {
-                self.step();
-                if let Some(escaped) = self.glyph() {
-                    if escaped != boundary.closer() {
-                        content.push('\\');
-                    }
-                    content.push(escaped);
-                    self.step();
-                } else {
-                    content.push('\\');
-                }
-                continue;
-            }
-            if boundary == Boundary::Parentheses && glyph == '\\' {
+            if glyph == '\\' {
                 self.step();
                 let Some(escaped) = self.glyph() else {
                     return Err(self.failure(Problem::Unclosed(boundary.opener()), start));
                 };
-                if !matches!(escaped, '\\' | '(' | ')') {
+                if !boundary.escapes().contains(&escaped) {
                     content.push('\\');
                 }
                 content.push(escaped);
@@ -532,39 +581,7 @@ impl Printing for Protos {
                     Self::Bare { text, .. } => out.push_str(text),
                     Self::Opaque {
                         boundary, content, ..
-                    } => {
-                        out.push(boundary.opener());
-                        if *boundary == Boundary::Guillemets {
-                            for glyph in content.chars() {
-                                if glyph == '»' {
-                                    out.push('\\');
-                                }
-                                out.push(glyph);
-                            }
-                        } else {
-                            let mut opens = Vec::new();
-                            let mut escaped = Vec::new();
-                            for (index, glyph) in content.char_indices() {
-                                if glyph == '(' {
-                                    opens.push(index);
-                                } else if glyph == ')' && opens.pop().is_none() {
-                                    escaped.push(index);
-                                }
-                            }
-                            escaped.extend(opens);
-                            let glyphs: Vec<_> = content.char_indices().collect();
-                            for (position, (index, glyph)) in glyphs.iter().enumerate() {
-                                let next = glyphs.get(position + 1).map(|(_, glyph)| *glyph);
-                                if (*glyph == '\\' && matches!(next, None | Some('\\' | '(' | ')')))
-                                    || escaped.contains(index)
-                                {
-                                    out.push('\\');
-                                }
-                                out.push(*glyph);
-                            }
-                        }
-                        out.push(boundary.closer());
-                    }
+                    } => boundary.print_opaque(content, out),
                     Self::Enclosed {
                         enclosure,
                         children,
@@ -645,14 +662,11 @@ impl CanonicalizingTree for Protos {
                         content,
                     } => {
                         extent.start = offset;
-                        // Opaque nodes are leaves, so the shared writer is
-                        // bounded by their content and cannot traverse a tree.
-                        let opaque = Self::Opaque {
-                            extent: *extent,
-                            boundary: *boundary,
-                            content: content.clone(),
-                        };
-                        offset += opaque.textualize().len();
+                        // An opaque node is a leaf, so measuring it by writing
+                        // it costs its own content and traverses no tree.
+                        let mut written = String::new();
+                        boundary.print_opaque(content, &mut written);
+                        offset += written.len();
                         extent.end = offset;
                     }
                     Self::Enclosed {

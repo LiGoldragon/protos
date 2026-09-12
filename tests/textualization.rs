@@ -1,44 +1,73 @@
-//! Writing: canonical spacing, escapes, and extents computed as the writer writes.
+//! Writing: canonical spacing, the escape rule of each opaque boundary, and
+//! the round trip a built structure owes — print it, read it back, get it back.
 
 use proptest::prelude::*;
 use protos::{
-    Bare, Boundary, Delineation, Enclosure, Extent, Head, Locating, Opaque, Protoform,
-    Protosizable, Refusal, Separator, Situated, Situating, Symbol, Text, Textualizable, Word,
+    Boundary, Canonicalizable, Enclosure, Extent, Protos, Protosizable, Separator, Symbol,
+    Textualizable,
 };
 
-fn sym(s: &str) -> Head {
-    Head::Symbol(Symbol::try_from(s).unwrap())
+/// Structures are built here, not read, so they start with no extent of their
+/// own; `agrees` canonicalizes before printing and every extent is then a fact
+/// about the text that comes out.
+const NOWHERE: Extent = Extent { start: 0, end: 0 };
+
+fn bare(text: &str) -> Protos {
+    Protos::Bare {
+        extent: NOWHERE,
+        text: text.to_owned(),
+    }
 }
-fn bare(s: &str) -> Protoform {
-    Protoform::Bare(Bare::try_from(s).unwrap())
+fn enclosed(enclosure: Enclosure, children: Vec<Protos>) -> Protos {
+    Protos::Enclosed {
+        extent: NOWHERE,
+        enclosure,
+        children,
+    }
 }
-fn dot(h: &str, body: Protoform) -> Protoform {
-    Protoform::Headed(sym(h), Separator::Period, Box::new(body))
+fn opaque(boundary: Boundary, content: &str) -> Protos {
+    Protos::Opaque {
+        extent: NOWHERE,
+        boundary,
+        content: content.to_owned(),
+    }
 }
-fn enclosed(e: Enclosure, children: Vec<Protoform>) -> Protoform {
-    Protoform::Enclosed(e, children)
+fn headed(head: &str, separator: Separator, body: Protos) -> Protos {
+    Protos::Headed {
+        extent: NOWHERE,
+        head: Symbol(head.to_owned()),
+        constraints: None,
+        separator,
+        body: Box::new(body),
+    }
 }
-fn opaque(b: Boundary, s: &str) -> Protoform {
-    match b {
-        Boundary::CurlyQuotes => Protoform::Quoted(Text::try_from(s).unwrap()),
-        Boundary::Parentheses => Protoform::Parenthesized(Opaque::from(s)),
+fn dot(head: &str, body: Protos) -> Protos {
+    headed(head, Separator::Period, body)
+}
+fn constrained(head: &str, constraints: Vec<Protos>, body: Protos) -> Protos {
+    Protos::Headed {
+        extent: NOWHERE,
+        head: Symbol(head.to_owned()),
+        constraints: Some(Box::new(enclosed(Enclosure::Angled, constraints))),
+        separator: Separator::Period,
+        body: Box::new(body),
     }
 }
 
-/// The writer's situation must be the reader's situation of the written text.
-fn agrees(form: Protoform) -> String {
-    let Situated(written, text) = form.situate();
-    assert_eq!(form.textualize(), text);
-    let mut read = text.protosize().unwrap().0;
-    assert_eq!(read.len(), 1);
-    let Situated(found, form_again) = read.pop().unwrap();
-    assert_eq!(form_again, form);
-    assert_eq!(found, written, "situation of {text:?}");
+/// A built structure, canonicalized, printed, and read back whole — extents
+/// included. This is the direction the ascent of a dialect actually travels.
+fn agrees(mut form: Protos) -> String {
+    form.canonicalize();
+    let text = form.textualize();
+    let read = text
+        .protosize()
+        .unwrap_or_else(|error| panic!("{text:?} reads back: {error}"));
+    assert_eq!(read, form, "{text:?} is not the structure that wrote it");
     text
 }
 
 #[test]
-fn canonical_spacing() {
+fn canonical_spacing_puts_one_space_inside_a_non_empty_enclosure() {
     assert_eq!(
         agrees(enclosed(Enclosure::Braced, vec![bare("a"), bare("b")])),
         "{ a b }"
@@ -57,13 +86,13 @@ fn canonical_spacing() {
         "<a b>"
     );
     assert_eq!(agrees(enclosed(Enclosure::Angled, vec![])), "<>");
-    assert_eq!(agrees(opaque(Boundary::CurlyQuotes, "a b")), "“a b”");
-    assert_eq!(agrees(opaque(Boundary::CurlyQuotes, "")), "“”");
+    assert_eq!(agrees(opaque(Boundary::Guillemets, "a b")), "«a b»");
+    assert_eq!(agrees(opaque(Boundary::Guillemets, "")), "«»");
     assert_eq!(agrees(opaque(Boundary::Parentheses, "x")), "(x)");
 }
 
 #[test]
-fn heads_and_chains() {
+fn a_head_meets_its_body_with_nothing_between_them() {
     assert_eq!(agrees(dot("Some", bare("42"))), "Some.42");
     assert_eq!(
         agrees(dot(
@@ -80,14 +109,10 @@ fn heads_and_chains() {
         "Observed.Locks.[]"
     );
     assert_eq!(
-        agrees(Protoform::Headed(
-            sym("a"),
+        agrees(headed(
+            "a",
             Separator::Colon,
-            Box::new(Protoform::Headed(
-                sym("b"),
-                Separator::Exclamation,
-                Box::new(bare("c"))
-            ))
+            headed("b", Separator::Exclamation, bare("c"))
         )),
         "a:b!c"
     );
@@ -95,132 +120,175 @@ fn heads_and_chains() {
         agrees(dot("Some", opaque(Boundary::Parentheses, "x y"))),
         "Some.(x y)"
     );
+    assert_eq!(
+        agrees(dot("Some", opaque(Boundary::Guillemets, "x y"))),
+        "Some.«x y»"
+    );
 }
 
 #[test]
-fn qualified_heads() {
+fn a_constrained_head_writes_its_angles_tight_against_the_name() {
     assert_eq!(
-        agrees(Protoform::Qualified(
-            Symbol::try_from("Vector").unwrap(),
-            vec![bare("Text")]
+        agrees(constrained(
+            "Vector",
+            vec![bare("Text")],
+            enclosed(Enclosure::Bracketed, vec![bare("1")])
         )),
-        "Vector<Text>"
+        "Vector<Text>.[ 1 ]"
     );
     assert_eq!(
-        agrees(Protoform::Headed(
-            Head::Qualified(
-                Symbol::try_from("A").unwrap(),
-                vec![bare("B"), enclosed(Enclosure::Bracketed, vec![bare("C")])]
-            ),
-            Separator::Period,
-            Box::new(enclosed(Enclosure::Braced, vec![bare("1")]))
+        agrees(constrained(
+            "A",
+            vec![bare("B"), enclosed(Enclosure::Bracketed, vec![bare("C")])],
+            enclosed(Enclosure::Braced, vec![bare("1")])
         )),
         "A<B [ C ]>.{ 1 }"
     );
 }
 
 #[test]
-fn siblings_one_space_apart() {
-    let d = "a  { b }\n“c”".protosize().unwrap();
-    assert_eq!(d.textualize(), "a { b } “c”");
-    let Situated(_, text) = d.0[1].situate();
-    assert_eq!(text, "{ b }");
-    assert_eq!(Delineation(vec![]).textualize(), "");
+fn only_an_unbalanced_parenthesis_or_an_ambiguous_backslash_is_escaped() {
+    for (content, expected) in [
+        ("a (b) c", "(a (b) c)"),
+        ("a ) b", "(a \\) b)"),
+        ("a ( b", "(a \\( b)"),
+        ("\\", "(\\\\)"),
+        ("a\\x", "(a\\x)"),
+        ("((a)", "(\\((a))"),
+        ("(a))", "((a)\\))"),
+        (")(", "(\\)\\()"),
+        ("a«b»c", "(a«b»c)"),
+        (
+            "The build passed on the third try (after two timeouts)",
+            "(The build passed on the third try (after two timeouts))",
+        ),
+    ] {
+        assert_eq!(
+            agrees(opaque(Boundary::Parentheses, content)),
+            expected,
+            "{content:?}"
+        );
+    }
 }
 
 #[test]
-fn only_unbalanced_parentheses_and_backslashes_are_escaped() {
+fn only_a_closing_guillemet_or_an_ambiguous_backslash_is_escaped() {
+    for (content, expected) in [
+        ("a b", "«a b»"),
+        ("a»b", "«a\\»b»"),
+        ("she said »no» and left", "«she said \\»no\\» and left»"),
+        // A backslash before a glyph it could escape must itself be escaped.
+        ("\\", "«\\\\»"),
+        ("\\»x", "«\\\\\\»x»"),
+        ("a\\\\b", "«a\\\\\\b»"),
+        // Before anything else a backslash is content and stays bare.
+        ("a\\b", "«a\\b»"),
+        ("C:\\Users\\ada", "«C:\\Users\\ada»"),
+        // Guillemets do not nest, so an opener inside is plain content.
+        ("a«b", "«a«b»"),
+        ("a\\«b", "«a\\«b»"),
+        // Every other delimiter is content too.
+        ("{ [ ( ; ” “", "«{ [ ( ; ” “»"),
+    ] {
+        assert_eq!(
+            agrees(opaque(Boundary::Guillemets, content)),
+            expected,
+            "{content:?}"
+        );
+    }
+}
+
+#[test]
+fn an_opaque_leaf_keeps_its_siblings_apart() {
+    // A mis-escaped closer would swallow what follows it rather than refuse.
     assert_eq!(
-        agrees(opaque(Boundary::Parentheses, "a (b) c")),
-        "(a (b) c)"
-    );
-    assert_eq!(agrees(opaque(Boundary::Parentheses, "a ) b")), "(a \\) b)");
-    assert_eq!(agrees(opaque(Boundary::Parentheses, "a ( b")), "(a \\( b)");
-    assert_eq!(agrees(opaque(Boundary::Parentheses, "\\")), "(\\\\)");
-    assert_eq!(agrees(opaque(Boundary::Parentheses, "((a)")), "(\\((a))");
-    assert_eq!(agrees(opaque(Boundary::Parentheses, "(a))")), "((a)\\))");
-    assert_eq!(agrees(opaque(Boundary::Parentheses, ")(")), "(\\)\\()");
-    assert_eq!(
-        agrees(opaque(
-            Boundary::Parentheses,
-            "The build passed on the third try (after two timeouts)"
+        agrees(enclosed(
+            Enclosure::Braced,
+            vec![
+                opaque(Boundary::Guillemets, "a\\"),
+                bare("b"),
+                opaque(Boundary::Parentheses, "c\\"),
+                bare("d"),
+            ]
         )),
-        "(The build passed on the third try (after two timeouts))"
+        "{ «a\\\\» b (c\\\\) d }"
     );
 }
 
 #[test]
-fn deep_situation_matches_the_reader() {
-    let text = "{ Ada 1990 { “12 Rue de la Paix” Paris 75002 } [ Author Reviewer.{ 2024 17 } ] }";
-    let Situated(_, form) =
-        "{ Ada 1990 { “12 Rue de la Paix” Paris 75002 } [ Author Reviewer.{ 2024 17 } ] }"
-            .protosize()
-            .unwrap()
-            .0
-            .pop()
-            .unwrap();
-    assert_eq!(agrees(form), text);
+fn a_read_tree_reprints_the_text_that_made_it() {
+    for text in [
+        "{ Ada 1990 { «12 Rue de la Paix» Paris 75002 } [ Author Reviewer.{ 2024 17 } ] }",
+        "Processable<[ Clonable Sendable ] Serializable>.[ Vector <String> ]",
+        "Some.(x (y) z)",
+        "«a\\»b»",
+    ] {
+        let form = text.protosize().expect("structure");
+        assert_eq!(form.textualize(), text, "{text:?}");
+    }
 }
 
-#[test]
-fn writer_extents_index_the_written_text() {
-    let form = dot(
-        "Reviewer",
-        enclosed(Enclosure::Braced, vec![bare("2024"), bare("17")]),
-    );
-    let Situated(situation, text) = form.situate();
-    let Extent(start, end) = situation.locate(&[1, 1]).unwrap();
-    assert_eq!(&text[start as usize..end as usize], "17");
-    let Extent(start, end) = situation.locate(&[0]).unwrap();
-    assert_eq!(&text[start as usize..end as usize], "Reviewer");
-}
+/// The glyphs that decide an opaque region: both boundaries, the escape, the
+/// structural delimiters, the comment opener, and ordinary content.
+const ALPHABET: [char; 16] = [
+    '\\', '«', '»', '(', ')', '{', '}', '[', ']', '<', '>', ';', ' ', '\n', 'a', '猫',
+];
 
-#[test]
-fn text_refuses_the_closing_curly_quote() {
-    assert_eq!(
-        Text::try_from("a”b"),
-        Err(Refusal {
-            glyph: '”',
-            offset: 1
-        })
-    );
-    assert_eq!(
-        Text::try_from(String::from("xy”")),
-        Err(Refusal {
-            glyph: '”',
-            offset: 2
-        })
-    );
-    let text = Text::try_from("a “ b ( ) { } ; \\").unwrap();
-    assert_eq!(text.as_ref(), "a “ b ( ) { } ; \\");
-    assert_eq!(String::from(text), "a “ b ( ) { } ; \\");
-}
-
-#[test]
-fn bare_admits_only_the_reader_bare_anatomy() {
-    assert!(Bare::try_from("a:b").is_err());
-    assert!(Bare::try_from("a..b").is_ok());
-    assert!(Word::try_from("a:b").is_ok());
+fn tricky_content() -> impl Strategy<Value = String> {
+    prop::collection::vec(prop::sample::select(ALPHABET.as_slice()), 0..14)
+        .prop_map(|glyphs| glyphs.into_iter().collect())
 }
 
 proptest! {
     #[test]
-    fn any_meaning_text_round_trips(content in ".*") {
-        let form = opaque(Boundary::Parentheses, &content);
+    fn any_guillemet_content_round_trips(content in tricky_content()) {
+        let mut form = opaque(Boundary::Guillemets, &content);
+        form.canonicalize();
         let text = form.textualize();
-        let mut read = text.protosize().unwrap().0;
-        prop_assert_eq!(read.len(), 1);
-        let Situated(_, back) = read.pop().unwrap();
-        prop_assert_eq!(back, form);
+        prop_assert_eq!(text.protosize(), Ok(form), "{:?} wrote {:?}", content, text);
     }
 
     #[test]
-    fn any_quoted_text_round_trips(content in "[^”]*") {
-        let form = opaque(Boundary::CurlyQuotes, &content);
+    fn any_parentheses_content_round_trips(content in tricky_content()) {
+        let mut form = opaque(Boundary::Parentheses, &content);
+        form.canonicalize();
         let text = form.textualize();
-        let mut read = text.protosize().unwrap().0;
-        prop_assert_eq!(read.len(), 1);
-        let Situated(_, back) = read.pop().unwrap();
-        prop_assert_eq!(back, form);
+        prop_assert_eq!(text.protosize(), Ok(form), "{:?} wrote {:?}", content, text);
+    }
+
+    #[test]
+    fn arbitrary_guillemet_content_round_trips(content in ".*") {
+        let mut form = opaque(Boundary::Guillemets, &content);
+        form.canonicalize();
+        prop_assert_eq!(form.textualize().protosize(), Ok(form));
+    }
+
+    #[test]
+    fn arbitrary_parentheses_content_round_trips(content in ".*") {
+        let mut form = opaque(Boundary::Parentheses, &content);
+        form.canonicalize();
+        prop_assert_eq!(form.textualize().protosize(), Ok(form));
+    }
+
+    /// An opaque leaf between siblings: a closer that escaped wrongly would
+    /// end the region early and take the siblings with it.
+    #[test]
+    fn an_opaque_leaf_among_siblings_round_trips(
+        first in tricky_content(),
+        second in tricky_content(),
+    ) {
+        let mut form = enclosed(
+            Enclosure::Braced,
+            vec![
+                bare("before"),
+                opaque(Boundary::Guillemets, &first),
+                bare("between"),
+                opaque(Boundary::Parentheses, &second),
+                bare("after"),
+            ],
+        );
+        form.canonicalize();
+        let text = form.textualize();
+        prop_assert_eq!(text.protosize(), Ok(form), "wrote {:?}", text);
     }
 }

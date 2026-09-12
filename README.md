@@ -7,46 +7,35 @@ said by the dialect.
 
 ## Layers
 
-Text, Protoform, Concept, Corporate. Text arrives as a `Potential` value and
-descends; a corporate value ascends. A capability is named by the layer it goes
-to.
+Text, Protos, Concept, Composition. Text descends into structure and a
+composition ascends back to text. A capability is named by the layer it goes to.
 
 | capability | kind | goes to | borne by |
 |---|---|---|---|
-| `protosize` | `Protosizable` | Protoform | `str`, `String` (the delineation; may fault); a dialect's concept (cannot) |
-| `conceive` | `Conceivable<C>` | Concept | `Situated<Protoform>`, `Delineation` (in the dialect) |
-| `incorporate` | `Incorporable<T>` | Corporate | the dialect's concept |
-| `actualize` | `Actualizable<T>` | Corporate | `Potential<T, C>`: the whole descent |
-| `textualize` | `Textualizable` | Text | `Protoform`, `Delineation`; the dialect's concept |
-| `situate` | `Situating` | Text | `Protoform`: text and situation in one pass |
+| `protosize` | `Protosizable` | Protos | `str`, `String` (may error); a dialect's concept (cannot) |
+| `protosize_with` | `BoundedProtosizable` | Protos | `str`, `String`, under a caller's `ReaderBudget` |
+| `textualize` | `Textualizable` | Text | `Protos`; a dialect's concept |
+| `canonicalize` | `Canonicalizable` | — | `Protos`: assign the extents of the text it will print |
+
+Descent may error; ascent cannot.
 
 ## Structure
 
-`Protos` is every unit of the text: `Headed` (a head, separator, and body),
+`Protos` is every unit of the text: `Headed` (a head, separator and body),
 `Enclosed` (structures between `{ }`, `[ ]` or `< >`), `Opaque` (content between
-`« »` or `( )`), and `Bare` (a head alone). Every `Protos` node carries its
-own `Extent`.
+`« »` or `( )`), and `Bare` (a run alone). Every node carries its own `Extent`,
+the fact of where it sits in the text — read in by the reader, or assigned by
+`canonicalize` to a tree that was built rather than read.
 
-A `Headed` form has a `Symbol` head and an optional extent-bearing angled
-`Enclosed` form in `constraints`. This holds the anatomy of
-`Processable<[Clonable Sendable] Serializable>.[ ... ]`, with no type or kind
-meaning. `Vector<String>` without a following heading separator remains the
-adjacent structural forms `Bare("Vector")` and angled `Enclosed` for its
-conceptual reader to relate.
+A `Headed` node has a `Symbol` head and an optional extent-bearing angled
+`Enclosed` node in `constraints`. That holds the anatomy of
+`Processable<[ Clonable Sendable ] Serializable>.[ ... ]` with no type or kind
+meaning. `Vector<String>` with no heading separator after it stays the adjacent
+nodes `Bare("Vector")` and an angled `Enclosed`, for its conceptual reader to
+relate.
 
-## Situation
-
-Extents are not intrinsic to structures. A `Situation` is a tree parallel to the
-structure: the structure's `Extent` and the situations of its children, in path
-order. `Situated<T>` pairs a value with its situation; a `Delineation` is the
-text's top-level structures, each situated. The reader finds the situation on
-the way in; the writer computes it on the way out, from the offsets it writes
-at. Memory is one situation node per structure: linear in the text.
-
-The path convention, stated on `Pathed`: a headed structure's head is child 0
-and its body child 1; an enclosure's children are in order; a qualified head's
-constraints are the head's children. `Locating::locate` looks a situation up by
-path.
+One text is one structure: a second structure at the top level is a `Multiple`
+error, and an empty text is `Empty`.
 
 ## Reading
 
@@ -60,40 +49,47 @@ non-empty run with no separator.
 - A run ending in exactly one separator, immediately followed by an opener,
   opens that structure as the chain's body: `Reviewer.{ 2024 17 }`,
   `Observed.Locks.[]`, `Some.(x)`.
-- A run of symbols immediately followed by `<` qualifies its last symbol:
-  `Vector<Text>`, `A<B>.{ 1 }`, `A<B>.C`.
-- Every other adjacency yields siblings: `a..{ 1 }`, `a<b>c`, `a.{ 1 }.b`.
-- Curly quotes are opaque to the first `”`; parentheses are read by balance,
-  with `\(` `\)` `\\` unescaped.
+- A run of symbols immediately followed by `<` constrains its head:
+  `A<B>.{ 1 }`, `A<B>.C`.
+- Every other adjacency is a second structure: `a..{ 1 }`, `a<b>c`,
+  `a.{ 1 }.b`, `Vector<Text>` alone.
 
-Faults are structural only and carry their extent. The reader has a fixed
-structural-depth boundary independent of its public node budget; the writer
-uses an explicit stack and accepts arbitrarily deep constructed trees.
+Errors are structural only and carry their extent. The reader has a fixed
+structural-depth boundary independent of its public node budget, so a read tree
+is never deeper than that boundary; a built tree may be as deep as what built
+it, and every traversal of `Protos` — printing, canonicalizing, cloning,
+comparing, showing, dropping — uses an explicit stack for that reason.
+
+## Opaque regions
+
+Guillemets and parentheses are opaque: every glyph inside is content. A
+backslash escapes the boundary's own glyphs and itself, and nothing else — `\X`
+for any other X is a literal backslash followed by X.
+
+| boundary | escapable | nests |
+|---|---|---|
+| `« »` | `\\` `\»` | no, so every `»` inside is escaped |
+| `( )` | `\\` `\(` `\)` | yes, so only an unbalanced parenthesis is escaped |
+
+Escaping is minimal: the writer prefixes a backslash only where leaving the
+glyph bare would read back as something else, so `«C:\Users\ada»` and
+`(a (b) c)` are written verbatim while `«a\»` and `(a\)` escape the backslash
+that would otherwise have consumed the closer. Every content round-trips —
+built, printed, and read back to the same structure.
 
 ## Writing
 
 Canonical text: `{ a b }` and `[ a b ]` spaced, `{}` `[]` empty; `<a b>` tight;
-`“x”` never spaced; `Head.body`; siblings one space apart; one line. Inside
-parentheses only an unbalanced parenthesis and a backslash are escaped, so a
-balanced inner pair is written verbatim. Writing cannot fault: `Text` is a
-string that cannot carry `”`, refused at construction with a `Refusal` naming
-the glyph and its offset.
+`Head.body` with nothing around the separator; siblings one space apart; opaque
+regions verbatim with their glyphs; one line. Writing cannot error.
 
 ## Anatomy
 
 | module | what | kind |
 |---|---|---|
-| `anatomy` | the types of every layer | |
-| `kinds` | the kinds | |
-| `glyph` | each delimiter's glyphs; classification by walking the variants | `Glyphing`, `Delimiting`, `Serial`, `Classifying` |
-| `text` | `Text` and its refusal | |
-| `run` | a bare run split into its pieces | |
-| `delineation` | the reader: frames, runs, heads, enclosures | `Protosizable` |
-| `opaque` | the opaque regions: quotes, parentheses by balance | |
-| `textualization` | the writer, with the situation | `Situating`, `Textualizable` |
-| `situation` | lookup by path; iterative drop | `Locating` |
-| `actualization` | `Potential` and the descent | `Actualizable` |
-| `dropping` | iterative drop of the protoform tree | |
+| `core` | the types, the reader, the writer, canonical extents | `Protosizable`, `BoundedProtosizable`, `Textualizable`, `Canonicalizable`, `ReaderBudgeting` |
+| `dropping` | iterative destruction of the tree | `Shedding`, `Emptying` |
+| `traversing` | iterative `Clone`, `PartialEq` and `Debug` | `Showing` |
 
 No free functions, no inherent impls, no zero-sized bearers, no variant rosters:
 `nix flake check` carries the guards, with build, test, fmt, clippy and doc.

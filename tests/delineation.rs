@@ -1,410 +1,330 @@
-//! Reading: every rule of the reader, every fault, every extent.
+//! Reading: every rule of the reader, every error, every extent.
 
 use protos::{
-    Bare, Boundary, Delineation, Enclosure, Extent, Fault, Head, Locating, Opaque, Problem,
-    Protoform, Protosizable, Separator, Situated, Situation, Symbol,
+    Boundary, BoundedProtosizable, Enclosure, Error, Extent, Problem, Protos, Protosizable,
+    ReaderBudget, Separator, Symbol,
 };
 
-fn sym(s: &str) -> Head {
-    Head::Symbol(Symbol::try_from(s).unwrap())
+fn read(text: &str) -> Protos {
+    text.protosize()
+        .unwrap_or_else(|error| panic!("{text:?} is one structure: {error}"))
 }
-fn bare(s: &str) -> Protoform {
-    Protoform::Bare(Bare::try_from(s).unwrap())
+fn failure(text: &str) -> Error {
+    text.protosize().expect_err(&format!("{text:?} is refused"))
 }
-fn headed(h: &str, sep: Separator, body: Protoform) -> Protoform {
-    Protoform::Headed(sym(h), sep, Box::new(body))
+fn problem(text: &str) -> Problem {
+    failure(text).problem
 }
-fn dot(h: &str, body: Protoform) -> Protoform {
-    headed(h, Separator::Period, body)
+fn extent(form: &Protos) -> Extent {
+    match form {
+        Protos::Headed { extent, .. }
+        | Protos::Enclosed { extent, .. }
+        | Protos::Opaque { extent, .. }
+        | Protos::Bare { extent, .. } => *extent,
+    }
 }
-fn braced(children: Vec<Protoform>) -> Protoform {
-    Protoform::Enclosed(Enclosure::Braced, children)
+/// The slice of `text` a node claims as its own.
+fn claimed<'a>(text: &'a str, form: &Protos) -> &'a str {
+    let extent = extent(form);
+    &text[extent.start..extent.end]
 }
-fn bracketed(children: Vec<Protoform>) -> Protoform {
-    Protoform::Enclosed(Enclosure::Bracketed, children)
+fn children(form: &Protos) -> &[Protos] {
+    let Protos::Enclosed { children, .. } = form else {
+        panic!("an enclosed structure, not {form:?}")
+    };
+    children
 }
-fn quoted(s: &str) -> Protoform {
-    Protoform::Quoted(protos::Text::try_from(s).unwrap())
+fn body(form: &Protos) -> &Protos {
+    let Protos::Headed { body, .. } = form else {
+        panic!("a headed structure, not {form:?}")
+    };
+    body
 }
-fn parens(s: &str) -> Protoform {
-    Protoform::Parenthesized(Opaque::from(s))
-}
-fn qualified(s: &str, constraints: Vec<Protoform>) -> Head {
-    Head::Qualified(Symbol::try_from(s).unwrap(), constraints)
-}
-
-fn read(text: &str) -> Delineation {
-    text.protosize().unwrap()
-}
-fn forms(text: &str) -> Vec<Protoform> {
-    read(text)
-        .0
-        .into_iter()
-        .map(|Situated(_, form)| form)
-        .collect()
-}
-fn one(text: &str) -> Situated<Protoform> {
-    let mut all = read(text).0;
-    assert_eq!(all.len(), 1, "{text:?} is one structure");
-    all.pop().unwrap()
-}
-fn situation(text: &str) -> Situation {
-    one(text).0
-}
-fn fault(text: &str) -> Fault {
-    text.protosize().unwrap_err()
-}
-
-#[test]
-fn head_separator_body() {
-    assert_eq!(forms("Some.42"), vec![dot("Some", bare("42"))]);
-    let s = situation("Some.42");
-    assert_eq!(s.locate(&[]), Some(Extent(0, 7)));
-    assert_eq!(s.locate(&[0]), Some(Extent(0, 4)));
-    assert_eq!(s.locate(&[1]), Some(Extent(5, 7)));
-}
-
-#[test]
-fn chain_is_right_associative() {
-    assert_eq!(
-        forms("a:b:c"),
-        vec![headed(
-            "a",
-            Separator::Colon,
-            headed("b", Separator::Colon, bare("c"))
-        )]
-    );
-    let s = situation("a:b:c");
-    assert_eq!(s.locate(&[]), Some(Extent(0, 5)));
-    assert_eq!(s.locate(&[0]), Some(Extent(0, 1)));
-    assert_eq!(s.locate(&[1]), Some(Extent(2, 5)));
-    assert_eq!(s.locate(&[1, 0]), Some(Extent(2, 3)));
-    assert_eq!(s.locate(&[1, 1]), Some(Extent(4, 5)));
-    assert_eq!(s.locate(&[2]), None);
-    assert_eq!(
-        forms("a!b.c"),
-        vec![headed("a", Separator::Exclamation, dot("b", bare("c")))]
-    );
-}
-
-#[test]
-fn head_with_enclosed_body() {
-    let text = "Reviewer.{ 2024 17 }";
-    assert_eq!(
-        forms(text),
-        vec![dot("Reviewer", braced(vec![bare("2024"), bare("17")]))]
-    );
-    let s = situation(text);
-    assert_eq!(s.locate(&[]), Some(Extent(0, 20)));
-    assert_eq!(s.locate(&[0]), Some(Extent(0, 8)));
-    assert_eq!(s.locate(&[1]), Some(Extent(9, 20)));
-    assert_eq!(s.locate(&[1, 0]), Some(Extent(11, 15)));
-    assert_eq!(s.locate(&[1, 1]), Some(Extent(16, 18)));
-}
-
-#[test]
-fn chain_with_enclosed_body() {
-    let text = "Observed.Locks.[]";
-    assert_eq!(
-        forms(text),
-        vec![dot("Observed", dot("Locks", bracketed(vec![])))]
-    );
-    let s = situation(text);
-    assert_eq!(s.locate(&[]), Some(Extent(0, 17)));
-    assert_eq!(s.locate(&[0]), Some(Extent(0, 8)));
-    assert_eq!(s.locate(&[1]), Some(Extent(9, 17)));
-    assert_eq!(s.locate(&[1, 0]), Some(Extent(9, 14)));
-    assert_eq!(s.locate(&[1, 1]), Some(Extent(15, 17)));
-}
-
-#[test]
-fn head_with_opaque_body() {
-    assert_eq!(forms("Some.(x)"), vec![dot("Some", parens("x"))]);
-    assert_eq!(situation("Some.(x)").locate(&[1]), Some(Extent(5, 8)));
-    assert_eq!(forms("Some.“x y”"), vec![dot("Some", quoted("x y"))]);
-}
-
-#[test]
-fn runs_that_are_not_chains_stay_whole() {
-    for word in ["a.", ".a", "a..b", "-", "-42", "a.b.", "..", "2026-09-03"] {
-        assert_eq!(forms(word), vec![bare(word)], "{word:?}");
+fn bare(text: &str) -> Protos {
+    Protos::Bare {
+        extent: Extent {
+            start: 0,
+            end: text.len(),
+        },
+        text: text.to_owned(),
     }
 }
 
 #[test]
-fn a_timestamp_with_colons_is_a_colon_chain() {
-    assert_eq!(
-        forms("2026-09-03T17:46:20"),
-        vec![headed(
-            "2026-09-03T17",
-            Separator::Colon,
-            headed("46", Separator::Colon, bare("20"))
-        )]
-    );
+fn a_head_a_separator_and_a_body() {
+    let text = "Some.42";
+    let form = read(text);
+    let Protos::Headed {
+        head,
+        constraints,
+        separator,
+        ..
+    } = &form
+    else {
+        panic!("headed, not {form:?}")
+    };
+    assert_eq!(head, &Symbol(String::from("Some")));
+    assert_eq!(*separator, Separator::Period);
+    assert!(constraints.is_none());
+    assert_eq!(claimed(text, &form), text);
+    assert_eq!(claimed(text, body(&form)), "42");
 }
 
 #[test]
-fn adjacency_without_one_trailing_separator_yields_siblings() {
-    assert_eq!(
-        forms("a..{ 1 }"),
-        vec![bare("a.."), braced(vec![bare("1")])]
-    );
-    let d = read("a..{ 1 }");
-    assert_eq!(d.0[0].0.locate(&[]), Some(Extent(0, 3)));
-    assert_eq!(d.0[1].0.locate(&[]), Some(Extent(3, 8)));
-    assert_eq!(
-        forms("a.{ 1 }.b"),
-        vec![dot("a", braced(vec![bare("1")])), bare(".b")]
-    );
-    assert_eq!(forms("a{ 1 }"), vec![bare("a"), braced(vec![bare("1")])]);
-    assert_eq!(
-        forms("a<b>c"),
-        vec![
-            Protoform::Qualified(Symbol::try_from("a").unwrap(), vec![bare("b")]),
-            bare("c")
-        ]
-    );
+fn a_chain_is_right_associative() {
+    let text = "a:b:c";
+    let form = read(text);
+    assert_eq!(claimed(text, &form), "a:b:c");
+    assert_eq!(claimed(text, body(&form)), "b:c");
+    assert_eq!(claimed(text, body(body(&form))), "c");
+    for (form, expected) in [(&form, Separator::Colon), (body(&form), Separator::Colon)] {
+        let Protos::Headed { separator, .. } = form else {
+            panic!("headed, not {form:?}")
+        };
+        assert_eq!(*separator, expected);
+    }
+    let mixed = read("a!b.c");
+    let Protos::Headed { separator, .. } = &mixed else {
+        panic!("headed")
+    };
+    assert_eq!(*separator, Separator::Exclamation);
+    let Protos::Headed { separator, .. } = body(&mixed) else {
+        panic!("headed")
+    };
+    assert_eq!(*separator, Separator::Period);
 }
 
 #[test]
-fn qualified_head_alone() {
-    let text = "Vector<Text>";
-    assert_eq!(
-        forms(text),
-        vec![Protoform::Qualified(
-            Symbol::try_from("Vector").unwrap(),
-            vec![bare("Text")]
-        )]
-    );
-    let s = situation(text);
-    assert_eq!(s.locate(&[]), Some(Extent(0, 12)));
-    assert_eq!(s.locate(&[0]), Some(Extent(7, 11)));
-    assert_eq!(
-        forms("Processable<[Clonable Sendable] Serializable>"),
-        vec![Protoform::Qualified(
-            Symbol::try_from("Processable").unwrap(),
-            vec![
-                bracketed(vec![bare("Clonable"), bare("Sendable")]),
-                bare("Serializable")
-            ]
-        )]
-    );
+fn a_separator_opens_an_enclosed_body() {
+    let text = "Reviewer.{ 2024 17 }";
+    let form = read(text);
+    let enclosed = body(&form);
+    assert_eq!(claimed(text, enclosed), "{ 2024 17 }");
+    let years = children(enclosed);
+    assert_eq!(years.len(), 2);
+    assert_eq!(claimed(text, &years[0]), "2024");
+    assert_eq!(claimed(text, &years[1]), "17");
+
+    let chained = "Observed.Locks.[]";
+    let form = read(chained);
+    assert_eq!(claimed(chained, body(&form)), "Locks.[]");
+    assert_eq!(claimed(chained, body(body(&form))), "[]");
+    assert!(children(body(body(&form))).is_empty());
 }
 
 #[test]
-fn qualified_head_with_body() {
+fn a_run_that_is_not_a_chain_stays_whole() {
+    for word in ["-", "-42", "2026-09-03", "a..b", "a.", ".a", "..", "a.b."] {
+        assert_eq!(read(word), bare(word), "{word:?}");
+    }
+}
+
+#[test]
+fn a_timestamp_is_a_colon_chain() {
+    let text = "2026-09-03T17:46:20";
+    let form = read(text);
+    let Protos::Headed { head, .. } = &form else {
+        panic!("headed, not {form:?}")
+    };
+    assert_eq!(head, &Symbol(String::from("2026-09-03T17")));
+    assert_eq!(claimed(text, body(&form)), "46:20");
+}
+
+#[test]
+fn adjacency_without_a_separator_is_two_structures() {
+    // One text, one structure: a second structure at the top is refused, and
+    // the same adjacency inside an enclosure is two children.
+    for text in ["a{ 1 }", "a..{ 1 }", "a.{ 1 }.b", "a<b>c", "Vector<Text>"] {
+        assert_eq!(problem(text), Problem::Multiple, "{text:?}");
+    }
+    let text = "[ a{ 1 } ]";
+    assert_eq!(children(&read(text)).len(), 2);
+    let qualified = "[ Vector<Text> ]";
+    let form = read(qualified);
+    let parts = children(&form);
+    assert_eq!(parts.len(), 2);
+    assert_eq!(claimed(qualified, &parts[0]), "Vector");
+    assert_eq!(claimed(qualified, &parts[1]), "<Text>");
+}
+
+#[test]
+fn a_constrained_head_needs_a_separator_and_a_body() {
     let text = "A<B>.{ 1 }";
-    assert_eq!(
-        forms(text),
-        vec![Protoform::Headed(
-            qualified("A", vec![bare("B")]),
-            Separator::Period,
-            Box::new(braced(vec![bare("1")]))
-        )]
-    );
-    let s = situation(text);
-    assert_eq!(s.locate(&[]), Some(Extent(0, 10)));
-    assert_eq!(s.locate(&[0]), Some(Extent(0, 4)));
-    assert_eq!(s.locate(&[0, 0]), Some(Extent(2, 3)));
-    assert_eq!(s.locate(&[1]), Some(Extent(5, 10)));
-    assert_eq!(s.locate(&[1, 0]), Some(Extent(7, 8)));
-    assert_eq!(
-        forms("A<B>.C"),
-        vec![Protoform::Headed(
-            qualified("A", vec![bare("B")]),
-            Separator::Period,
-            Box::new(bare("C"))
-        )]
-    );
-    assert_eq!(
-        forms("A.B<C>"),
-        vec![dot(
-            "A",
-            Protoform::Qualified(Symbol::try_from("B").unwrap(), vec![bare("C")])
-        )]
-    );
-    assert_eq!(
-        forms("A<B>. C"),
-        vec![
-            Protoform::Qualified(Symbol::try_from("A").unwrap(), vec![bare("B")]),
-            bare("."),
-            bare("C")
-        ]
-    );
+    let form = read(text);
+    let Protos::Headed {
+        head,
+        constraints: Some(constraints),
+        ..
+    } = &form
+    else {
+        panic!("a constrained head, not {form:?}")
+    };
+    assert_eq!(head, &Symbol(String::from("A")));
+    assert_eq!(claimed(text, constraints), "<B>");
+    assert_eq!(claimed(text, &children(constraints)[0]), "B");
+    assert_eq!(claimed(text, body(&form)), "{ 1 }");
+    assert_eq!(problem("A<B>. C"), Problem::MissingBody);
+    assert_eq!(problem("A<B>."), Problem::MissingBody);
+    assert_eq!(problem("[ A<B>. ]"), Problem::MissingBody);
+    // Angles with no head before them are an ordinary enclosure, so `C` is
+    // then a second structure rather than a body.
+    assert_eq!(problem("<B>.C"), Problem::Multiple);
 }
 
 #[test]
-fn curly_quotes_are_opaque() {
-    let text = "“a { b” c";
-    assert_eq!(forms(text), vec![quoted("a { b"), bare("c")]);
-    let d = read(text);
-    assert_eq!(d.0[0].0.locate(&[]), Some(Extent(0, 11)));
-    assert_eq!(d.0[1].0.locate(&[]), Some(Extent(12, 13)));
-    assert_eq!(forms("“”"), vec![quoted("")]);
-    assert_eq!(
-        forms("“ ; not a comment ”"),
-        vec![quoted(" ; not a comment ")]
-    );
+fn guillemets_hold_every_glyph_as_content() {
+    for (text, content) in [
+        ("«a { b»", "a { b"),
+        ("«»", ""),
+        ("« ; not a comment »", " ; not a comment "),
+        ("«a\\»b»", "a»b"),
+        ("«a\\\\b»", "a\\b"),
+        ("«a\\b»", "a\\b"),
+        ("«a(b»", "a(b"),
+    ] {
+        let form = read(text);
+        assert_eq!(
+            form,
+            Protos::Opaque {
+                extent: Extent {
+                    start: 0,
+                    end: text.len()
+                },
+                boundary: Boundary::Guillemets,
+                content: String::from(content),
+            },
+            "{text:?}"
+        );
+    }
 }
 
 #[test]
 fn parentheses_are_read_by_balance() {
-    assert_eq!(forms("(a (b) c)"), vec![parens("a (b) c")]);
-    assert_eq!(forms("(a \\) b)"), vec![parens("a ) b")]);
-    assert_eq!(forms("(a \\( b)"), vec![parens("a ( b")]);
-    assert_eq!(forms("(\\\\)"), vec![parens("\\")]);
-    assert_eq!(forms("(a\\x)"), vec![parens("a\\x")]);
-    assert_eq!(forms("()"), vec![parens("")]);
-    assert_eq!(forms("(a ; b)"), vec![parens("a ; b")]);
-    assert_eq!(forms("(a “ b)"), vec![parens("a “ b")]);
-    assert_eq!(forms("(a ” b)"), vec![parens("a ” b")]);
+    for (text, content) in [
+        ("(a (b) c)", "a (b) c"),
+        ("(a \\) b)", "a ) b"),
+        ("(a \\( b)", "a ( b"),
+        ("(\\\\)", "\\"),
+        ("(a\\x)", "a\\x"),
+        ("()", ""),
+        ("(a ; b)", "a ; b"),
+        ("(a « b)", "a « b"),
+        ("(a » b)", "a » b"),
+    ] {
+        let form = read(text);
+        assert_eq!(
+            form,
+            Protos::Opaque {
+                extent: Extent {
+                    start: 0,
+                    end: text.len()
+                },
+                boundary: Boundary::Parentheses,
+                content: String::from(content),
+            },
+            "{text:?}"
+        );
+    }
 }
 
 #[test]
-fn comments_run_to_end_of_line() {
-    assert_eq!(forms("a ; comment\n b"), vec![bare("a"), bare("b")]);
-    assert_eq!(
-        forms("{ 1 ; c }\n 2 }"),
-        vec![braced(vec![bare("1"), bare("2")])]
-    );
-    assert_eq!(forms("a;b"), vec![bare("a")]);
+fn a_comment_runs_to_the_end_of_its_line() {
+    assert_eq!(read("a ; comment\n"), bare("a"));
+    assert_eq!(read("a;b"), bare("a"));
+    let text = "{ 1 ; c }\n 2 }";
+    let form = read(text);
+    let parts = children(&form);
+    assert_eq!(parts.len(), 2);
+    assert_eq!(claimed(text, &parts[0]), "1");
+    assert_eq!(claimed(text, &parts[1]), "2");
 }
 
 #[test]
-fn whitespace_and_emptiness() {
-    assert_eq!(forms(""), vec![]);
-    assert_eq!(forms("  \n\t "), vec![]);
-    assert_eq!(forms("{\n\t1\r\n}"), vec![braced(vec![bare("1")])]);
-    assert_eq!(forms("{}"), vec![braced(vec![])]);
-    assert_eq!(forms("[  ]"), vec![bracketed(vec![])]);
+fn whitespace_separates_and_emptiness_is_refused() {
+    assert_eq!(problem(""), Problem::Empty);
+    assert_eq!(problem("  \n\t "), Problem::Empty);
+    assert_eq!(problem(" ; only a comment\n"), Problem::Empty);
+    assert_eq!(children(&read("{\n\t1\r\n}")).len(), 1);
+    assert!(children(&read("{}")).is_empty());
+    assert!(children(&read("[  ]")).is_empty());
+    let Protos::Enclosed { enclosure, .. } = read("[  ]") else {
+        panic!("enclosed")
+    };
+    assert_eq!(enclosure, Enclosure::Bracketed);
 }
 
 #[test]
-fn nested_enclosures_situated() {
-    let text = "{ Ada 1990 { “12 Rue de la Paix” Paris 75002 } [ Author Reviewer.{ 2024 17 } ] }";
-    let Situated(s, form) = one(text);
+fn every_node_of_a_nest_claims_its_own_slice() {
+    let text = "{ Ada 1990 { «12 Rue de la Paix» Paris 75002 } [ Author Reviewer.{ 2024 17 } ] }";
+    let form = read(text);
+    assert_eq!(claimed(text, &form), text);
+    let top = children(&form);
+    assert_eq!(claimed(text, &top[0]), "Ada");
+    assert_eq!(claimed(text, &top[1]), "1990");
     assert_eq!(
-        form,
-        braced(vec![
-            bare("Ada"),
-            bare("1990"),
-            braced(vec![
-                quoted("12 Rue de la Paix"),
-                bare("Paris"),
-                bare("75002")
-            ]),
-            bracketed(vec![
-                bare("Author"),
-                dot("Reviewer", braced(vec![bare("2024"), bare("17")]))
-            ]),
-        ])
+        claimed(text, &top[2]),
+        "{ «12 Rue de la Paix» Paris 75002 }"
     );
-    assert_eq!(s.locate(&[]), Some(Extent(0, text.len() as i64)));
-    let at = text.find("17").unwrap() as i64;
-    assert_eq!(s.locate(&[3, 1, 1, 1]), Some(Extent(at, at + 2)));
-    assert_eq!(s.locate(&[3, 1, 0]), Some(Extent(60, 68)));
-    assert_eq!(s.locate(&[2, 0]), Some(Extent(13, 36)));
-}
-
-#[test]
-fn faults_are_situated() {
-    let f = fault("{ 1 ");
+    assert_eq!(claimed(text, &children(&top[2])[0]), "«12 Rue de la Paix»");
+    assert_eq!(claimed(text, &top[3]), "[ Author Reviewer.{ 2024 17 } ]");
+    let reviewer = &children(&top[3])[1];
+    assert_eq!(claimed(text, reviewer), "Reviewer.{ 2024 17 }");
+    let year = &children(body(reviewer))[1];
+    assert_eq!(claimed(text, year), "17");
     assert_eq!(
-        f,
-        Fault {
-            extent: Extent(0, 4),
-            problem: Problem::Unclosed(Enclosure::Braced)
-        }
-    );
-    assert_eq!(
-        fault("[ { 1 ] }"),
-        Fault {
-            extent: Extent(6, 7),
-            problem: Problem::Unopened(Enclosure::Bracketed)
-        }
-    );
-    assert_eq!(
-        fault("}"),
-        Fault {
-            extent: Extent(0, 1),
-            problem: Problem::Unopened(Enclosure::Braced)
-        }
-    );
-    assert_eq!(
-        fault("{ [ 1 }"),
-        Fault {
-            extent: Extent(6, 7),
-            problem: Problem::Unopened(Enclosure::Braced)
-        }
-    );
-    assert_eq!(
-        fault("“abc"),
-        Fault {
-            extent: Extent(0, 6),
-            problem: Problem::Unterminated(Boundary::CurlyQuotes)
-        }
-    );
-    assert_eq!(
-        fault("(a"),
-        Fault {
-            extent: Extent(0, 2),
-            problem: Problem::Unterminated(Boundary::Parentheses)
-        }
-    );
-    assert_eq!(
-        fault("(a\\"),
-        Fault {
-            extent: Extent(0, 3),
-            problem: Problem::Unterminated(Boundary::Parentheses)
-        }
-    );
-    assert_eq!(
-        fault("((a)"),
-        Fault {
-            extent: Extent(0, 4),
-            problem: Problem::Unterminated(Boundary::Parentheses)
-        }
-    );
-    assert_eq!(
-        fault("a ” b"),
-        Fault {
-            extent: Extent(2, 5),
-            problem: Problem::Stray(Boundary::CurlyQuotes)
-        }
-    );
-    assert_eq!(
-        fault(")"),
-        Fault {
-            extent: Extent(0, 1),
-            problem: Problem::Stray(Boundary::Parentheses)
-        }
-    );
-    assert_eq!(
-        fault("Some.{ 1 "),
-        Fault {
-            extent: Extent(5, 9),
-            problem: Problem::Unclosed(Enclosure::Braced)
-        }
-    );
-    assert_eq!(
-        fault("A<B"),
-        Fault {
-            extent: Extent(1, 3),
-            problem: Problem::Unclosed(Enclosure::Angled)
-        }
+        extent(year).start,
+        text.find("17 }").expect("the inner year")
     );
 }
 
 #[test]
-fn several_top_level_structures() {
-    let d = read("a { b } “c”");
-    assert_eq!(d.0.len(), 3);
-    assert_eq!(d.0[1].0.locate(&[0]), Some(Extent(4, 5)));
-    assert_eq!(d.0[2].0.locate(&[]), Some(Extent(8, 15)));
+fn every_refusal_names_its_problem_and_where_it_arose() {
+    for (text, expected) in [
+        ("{ 1 ", Problem::Unclosed('{')),
+        ("Some.{ 1 ", Problem::Unclosed('{')),
+        ("A<B", Problem::Unclosed('<')),
+        ("«abc", Problem::Unclosed('«')),
+        ("(a", Problem::Unclosed('(')),
+        ("(a\\", Problem::Unclosed('(')),
+        ("((a)", Problem::Unclosed('(')),
+        ("}", Problem::Unexpected('}')),
+        (")", Problem::Unexpected(')')),
+        ("»", Problem::Unexpected('»')),
+        ("[ { 1 ] }", Problem::Unexpected(']')),
+        ("a { b } c", Problem::Multiple),
+    ] {
+        assert_eq!(problem(text), expected, "{text:?}");
+    }
+    let error = failure("{ 1 ");
+    assert_eq!(
+        error.extent,
+        Extent {
+            start: 0,
+            end: "{ 1 ".len()
+        }
+    );
+    assert_eq!(
+        format!("{error}"),
+        "structural error at 0..4: Unclosed('{')"
+    );
+}
+
+#[test]
+fn descent_is_bounded_by_depth_before_it_is_bounded_by_the_stack() {
+    let text = format!("{}1{}", "[".repeat(300), "]".repeat(300));
+    let mut budget = ReaderBudget {
+        remaining: usize::MAX,
+    };
+    assert_eq!(
+        text.protosize_with(&mut budget)
+            .expect_err("too deep")
+            .problem,
+        Problem::Depth
+    );
 }
 
 #[test]
 fn a_string_protosizes_like_a_str() {
     let owned = String::from("{ 1 }");
-    assert_eq!(owned.protosize().unwrap(), "{ 1 }".protosize().unwrap());
+    assert_eq!(owned.protosize().expect("structure"), read("{ 1 }"));
 }

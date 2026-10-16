@@ -2,7 +2,7 @@
 
 use protos::{
     Boundary, BoundedProtosizable, Enclosure, Error, Extent, Problem, Protos, Protosizable,
-    ReaderBudget, Separator, Symbol,
+    ReaderBudget, Separator, Symbol, Textualizable,
 };
 
 fn read(text: &str) -> Protos {
@@ -356,4 +356,22 @@ fn descent_is_bounded_by_depth_before_it_is_bounded_by_the_stack() {
 fn a_string_protosizes_like_a_str() {
     let owned = String::from("{ 1 }");
     assert_eq!(owned.protosize().expect("structure"), read("{ 1 }"));
+}
+
+#[test]
+fn vector_brackets_are_an_enclosure() {
+    let text = "Locks.⟦ Lock ⟧";
+    let form = read(text);
+    let Protos::Enclosed { enclosure, .. } = body(&form) else {
+        panic!("vector brackets enclose, not {form:?}")
+    };
+    assert_eq!(*enclosure, Enclosure::Vectored);
+    assert_eq!(claimed(text, body(&form)), "⟦ Lock ⟧");
+    assert_eq!(claimed(text, &children(body(&form))[0]), "Lock");
+    let nested = "{ ⟦ ⟦ String ⟧ ⟧ Integer }";
+    assert_eq!(children(&read(nested)).len(), 2);
+    assert_eq!(problem("⟦ a"), Problem::Unclosed('⟦'));
+    assert_eq!(problem("a⟧"), Problem::Multiple);
+    assert_eq!(read("⟦ a b ⟧").textualize(), "⟦ a b ⟧");
+    assert_eq!(read("⟦⟧").textualize(), "⟦⟧");
 }

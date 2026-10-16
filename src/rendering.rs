@@ -104,7 +104,8 @@ impl Rendering for Rendition {
         match self {
             Self::Printed => match node {
                 Protos::Enclosed {
-                    enclosure: enclosure @ (Enclosure::Braced | Enclosure::Bracketed),
+                    enclosure:
+                        enclosure @ (Enclosure::Braced | Enclosure::Bracketed | Enclosure::Vectored),
                     children,
                     ..
                 } if !children.is_empty() => {

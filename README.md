@@ -23,7 +23,7 @@ Descent may error; ascent cannot.
 ## Structure
 
 `Protos` is every unit of the text: `Headed` (a head, separator and body),
-`Enclosed` (structures between `{ }`, `[ ]` or `< >`), `Opaque` (content between
+`Enclosed` (structures between `{ }`, `[ ]`, `< >` or, on the proposal branch, `⟦ ⟧`), `Opaque` (content between
 `« »` or `( )`), and `Bare` (a run alone). Every node carries its own `Extent`,
 the fact of where it sits in the text — read in by the reader, or assigned by
 `canonicalize` to a tree that was built rather than read.

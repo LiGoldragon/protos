@@ -1,7 +1,7 @@
 ; The Protos structural substrate's representable public data anatomy. Borrowed
 ; reader helpers and tuple wrapper implementation details are not reflected as
 ; separate Ethos shapes.
-Library
+Library.{
 []
 [ Extent.{ Integer Integer }
   Symbol.String
@@ -17,6 +17,6 @@ Library
   ReaderBudget.{ Integer } ]
 [ Textualizable.[ textualize.[ String ] ]
   Canonicalizable.[] ]
-[]
+[] }
 ; Rust char payloads are represented as one-character String positions because
 ; Character is not an Ethos intrinsic.

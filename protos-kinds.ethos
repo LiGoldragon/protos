@@ -2,7 +2,7 @@
 ; spends from is Spendable, and ReaderBudget bears it. Reader helpers and
 ; unit-yield operational capabilities remain Rust implementation surface until
 ; Ethos can state them without inventing a yield type.
-Library
+Library.{
 [ crate:[ Protos Error ReaderBudget ] ]
 []
 [ Spendable.[ spend![ Boolean ] ]
@@ -15,4 +15,4 @@ Library
   Textualizable.[ textualize.[ String ] ]
   Compactable.[ compact.[ String ] ]
   Canonicalizable.[] ]
-[ ReaderBudget.[ Spendable ] ]
+[ ReaderBudget.[ Spendable ] ] }

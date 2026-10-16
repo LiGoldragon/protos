@@ -63,7 +63,7 @@ fn an_angled_enclosure_stays_tight_against_the_element_before_it() {
         reprint("[ Vector<Event> Result<String Integer> ]"),
         "[ Vector<Event> Result<String Integer> ]"
     );
-    assert_eq!(reprint("[ a. <b> ]"), "[ a. <b> ]");
+    assert_eq!(reprint("[ a. <b> ]"), "[ a.<b> ]");
     assert_eq!(
         reprint("[ Generated.Vector<String> Checked.String ]"),
         "[ Generated.Vector<String>\n  Checked.String ]"

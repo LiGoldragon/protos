@@ -113,6 +113,34 @@ fn a_separator_opens_an_enclosed_body() {
 }
 
 #[test]
+fn any_whitespace_may_stand_between_a_separator_and_its_body() {
+    let text = "Observed.\n   Locks.\n      []";
+    let form = read(text);
+    assert_eq!(claimed(text, &form), text);
+    assert_eq!(claimed(text, body(&form)), "Locks.\n      []");
+    assert_eq!(claimed(text, body(body(&form))), "[]");
+    for text in [
+        "Library.\n{\n[ protos:String ]\n[]\n[]\n[] }",
+        "Library.\t{ [] }",
+        "Some. ; a comment\n  42",
+        "Run! [ a ]",
+        "Type: { a b }",
+    ] {
+        assert!(matches!(read(text), Protos::Headed { .. }), "{text:?}");
+    }
+    let listed = "[ Brief. String Other ]";
+    assert_eq!(children(&read(listed)).len(), 2);
+    // With nothing after it, a trailing separator still ends a bare word.
+    for text in ["[ a. ]", "[ a.b. ]", "[ a. ; only a comment\n ]"] {
+        let form = read(text);
+        assert!(
+            matches!(&children(&form)[0], Protos::Bare { .. }),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
 fn a_run_that_is_not_a_chain_stays_whole() {
     for word in ["-", "-42", "2026-09-03", "a..b", "a.", ".a", "..", "a.b."] {
         assert_eq!(read(word), bare(word), "{word:?}");
@@ -163,7 +191,8 @@ fn a_constrained_head_needs_a_separator_and_a_body() {
     assert_eq!(claimed(text, constraints), "<B>");
     assert_eq!(claimed(text, &children(constraints)[0]), "B");
     assert_eq!(claimed(text, body(&form)), "{ 1 }");
-    assert_eq!(problem("A<B>. C"), Problem::MissingBody);
+    // Whitespace may stand between the separator and the body.
+    assert_eq!(claimed("A<B>. C", body(&read("A<B>. C"))), "C");
     assert_eq!(problem("A<B>."), Problem::MissingBody);
     assert_eq!(problem("[ A<B>. ]"), Problem::MissingBody);
     // Angles with no head before them are an ordinary enclosure, so `C` is

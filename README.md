@@ -50,6 +50,12 @@ non-empty run with no separator.
 - A run ending in exactly one separator, immediately followed by an opener,
   opens that structure as the chain's body: `Reviewer.{ 2024 17 }`,
   `Observed.Locks.[]`, `Some.(x)`.
+- A run ending in exactly one separator, followed by any whitespace (spaces,
+  tabs, line breaks, comments) and then a structure, takes that structure as
+  its body: `Observed.\n   Locks.\n      []` reads as `Observed.Locks.[]`, and
+  `Library.\n{ … }` as `Library.{ … }`. With nothing after it but a closer or
+  the end of the text, the run stays one bare word (`[ a. ]`). (Proposal
+  branch `ethos-proposals`; on main such a run is always a bare word.)
 - A run of symbols immediately followed by `<` constrains its head:
   `A<B>.{ 1 }`, `A<B>.C`.
 - Every other adjacency is a second structure: `a..{ 1 }`, `a<b>c`,

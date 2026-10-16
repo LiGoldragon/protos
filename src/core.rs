@@ -266,6 +266,7 @@ trait Reading {
         separator: Separator,
     ) -> Result<Protos, Error>;
     fn space(&mut self);
+    fn awaits_body(&self, from: usize) -> bool;
     fn glyph(&self) -> Option<char>;
     fn step(&mut self);
     fn failure(&self, problem: Problem, start: usize) -> Error;
@@ -406,10 +407,11 @@ impl Reading for Reader<'_> {
             && whole_run[..whole_run.len() - 1]
                 .split(['.', '!', ':'])
                 .all(|segment| !segment.is_empty())
-            && self.text[run_end..]
+            && (self.text[run_end..]
                 .chars()
                 .next()
-                .is_some_and(|glyph| matches!(glyph, '{' | '[' | '<' | '«' | '('));
+                .is_some_and(|glyph| matches!(glyph, '{' | '[' | '<' | '«' | '('))
+                || self.awaits_body(run_end));
         if !segments_are_symbols && !opens_body {
             self.offset = run_end;
             return Ok(Protos::Bare {
@@ -440,10 +442,11 @@ impl Reading for Reader<'_> {
                     return Err(self.failure(Problem::MissingHead, start));
                 }
                 self.step();
-                if self.glyph().is_none()
-                    || self.glyph().is_some_and(|next| {
-                        next.is_whitespace() || matches!(next, '}' | ']' | '>' | '»' | ')')
-                    })
+                if !self.awaits_body(self.offset)
+                    && (self.glyph().is_none()
+                        || self.glyph().is_some_and(|next| {
+                            next.is_whitespace() || matches!(next, '}' | ']' | '>' | '»' | ')')
+                        }))
                 {
                     return Err(self.failure(Problem::MissingBody, self.offset));
                 }
@@ -473,10 +476,11 @@ impl Reading for Reader<'_> {
                     }
                 };
                 self.step();
-                if self.glyph().is_none()
-                    || self.glyph().is_some_and(|next| {
-                        next.is_whitespace() || matches!(next, '}' | ']' | '>' | '»' | ')')
-                    })
+                if !self.awaits_body(self.offset)
+                    && (self.glyph().is_none()
+                        || self.glyph().is_some_and(|next| {
+                            next.is_whitespace() || matches!(next, '}' | ']' | '>' | '»' | ')')
+                        }))
                 {
                     return Err(self.failure(Problem::MissingBody, self.offset));
                 }
@@ -527,6 +531,30 @@ impl Reading for Reader<'_> {
             while self.glyph().is_some_and(|glyph| glyph != '\n') {
                 self.step();
             }
+        }
+    }
+    /// Whether, after a separator ending at `from`, whitespace or a comment
+    /// leads on to a structure: any amount of whitespace, line breaks
+    /// included, may stand between a separator and its body.
+    fn awaits_body(&self, from: usize) -> bool {
+        let mut rest = &self.text[from..];
+        if !rest
+            .chars()
+            .next()
+            .is_some_and(|glyph| glyph.is_whitespace() || glyph == ';')
+        {
+            return false;
+        }
+        loop {
+            rest = rest.trim_start();
+            if let Some(comment) = rest.strip_prefix(';') {
+                rest = comment.find('\n').map_or("", |end| &comment[end..]);
+                continue;
+            }
+            return rest
+                .chars()
+                .next()
+                .is_some_and(|glyph| !matches!(glyph, '}' | ']' | '>' | '»' | ')'));
         }
     }
     fn glyph(&self) -> Option<char> {

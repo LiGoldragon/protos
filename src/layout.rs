@@ -68,7 +68,11 @@ impl Layered for [&Protos] {
         match self.first() {
             Some(Protos::Headed { .. }) => true,
             Some(Protos::Enclosed {
-                enclosure: Enclosure::Braced | Enclosure::Bracketed | Enclosure::Vectored,
+                enclosure:
+                    Enclosure::Braced
+                    | Enclosure::Bracketed
+                    | Enclosure::Vectored
+                    | Enclosure::Structured,
                 children,
                 ..
             }) => !children.is_empty(),

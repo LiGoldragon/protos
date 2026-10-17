@@ -6,7 +6,7 @@ Library.{
 [ Extent.{ Integer Integer }
   Symbol.String
   Separator.[ Period Exclamation Colon ]
-  Enclosure.[ Braced Bracketed Angled Vectored ]
+  Enclosure.[ Braced Bracketed Angled Vectored Structured ]
   Boundary.[ Guillemets Parentheses ]
   Protos.[ Headed.{ Extent Symbol Option<Protos> Separator Protos }
            Enclosed.{ Extent Enclosure Vector<Protos> }

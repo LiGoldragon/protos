@@ -28,6 +28,9 @@ pub enum Enclosure {
     /// `⟦ ⟧`: the proposal's vector brackets, which a dialect may read as
     /// sugar (ethos: `⟦ T ⟧` is `Vector<T>`).
     Vectored,
+    /// `⦃ ⦄` (U+2983, U+2984): the proposal's white braces, which a dialect
+    /// may read as sugar (ethos: `Name.⦃ A B ⦄` is `Name.{ A B }`).
+    Structured,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Boundary {
@@ -137,6 +140,7 @@ impl Glyphing for Enclosure {
             Self::Bracketed => '[',
             Self::Angled => '<',
             Self::Vectored => '⟦',
+            Self::Structured => '⦃',
         }
     }
     fn closer(self) -> char {
@@ -145,6 +149,7 @@ impl Glyphing for Enclosure {
             Self::Bracketed => ']',
             Self::Angled => '>',
             Self::Vectored => '⟧',
+            Self::Structured => '⦄',
         }
     }
 }
@@ -304,9 +309,10 @@ impl Reading for Reader<'_> {
             Some('[') => self.enclosed(Enclosure::Bracketed),
             Some('<') => self.enclosed(Enclosure::Angled),
             Some('⟦') => self.enclosed(Enclosure::Vectored),
+            Some('⦃') => self.enclosed(Enclosure::Structured),
             Some('«') => self.opaque(Boundary::Guillemets),
             Some('(') => self.opaque(Boundary::Parentheses),
-            Some('}' | ']' | '>' | '⟧' | '»' | ')') => Err(self.failure(
+            Some('}' | ']' | '>' | '⟧' | '⦄' | '»' | ')') => Err(self.failure(
                 Problem::Unexpected(self.glyph().expect("matched")),
                 self.offset,
             )),
@@ -395,7 +401,20 @@ impl Reading for Reader<'_> {
                 (glyph.is_whitespace()
                     || matches!(
                         glyph,
-                        '{' | '}' | '[' | ']' | '<' | '>' | '⟦' | '⟧' | '«' | '»' | '(' | ')' | ';'
+                        '{' | '}'
+                            | '['
+                            | ']'
+                            | '<'
+                            | '>'
+                            | '⟦'
+                            | '⟧'
+                            | '⦃'
+                            | '⦄'
+                            | '«'
+                            | '»'
+                            | '('
+                            | ')'
+                            | ';'
                     ))
                 .then_some(start + relative)
             })
@@ -416,7 +435,7 @@ impl Reading for Reader<'_> {
             && (self.text[run_end..]
                 .chars()
                 .next()
-                .is_some_and(|glyph| matches!(glyph, '{' | '[' | '<' | '⟦' | '«' | '('))
+                .is_some_and(|glyph| matches!(glyph, '{' | '[' | '<' | '⟦' | '⦃' | '«' | '('))
                 || self.awaits_body(run_end));
         if !segments_are_symbols && !opens_body {
             self.offset = run_end;
@@ -433,7 +452,19 @@ impl Reading for Reader<'_> {
             if glyph.is_whitespace()
                 || matches!(
                     glyph,
-                    '{' | '}' | '[' | ']' | '>' | '⟦' | '⟧' | '«' | '»' | '(' | ')' | ';'
+                    '{' | '}'
+                        | '['
+                        | ']'
+                        | '>'
+                        | '⟦'
+                        | '⟧'
+                        | '⦃'
+                        | '⦄'
+                        | '«'
+                        | '»'
+                        | '('
+                        | ')'
+                        | ';'
                 )
             {
                 break;
@@ -452,7 +483,7 @@ impl Reading for Reader<'_> {
                     && (self.glyph().is_none()
                         || self.glyph().is_some_and(|next| {
                             next.is_whitespace()
-                                || matches!(next, '}' | ']' | '>' | '⟧' | '»' | ')')
+                                || matches!(next, '}' | ']' | '>' | '⟧' | '⦄' | '»' | ')')
                         }))
                 {
                     return Err(self.failure(Problem::MissingBody, self.offset));
@@ -487,7 +518,7 @@ impl Reading for Reader<'_> {
                     && (self.glyph().is_none()
                         || self.glyph().is_some_and(|next| {
                             next.is_whitespace()
-                                || matches!(next, '}' | ']' | '>' | '⟧' | '»' | ')')
+                                || matches!(next, '}' | ']' | '>' | '⟧' | '⦄' | '»' | ')')
                         }))
                 {
                     return Err(self.failure(Problem::MissingBody, self.offset));
@@ -562,7 +593,7 @@ impl Reading for Reader<'_> {
             return rest
                 .chars()
                 .next()
-                .is_some_and(|glyph| !matches!(glyph, '}' | ']' | '>' | '⟧' | '»' | ')'));
+                .is_some_and(|glyph| !matches!(glyph, '}' | ']' | '>' | '⟧' | '⦄' | '»' | ')'));
         }
     }
     fn glyph(&self) -> Option<char> {

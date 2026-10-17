@@ -375,3 +375,19 @@ fn vector_brackets_are_an_enclosure() {
     assert_eq!(read("⟦ a b ⟧").textualize(), "⟦ a b ⟧");
     assert_eq!(read("⟦⟧").textualize(), "⟦⟧");
 }
+
+#[test]
+fn white_braces_are_an_enclosure() {
+    let text = "Point.⦃ Integer Integer ⦄";
+    let form = read(text);
+    let Protos::Enclosed { enclosure, .. } = body(&form) else {
+        panic!("white braces enclose, not {form:?}")
+    };
+    assert_eq!(*enclosure, Enclosure::Structured);
+    assert_eq!(claimed(text, &children(body(&form))[1]), "Integer");
+    assert_eq!(problem("⦃ a"), Problem::Unclosed('⦃'));
+    assert_eq!(problem("a⦄"), Problem::Multiple);
+    assert_eq!(read("⦃ a b ⦄").textualize(), "⦃ a b ⦄");
+    // A line break after a brace is whitespace like any other.
+    assert!(matches!(read("Library.{\n[]\n[] }"), Protos::Headed { .. }));
+}

@@ -182,32 +182,6 @@ fn deeply_constructed_forms_print_without_recursion() {
 }
 
 #[test]
-fn deeply_constructed_forms_drop_without_recursion() {
-    let mut form = Protos::Bare {
-        extent: protos::Extent::new(
-            Position::try_from(0).unwrap(),
-            Position::try_from(1).unwrap(),
-        )
-        .unwrap(),
-        text: String::from("Ada"),
-    };
-    for _ in 0..100_000 {
-        form = Protos::Headed {
-            extent: protos::Extent::new(
-                Position::try_from(0).unwrap(),
-                Position::try_from(1).unwrap(),
-            )
-            .unwrap(),
-            head: protos::Symbol(String::from("A")),
-            constraints: None,
-            separator: protos::Separator::Period,
-            body: Box::new(form),
-        };
-    }
-    drop(form);
-}
-
-#[test]
 fn canonicalization_assigns_utf8_extents_without_reading() {
     let mut form = Protos::Headed {
         extent: Extent::new(

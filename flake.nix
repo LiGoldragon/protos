@@ -2,14 +2,14 @@
   description = "protos — universal structural substrate";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
     rust-build = {
       url = "github:LiGoldragon/rust-build";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     ethos-zero = {
-      url = "github:LiGoldragon/ethos-zero/06d73e07ec7a133348e9e46511011a50f641b776";
+      url = "github:LiGoldragon/ethos-zero";
     };
   };
 

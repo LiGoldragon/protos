@@ -182,7 +182,6 @@
       "original": {
         "owner": "LiGoldragon",
         "repo": "ethos-zero",
-        "rev": "06d73e07ec7a133348e9e46511011a50f641b776",
         "type": "github"
       }
     },
@@ -530,7 +529,6 @@
       },
       "original": {
         "owner": "NixOS",
-        "ref": "nixpkgs-unstable",
         "repo": "nixpkgs",
         "type": "github"
       }

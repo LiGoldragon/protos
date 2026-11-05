@@ -3,38 +3,44 @@
 
 use proptest::prelude::*;
 use protos::{
-    Boundary, Canonicalizable, Compactable, Enclosure, Extent, Protos, Protosizable, Separator,
-    Symbol, Textualizable,
+    Boundary, Canonicalizable, Compactable, Enclosure, Extent, ExtentAccess, Position, Protos,
+    Protosizable, Separator, Symbol, Textualizable,
 };
 
 /// Structures are built here, not read, so they start with no extent of their
 /// own; `agrees` canonicalizes before printing and every extent is then a fact
 /// about the text that comes out.
-const NOWHERE: Extent = Extent { start: 0, end: 0 };
+fn nowhere() -> Extent {
+    Extent::new(
+        Position::try_from(0).unwrap(),
+        Position::try_from(0).unwrap(),
+    )
+    .unwrap()
+}
 
 fn bare(text: &str) -> Protos {
     Protos::Bare {
-        extent: NOWHERE,
+        extent: nowhere(),
         text: text.to_owned(),
     }
 }
 fn enclosed(enclosure: Enclosure, children: Vec<Protos>) -> Protos {
     Protos::Enclosed {
-        extent: NOWHERE,
+        extent: nowhere(),
         enclosure,
         children,
     }
 }
 fn opaque(boundary: Boundary, content: &str) -> Protos {
     Protos::Opaque {
-        extent: NOWHERE,
+        extent: nowhere(),
         boundary,
         content: content.to_owned(),
     }
 }
 fn headed(head: &str, separator: Separator, body: Protos) -> Protos {
     Protos::Headed {
-        extent: NOWHERE,
+        extent: nowhere(),
         head: Symbol(head.to_owned()),
         constraints: None,
         separator,
@@ -46,7 +52,7 @@ fn dot(head: &str, body: Protos) -> Protos {
 }
 fn constrained(head: &str, constraints: Vec<Protos>, body: Protos) -> Protos {
     Protos::Headed {
-        extent: NOWHERE,
+        extent: nowhere(),
         head: Symbol(head.to_owned()),
         constraints: Some(Box::new(enclosed(Enclosure::Angled, constraints))),
         separator: Separator::Period,

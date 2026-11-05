@@ -10,8 +10,8 @@
 use std::process::Command;
 
 use protos::{
-    BoundedProtosizable, Canonicalizable, Enclosure, Extent, Protos, ReaderBudget, Separator,
-    Symbol, Textualizable,
+    BoundedProtosizable, Canonicalizable, Enclosure, Extent, ExtentAccess, Position, Protos,
+    ReaderBudget, Separator, Symbol, Textualizable,
 };
 
 const SIZES: [usize; 3] = [1_000, 10_000, 100_000];
@@ -23,7 +23,13 @@ const MODES: [&str; 6] = [
     "clone-deep",
     "canonicalize-deep",
 ];
-const NOWHERE: Extent = Extent { start: 0, end: 0 };
+fn nowhere() -> Extent {
+    Extent::new(
+        Position::try_from(0).unwrap(),
+        Position::try_from(0).unwrap(),
+    )
+    .unwrap()
+}
 
 fn peak_kb() -> u64 {
     let status = std::fs::read_to_string("/proc/self/status").expect("this process's status");
@@ -39,20 +45,18 @@ fn peak_kb() -> u64 {
 }
 
 fn generous(n: usize) -> ReaderBudget {
-    ReaderBudget {
-        remaining: 4 * n + 16,
-    }
+    ReaderBudget::try_from(4 * n + 16).unwrap()
 }
 
 fn nested(n: usize) -> Protos {
     let mut form = Protos::Enclosed {
-        extent: NOWHERE,
+        extent: nowhere(),
         enclosure: Enclosure::Bracketed,
         children: vec![],
     };
     for _ in 0..n {
         form = Protos::Enclosed {
-            extent: NOWHERE,
+            extent: nowhere(),
             enclosure: Enclosure::Bracketed,
             children: vec![form],
         };
@@ -62,12 +66,12 @@ fn nested(n: usize) -> Protos {
 
 fn deep_chain(n: usize) -> Protos {
     let mut form = Protos::Bare {
-        extent: NOWHERE,
+        extent: nowhere(),
         text: String::from("x"),
     };
     for _ in 0..n {
         form = Protos::Headed {
-            extent: NOWHERE,
+            extent: nowhere(),
             head: Symbol(String::from("V")),
             constraints: None,
             separator: Separator::Period,
@@ -101,12 +105,12 @@ fn probe(mode: &str, n: usize) {
         "build-vector" => {
             let children = (0..n)
                 .map(|_| Protos::Bare {
-                    extent: NOWHERE,
+                    extent: nowhere(),
                     text: String::from("1"),
                 })
                 .collect();
             let mut form = Protos::Enclosed {
-                extent: NOWHERE,
+                extent: nowhere(),
                 enclosure: Enclosure::Bracketed,
                 children,
             };

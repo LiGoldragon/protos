@@ -6,7 +6,10 @@
 //! product here, so the text is what is asserted; every expected text is
 //! written out by hand.
 
-use protos::{Canonicalizable, Compactable, Extent, Protos, Protosizable, Textualizable};
+use protos::{
+    Canonicalizable, Compactable, Extent, ExtentAccess, Position, Protos, Protosizable,
+    Textualizable,
+};
 
 /// Read the text and print it canonically, holding the print to the reading:
 /// the print reads back as the read structure canonicalized, extents and all,
@@ -100,8 +103,22 @@ fn canonical_extents_are_those_of_the_vertical_print() {
     else {
         panic!("an enclosure");
     };
-    assert_eq!(*extent, Extent { start: 0, end: 13 });
-    assert_eq!(protos_extent(&children[1]), Extent { start: 6, end: 11 });
+    assert_eq!(
+        *extent,
+        Extent::new(
+            Position::try_from(0).unwrap(),
+            Position::try_from(13).unwrap()
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        protos_extent(&children[1]),
+        Extent::new(
+            Position::try_from(6).unwrap(),
+            Position::try_from(11).unwrap()
+        )
+        .unwrap()
+    );
 }
 
 fn protos_extent(node: &Protos) -> Extent {

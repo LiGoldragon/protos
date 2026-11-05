@@ -3,12 +3,18 @@
 //! archive and restore equal, so a generated contract holding them can
 //! cross a wire.
 
-use protos::{Error, Extent, Problem, Separator};
+use protos::{
+    BudgetAccess, Error, Extent, ExtentAccess, Position, PositionAccess, Problem, Separator,
+};
 
 #[test]
 fn a_reading_error_and_a_separator_cross_the_wire() {
     let error = Error {
-        extent: Extent { start: 3, end: 9 },
+        extent: Extent::new(
+            Position::try_from(3).unwrap(),
+            Position::try_from(9).unwrap(),
+        )
+        .unwrap(),
         problem: Problem::Unclosed('{'),
     };
     let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&error).expect("error archives");

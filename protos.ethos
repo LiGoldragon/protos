@@ -3,7 +3,8 @@
 ; separate Ethos shapes.
 Library
 []
-[ Extent.{ Integer Integer }
+[ Position.Integer
+  Extent.{ Position Position }
   Symbol.String
   Separator.[ Period Exclamation Colon ]
   Enclosure.[ Braced Bracketed Angled ]

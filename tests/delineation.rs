@@ -1,8 +1,8 @@
 //! Reading: every rule of the reader, every error, every extent.
 
 use protos::{
-    Boundary, BoundedProtosizable, Enclosure, Error, Extent, Problem, Protos, Protosizable,
-    ReaderBudget, Separator, Symbol,
+    Boundary, BoundedProtosizable, BudgetAccess, Enclosure, Error, Extent, ExtentAccess, Position,
+    PositionAccess, Problem, Protos, Protosizable, ReaderBudget, Separator, Symbol,
 };
 
 fn read(text: &str) -> Protos {
@@ -26,7 +26,7 @@ fn extent(form: &Protos) -> Extent {
 /// The slice of `text` a node claims as its own.
 fn claimed<'a>(text: &'a str, form: &Protos) -> &'a str {
     let extent = extent(form);
-    &text[extent.start..extent.end]
+    &text[extent.start().get()..extent.end().get()]
 }
 fn children(form: &Protos) -> &[Protos] {
     let Protos::Enclosed { children, .. } = form else {
@@ -42,10 +42,11 @@ fn body(form: &Protos) -> &Protos {
 }
 fn bare(text: &str) -> Protos {
     Protos::Bare {
-        extent: Extent {
-            start: 0,
-            end: text.len(),
-        },
+        extent: Extent::new(
+            Position::try_from(0).unwrap(),
+            Position::try_from(text.len()).unwrap(),
+        )
+        .unwrap(),
         text: text.to_owned(),
     }
 }
@@ -120,6 +121,19 @@ fn a_run_that_is_not_a_chain_stays_whole() {
 }
 
 #[test]
+fn a_capitalized_dot_head_leaves_the_remaining_bare_run_to_its_body() {
+    for text in ["Some..", "Some..a", "Some.a.", "Some.5::7/128"] {
+        let form = read(text);
+        let Protos::Headed { head, body, .. } = &form else {
+            panic!("{text:?} must retain its capitalized head")
+        };
+        assert_eq!(head.0, "Some");
+        assert_eq!(claimed(text, body), &text[5..]);
+        assert!(matches!(body.as_ref(), Protos::Bare { .. }));
+    }
+}
+
+#[test]
 fn a_timestamp_is_a_colon_chain() {
     let text = "2026-09-03T17:46:20";
     let form = read(text);
@@ -186,10 +200,11 @@ fn guillemets_hold_every_glyph_as_content() {
         assert_eq!(
             form,
             Protos::Opaque {
-                extent: Extent {
-                    start: 0,
-                    end: text.len()
-                },
+                extent: Extent::new(
+                    Position::try_from(0).unwrap(),
+                    Position::try_from(text.len()).unwrap()
+                )
+                .unwrap(),
                 boundary: Boundary::Guillemets,
                 content: String::from(content),
             },
@@ -215,10 +230,11 @@ fn parentheses_are_read_by_balance() {
         assert_eq!(
             form,
             Protos::Opaque {
-                extent: Extent {
-                    start: 0,
-                    end: text.len()
-                },
+                extent: Extent::new(
+                    Position::try_from(0).unwrap(),
+                    Position::try_from(text.len()).unwrap()
+                )
+                .unwrap(),
                 boundary: Boundary::Parentheses,
                 content: String::from(content),
             },
@@ -272,7 +288,7 @@ fn every_node_of_a_nest_claims_its_own_slice() {
     let year = &children(body(reviewer))[1];
     assert_eq!(claimed(text, year), "17");
     assert_eq!(
-        extent(year).start,
+        extent(year).start().get(),
         text.find("17 }").expect("the inner year")
     );
 }
@@ -298,10 +314,11 @@ fn every_refusal_names_its_problem_and_where_it_arose() {
     let error = failure("{ 1 ");
     assert_eq!(
         error.extent,
-        Extent {
-            start: 0,
-            end: "{ 1 ".len()
-        }
+        Extent::new(
+            Position::try_from(0).unwrap(),
+            Position::try_from("{ 1 ".len()).unwrap()
+        )
+        .unwrap()
     );
     assert_eq!(
         format!("{error}"),
@@ -312,9 +329,7 @@ fn every_refusal_names_its_problem_and_where_it_arose() {
 #[test]
 fn descent_is_bounded_by_depth_before_it_is_bounded_by_the_stack() {
     let text = format!("{}1{}", "[".repeat(300), "]".repeat(300));
-    let mut budget = ReaderBudget {
-        remaining: usize::MAX,
-    };
+    let mut budget = ReaderBudget::try_from(i64::MAX as usize).unwrap();
     assert_eq!(
         text.protosize_with(&mut budget)
             .expect_err("too deep")
@@ -325,12 +340,19 @@ fn descent_is_bounded_by_depth_before_it_is_bounded_by_the_stack() {
 
 #[test]
 fn reader_errors_name_the_first_unavailable_locus_after_lookahead() {
-    let mut budget = ReaderBudget { remaining: 1 };
+    let mut budget = ReaderBudget::try_from(1).unwrap();
     let error = "Vector<Text>"
         .protosize_with(&mut budget)
         .expect_err("the child exceeds the one-node budget");
     assert_eq!(error.problem, Problem::Budget);
-    assert_eq!(error.extent, Extent { start: 7, end: 7 });
+    assert_eq!(
+        error.extent,
+        Extent::new(
+            Position::try_from(7).unwrap(),
+            Position::try_from(7).unwrap()
+        )
+        .unwrap()
+    );
 
     // A trailing separator is part of an invalid chain and therefore remains
     // one bare run; the comment is whitespace after that run.
@@ -338,11 +360,44 @@ fn reader_errors_name_the_first_unavailable_locus_after_lookahead() {
 
     let error = failure("A<B>;comment\n");
     assert_eq!(error.problem, Problem::Multiple);
-    assert_eq!(error.extent, Extent { start: 1, end: 1 });
+    assert_eq!(
+        error.extent,
+        Extent::new(
+            Position::try_from(1).unwrap(),
+            Position::try_from(1).unwrap()
+        )
+        .unwrap()
+    );
 }
 
 #[test]
 fn a_string_protosizes_like_a_str() {
     let owned = String::from("{ 1 }");
     assert_eq!(owned.protosize().expect("structure"), read("{ 1 }"));
+}
+
+#[test]
+fn bounded_positions_and_budgets_reject_values_above_i64() {
+    let maximum = i64::MAX as usize;
+    assert_eq!(Position::try_from(maximum).unwrap().get(), maximum);
+    assert_eq!(
+        ReaderBudget::try_from(maximum).unwrap().remaining(),
+        maximum
+    );
+    if usize::BITS > 63 {
+        assert_eq!(
+            Position::try_from(maximum + 1),
+            Err(protos::OutOfRange(maximum + 1))
+        );
+        assert_eq!(
+            ReaderBudget::try_from(maximum + 1),
+            Err(protos::OutOfRange(maximum + 1))
+        );
+    }
+    let start = Position::try_from(2).unwrap();
+    let end = Position::try_from(1).unwrap();
+    assert_eq!(
+        Extent::new(start, end),
+        Err(protos::ReversedExtent { start, end })
+    );
 }

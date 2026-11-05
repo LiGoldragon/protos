@@ -2,19 +2,25 @@
 //! therefore be iterative, and this runs each of them past any stack that
 //! recursion would have.
 
-use protos::{Extent, Protos, Separator, Symbol, Textualizable};
+use protos::{Extent, ExtentAccess, Position, Protos, Separator, Symbol, Textualizable};
 
 const DEPTH: usize = 100_000;
-const NOWHERE: Extent = Extent { start: 0, end: 0 };
+fn nowhere() -> Extent {
+    Extent::new(
+        Position::try_from(0).unwrap(),
+        Position::try_from(0).unwrap(),
+    )
+    .unwrap()
+}
 
 fn deep(depth: usize) -> Protos {
     let mut form = Protos::Bare {
-        extent: NOWHERE,
+        extent: nowhere(),
         text: String::from("leaf"),
     };
     for _ in 0..depth {
         form = Protos::Headed {
-            extent: NOWHERE,
+            extent: nowhere(),
             head: Symbol(String::from("Node")),
             constraints: None,
             separator: Separator::Period,
@@ -31,8 +37,10 @@ fn cloning_comparing_and_showing_a_deep_tree_are_iterative() {
     let copied = form.clone();
     assert_eq!(form, copied);
     let shown = format!("{form:?}");
-    assert!(shown.starts_with("Headed { extent: Extent { start: 0, end: 0 }, head: Symbol(\"Node\"), constraints: None, separator: Period, body: "));
-    assert!(shown.contains("Bare { extent: Extent { start: 0, end: 0 }, text: \"leaf\" }"));
+    assert!(shown.starts_with("Headed { extent: Extent { start: Position(0), end: Position(0) }, head: Symbol(\"Node\"), constraints: None, separator: Period, body: "));
+    assert!(shown.contains(
+        "Bare { extent: Extent { start: Position(0), end: Position(0) }, text: \"leaf\" }"
+    ));
     assert!(shown.ends_with(&" }".repeat(DEPTH)));
     assert_eq!(form.textualize(), format!("{}leaf", "Node.".repeat(DEPTH)));
     drop(copied);
@@ -50,7 +58,7 @@ fn comparing_deep_trees_that_differ_at_the_leaf_is_iterative() {
         node = body;
     }
     *node = Protos::Bare {
-        extent: NOWHERE,
+        extent: nowhere(),
         text: String::from("other"),
     };
     assert_ne!(form, other);
@@ -60,11 +68,11 @@ fn comparing_deep_trees_that_differ_at_the_leaf_is_iterative() {
 #[test]
 fn cloning_and_comparing_a_wide_tree_hold_their_shape() {
     let wide = Protos::Enclosed {
-        extent: NOWHERE,
+        extent: nowhere(),
         enclosure: protos::Enclosure::Bracketed,
         children: (0..50_000)
             .map(|index| Protos::Bare {
-                extent: NOWHERE,
+                extent: nowhere(),
                 text: index.to_string(),
             })
             .collect(),
@@ -78,7 +86,7 @@ fn cloning_and_comparing_a_wide_tree_hold_their_shape() {
     assert_eq!(
         children.last(),
         Some(&Protos::Bare {
-            extent: NOWHERE,
+            extent: nowhere(),
             text: String::from("49999"),
         })
     );
@@ -89,18 +97,18 @@ fn cloning_and_comparing_a_wide_tree_hold_their_shape() {
 #[test]
 fn a_deep_tree_of_constrained_heads_clones_into_the_same_tree() {
     let mut form = Protos::Bare {
-        extent: NOWHERE,
+        extent: nowhere(),
         text: String::from("leaf"),
     };
     for index in 0..10_000 {
         form = Protos::Headed {
-            extent: NOWHERE,
+            extent: nowhere(),
             head: Symbol(String::from("Node")),
             constraints: Some(Box::new(Protos::Enclosed {
-                extent: NOWHERE,
+                extent: nowhere(),
                 enclosure: protos::Enclosure::Angled,
                 children: vec![Protos::Bare {
-                    extent: NOWHERE,
+                    extent: nowhere(),
                     text: index.to_string(),
                 }],
             })),

@@ -14,6 +14,7 @@
 //! layer when its node is headed or a non-empty brace or bracket enclosure.
 
 use crate::core::{Escaping, Glyphing, Separating};
+use crate::core::{ExtentAccess, PositionAccess};
 use crate::layout::{Advancing, Column, Grouping, Layered};
 use crate::traversing::Structuring;
 use crate::{Canonicalizable, Compactable, Enclosure, Extent, Protos, Textualizable};
@@ -84,13 +85,12 @@ impl Sinking for Measured {
         Ok(())
     }
     fn open(&mut self) {
-        self.extents.push(Extent {
-            start: self.offset,
-            end: self.offset,
-        });
+        self.extents
+            .push(Extent::from_offsets(self.offset, self.offset));
     }
     fn close(&mut self, index: usize) {
-        self.extents[index].end = self.offset;
+        let start = self.extents[index].start().get();
+        self.extents[index] = Extent::from_offsets(start, self.offset);
     }
 }
 

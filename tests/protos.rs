@@ -1,6 +1,6 @@
 use protos::{
-    Boundary, BoundedProtosizable, Canonicalizable, Enclosure, Extent, Protos, Protosizable,
-    ReaderBudget, Separator, Symbol, Textualizable,
+    Boundary, BoundedProtosizable, Canonicalizable, Enclosure, Extent, ExtentAccess, Position,
+    PositionAccess, Protos, Protosizable, ReaderBudget, Separator, Symbol, Textualizable,
 };
 use std::process::Command;
 
@@ -68,10 +68,11 @@ fn complete_separator_chains_remain_headed_with_exact_extents() {
         assert!(matches!(&form, Protos::Headed { .. }), "{text}: {form:?}");
         assert_eq!(
             form_extent(&form),
-            Extent {
-                start: 0,
-                end: text.len()
-            }
+            Extent::new(
+                Position::try_from(0).unwrap(),
+                Position::try_from(text.len()).unwrap()
+            )
+            .unwrap()
         );
         assert_eq!(form.textualize(), text);
     }
@@ -129,7 +130,7 @@ fn a_meaning_keeps_an_ordinary_backslash() {
 
 #[test]
 fn reader_budget_bounds_recursive_descent() {
-    let mut budget = ReaderBudget { remaining: 2 };
+    let mut budget = ReaderBudget::try_from(2).unwrap();
     assert!("{ { Ada } }".protosize_with(&mut budget).is_err());
 }
 
@@ -139,14 +140,14 @@ fn bounded_depth_probe_child() {
         return;
     }
     let text = format!("{}Ada{}", "{".repeat(100_001), "}".repeat(100_001));
-    let mut budget = ReaderBudget { remaining: 100_002 };
+    let mut budget = ReaderBudget::try_from(100_002).unwrap();
     assert!(text.protosize_with(&mut budget).is_err());
 }
 
 #[test]
 fn depth_is_bounded_independently_of_node_budget() {
     let text = format!("[ {}]", "Ada ".repeat(10_000));
-    let mut budget = ReaderBudget { remaining: 10_001 };
+    let mut budget = ReaderBudget::try_from(10_001).unwrap();
     let form = text.protosize_with(&mut budget).expect("wide structure");
     assert!(matches!(&form, Protos::Enclosed { children, .. } if children.len() == 10_000));
 }
@@ -154,12 +155,20 @@ fn depth_is_bounded_independently_of_node_budget() {
 #[test]
 fn deeply_constructed_forms_print_without_recursion() {
     let mut form = Protos::Bare {
-        extent: protos::Extent { start: 0, end: 1 },
+        extent: protos::Extent::new(
+            Position::try_from(0).unwrap(),
+            Position::try_from(1).unwrap(),
+        )
+        .unwrap(),
         text: String::from("Ada"),
     };
     for _ in 0..100_001 {
         form = Protos::Headed {
-            extent: protos::Extent { start: 0, end: 1 },
+            extent: protos::Extent::new(
+                Position::try_from(0).unwrap(),
+                Position::try_from(1).unwrap(),
+            )
+            .unwrap(),
             head: protos::Symbol(String::from("A")),
             constraints: None,
             separator: protos::Separator::Period,
@@ -175,12 +184,20 @@ fn deeply_constructed_forms_print_without_recursion() {
 #[test]
 fn deeply_constructed_forms_drop_without_recursion() {
     let mut form = Protos::Bare {
-        extent: protos::Extent { start: 0, end: 1 },
+        extent: protos::Extent::new(
+            Position::try_from(0).unwrap(),
+            Position::try_from(1).unwrap(),
+        )
+        .unwrap(),
         text: String::from("Ada"),
     };
     for _ in 0..100_000 {
         form = Protos::Headed {
-            extent: protos::Extent { start: 0, end: 1 },
+            extent: protos::Extent::new(
+                Position::try_from(0).unwrap(),
+                Position::try_from(1).unwrap(),
+            )
+            .unwrap(),
             head: protos::Symbol(String::from("A")),
             constraints: None,
             separator: protos::Separator::Period,
@@ -193,39 +210,71 @@ fn deeply_constructed_forms_drop_without_recursion() {
 #[test]
 fn canonicalization_assigns_utf8_extents_without_reading() {
     let mut form = Protos::Headed {
-        extent: Extent { start: 99, end: 99 },
+        extent: Extent::new(
+            Position::try_from(99).unwrap(),
+            Position::try_from(99).unwrap(),
+        )
+        .unwrap(),
         head: Symbol("H".into()),
         constraints: Some(Box::new(Protos::Enclosed {
-            extent: Extent { start: 99, end: 99 },
+            extent: Extent::new(
+                Position::try_from(99).unwrap(),
+                Position::try_from(99).unwrap(),
+            )
+            .unwrap(),
             enclosure: Enclosure::Angled,
             children: vec![
                 Protos::Bare {
-                    extent: Extent { start: 99, end: 99 },
+                    extent: Extent::new(
+                        Position::try_from(99).unwrap(),
+                        Position::try_from(99).unwrap(),
+                    )
+                    .unwrap(),
                     text: "A".into(),
                 },
                 Protos::Bare {
-                    extent: Extent { start: 99, end: 99 },
+                    extent: Extent::new(
+                        Position::try_from(99).unwrap(),
+                        Position::try_from(99).unwrap(),
+                    )
+                    .unwrap(),
                     text: "B".into(),
                 },
             ],
         })),
         separator: Separator::Period,
         body: Box::new(Protos::Enclosed {
-            extent: Extent { start: 99, end: 99 },
+            extent: Extent::new(
+                Position::try_from(99).unwrap(),
+                Position::try_from(99).unwrap(),
+            )
+            .unwrap(),
             enclosure: Enclosure::Braced,
             children: vec![
                 Protos::Opaque {
-                    extent: Extent { start: 99, end: 99 },
+                    extent: Extent::new(
+                        Position::try_from(99).unwrap(),
+                        Position::try_from(99).unwrap(),
+                    )
+                    .unwrap(),
                     boundary: Boundary::Guillemets,
                     content: "é»".into(),
                 },
                 Protos::Opaque {
-                    extent: Extent { start: 99, end: 99 },
+                    extent: Extent::new(
+                        Position::try_from(99).unwrap(),
+                        Position::try_from(99).unwrap(),
+                    )
+                    .unwrap(),
                     boundary: Boundary::Parentheses,
                     content: "x)".into(),
                 },
                 Protos::Enclosed {
-                    extent: Extent { start: 99, end: 99 },
+                    extent: Extent::new(
+                        Position::try_from(99).unwrap(),
+                        Position::try_from(99).unwrap(),
+                    )
+                    .unwrap(),
                     enclosure: Enclosure::Bracketed,
                     children: vec![],
                 },
@@ -244,10 +293,10 @@ fn canonicalization_assigns_utf8_extents_without_reading() {
     else {
         panic!("headed form")
     };
-    assert_eq!(&text[extent.start..extent.end], text);
+    assert_eq!(&text[extent.start().get()..extent.end().get()], text);
     let constraints_extent = form_extent(constraints);
     assert_eq!(
-        &text[constraints_extent.start..constraints_extent.end],
+        &text[constraints_extent.start().get()..constraints_extent.end().get()],
         "<A B>"
     );
     let Protos::Enclosed {
@@ -256,36 +305,58 @@ fn canonicalization_assigns_utf8_extents_without_reading() {
     else {
         panic!("braced body")
     };
-    assert_eq!(&text[extent.start..extent.end], "{ «é\\»» (x\\)) [] }");
+    assert_eq!(
+        &text[extent.start().get()..extent.end().get()],
+        "{ «é\\»» (x\\)) [] }"
+    );
     for (child, expected) in children.iter().zip(["«é\\»»", "(x\\))", "[]"]) {
         let child_extent = form_extent(child);
-        assert_eq!(&text[child_extent.start..child_extent.end], expected);
+        assert_eq!(
+            &text[child_extent.start().get()..child_extent.end().get()],
+            expected
+        );
     }
 }
 
 #[test]
 fn canonicalization_is_iterative_for_wide_and_deep_structures() {
     let mut wide = Protos::Enclosed {
-        extent: Extent { start: 0, end: 0 },
+        extent: Extent::new(
+            Position::try_from(0).unwrap(),
+            Position::try_from(0).unwrap(),
+        )
+        .unwrap(),
         enclosure: Enclosure::Bracketed,
         children: (0..5_000)
             .map(|_| Protos::Bare {
-                extent: Extent { start: 0, end: 0 },
+                extent: Extent::new(
+                    Position::try_from(0).unwrap(),
+                    Position::try_from(0).unwrap(),
+                )
+                .unwrap(),
                 text: "é".into(),
             })
             .collect(),
     };
     wide.canonicalize();
     let wide_text = wide.textualize();
-    assert_eq!(form_extent(&wide).end, wide_text.len());
+    assert_eq!(form_extent(&wide).end().get(), wide_text.len());
 
     let mut deep = Protos::Bare {
-        extent: Extent { start: 0, end: 0 },
+        extent: Extent::new(
+            Position::try_from(0).unwrap(),
+            Position::try_from(0).unwrap(),
+        )
+        .unwrap(),
         text: "x".into(),
     };
     for _ in 0..100_000 {
         deep = Protos::Headed {
-            extent: Extent { start: 0, end: 0 },
+            extent: Extent::new(
+                Position::try_from(0).unwrap(),
+                Position::try_from(0).unwrap(),
+            )
+            .unwrap(),
             head: Symbol("V".into()),
             constraints: None,
             separator: Separator::Period,
@@ -295,10 +366,11 @@ fn canonicalization_is_iterative_for_wide_and_deep_structures() {
     deep.canonicalize();
     assert_eq!(
         form_extent(&deep),
-        Extent {
-            start: 0,
-            end: 200_001
-        }
+        Extent::new(
+            Position::try_from(0).unwrap(),
+            Position::try_from(200_001).unwrap()
+        )
+        .unwrap()
     );
     drop(deep);
 }

@@ -1,5 +1,62 @@
 use std::collections::BTreeSet;
+use std::convert::TryFrom;
 use std::fmt;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct OutOfRange(pub usize);
+
+impl fmt::Display for OutOfRange {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "value {} exceeds i64::MAX", self.0)
+    }
+}
+
+impl std::error::Error for OutOfRange {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
+)]
+pub struct Position(usize);
+
+pub trait PositionAccess {
+    fn get(self) -> usize;
+}
+
+impl PositionAccess for Position {
+    fn get(self) -> usize {
+        self.0
+    }
+}
+
+impl TryFrom<usize> for Position {
+    type Error = OutOfRange;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        (value <= i64::MAX as usize)
+            .then_some(Self(value))
+            .ok_or(OutOfRange(value))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ReversedExtent {
+    pub start: Position,
+    pub end: Position,
+}
+
+impl fmt::Display for ReversedExtent {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "extent starts at {} after {}",
+            self.start.0, self.end.0
+        )
+    }
+}
+
+impl std::error::Error for ReversedExtent {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(
@@ -7,9 +64,41 @@ use std::fmt;
     derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
 )]
 pub struct Extent {
-    pub start: usize,
-    pub end: usize,
+    start: Position,
+    end: Position,
 }
+
+#[allow(clippy::new_ret_no_self)]
+pub trait ExtentAccess {
+    fn new(start: Position, end: Position) -> Result<Extent, ReversedExtent>;
+    fn start(self) -> Position;
+    fn end(self) -> Position;
+    fn from_offsets(start: usize, end: usize) -> Extent;
+}
+
+impl ExtentAccess for Extent {
+    fn new(start: Position, end: Position) -> Result<Self, ReversedExtent> {
+        if start.0 <= end.0 {
+            Ok(Self { start, end })
+        } else {
+            Err(ReversedExtent { start, end })
+        }
+    }
+    fn start(self) -> Position {
+        self.start
+    }
+    fn end(self) -> Position {
+        self.end
+    }
+    fn from_offsets(start: usize, end: usize) -> Extent {
+        Self::new(
+            Position::try_from(start).expect("extent start exceeds position range"),
+            Position::try_from(end).expect("extent end exceeds position range"),
+        )
+        .expect("canonical extent ordering")
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(
     feature = "rkyv",
@@ -83,7 +172,26 @@ pub enum Problem {
 /// The number of structural nodes one reading act may visit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ReaderBudget {
-    pub remaining: usize,
+    remaining: usize,
+}
+
+pub trait BudgetAccess {
+    fn remaining(&self) -> usize;
+}
+impl BudgetAccess for ReaderBudget {
+    fn remaining(&self) -> usize {
+        self.remaining
+    }
+}
+
+impl TryFrom<usize> for ReaderBudget {
+    type Error = OutOfRange;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        (value <= i64::MAX as usize)
+            .then_some(Self { remaining: value })
+            .ok_or(OutOfRange(value))
+    }
 }
 /// A budget a reading spends from, one structural node at a time.
 pub trait Spendable {
@@ -319,10 +427,7 @@ impl Reading for Reader<'_> {
                 Some(glyph) if glyph == enclosure.closer() => {
                     self.step();
                     return Ok(Protos::Enclosed {
-                        extent: Extent {
-                            start,
-                            end: self.offset,
-                        },
+                        extent: Extent::from_offsets(start, self.offset),
                         enclosure,
                         children,
                     });
@@ -364,10 +469,7 @@ impl Reading for Reader<'_> {
                 if depth == 0 {
                     self.step();
                     return Ok(Protos::Opaque {
-                        extent: Extent {
-                            start,
-                            end: self.offset,
-                        },
+                        extent: Extent::from_offsets(start, self.offset),
                         boundary,
                         content,
                     });
@@ -394,6 +496,21 @@ impl Reading for Reader<'_> {
             })
             .unwrap_or(self.text.len());
         let whole_run = &self.text[start..run_end];
+        if let Some(dot) = whole_run.find('.') {
+            let head = &whole_run[..dot];
+            let body_start = start + dot + 1;
+            let body_begins = self.text[body_start..]
+                .chars()
+                .next()
+                .is_some_and(|glyph| !glyph.is_whitespace() && glyph != ';');
+            if head.chars().next().is_some_and(char::is_uppercase)
+                && head.chars().all(|glyph| !matches!(glyph, '.' | '!' | ':'))
+                && body_begins
+            {
+                self.offset = body_start;
+                return self.headed(Symbol(head.to_owned()), None, start, Separator::Period);
+            }
+        }
         let trailing_separators = whole_run
             .chars()
             .rev()
@@ -413,10 +530,7 @@ impl Reading for Reader<'_> {
         if !segments_are_symbols && !opens_body {
             self.offset = run_end;
             return Ok(Protos::Bare {
-                extent: Extent {
-                    start,
-                    end: self.offset,
-                },
+                extent: Extent::from_offsets(start, self.offset),
                 text: whole_run.to_owned(),
             });
         }
@@ -454,7 +568,7 @@ impl Reading for Reader<'_> {
                     return Err(self.failure(Problem::MissingHead, start));
                 }
                 let angle_start = self.offset;
-                let remaining = self.budget.remaining;
+                let remaining = self.budget.remaining();
                 let constraints = self.enclosed(Enclosure::Angled)?;
                 let separator = match self.glyph() {
                     Some('.') => Separator::Period,
@@ -464,10 +578,7 @@ impl Reading for Reader<'_> {
                         self.offset = angle_start;
                         self.budget.remaining = remaining;
                         return Ok(Protos::Bare {
-                            extent: Extent {
-                                start,
-                                end: angle_start,
-                            },
+                            extent: Extent::from_offsets(start, angle_start),
                             text: run,
                         });
                     }
@@ -489,10 +600,7 @@ impl Reading for Reader<'_> {
             Err(self.failure(Problem::MissingBody, start))
         } else {
             Ok(Protos::Bare {
-                extent: Extent {
-                    start,
-                    end: self.offset,
-                },
+                extent: Extent::from_offsets(start, self.offset),
                 text: run,
             })
         }
@@ -506,10 +614,7 @@ impl Reading for Reader<'_> {
     ) -> Result<Protos, Error> {
         let body = self.node()?;
         Ok(Protos::Headed {
-            extent: Extent {
-                start,
-                end: body.extent().end,
-            },
+            extent: Extent::from_offsets(start, body.extent().end().get()),
             head,
             constraints: constraints.map(Box::new),
             separator,
@@ -539,10 +644,7 @@ impl Reading for Reader<'_> {
     }
     fn failure(&self, problem: Problem, start: usize) -> Error {
         Error {
-            extent: Extent {
-                start,
-                end: self.offset,
-            },
+            extent: Extent::from_offsets(start, self.offset),
             problem,
         }
     }
@@ -550,7 +652,7 @@ impl Reading for Reader<'_> {
 impl Protosizable for String {
     type Output = Result<Protos, Error>;
     fn protosize(&self) -> Self::Output {
-        let mut budget = ReaderBudget { remaining: 4_096 };
+        let mut budget = ReaderBudget::try_from(4_096).expect("default budget is bounded");
         self.protosize_with(&mut budget)
     }
 }
@@ -568,7 +670,7 @@ impl BoundedProtosizable for String {
 impl Protosizable for str {
     type Output = Result<Protos, Error>;
     fn protosize(&self) -> Self::Output {
-        let mut budget = ReaderBudget { remaining: 4_096 };
+        let mut budget = ReaderBudget::try_from(4_096).expect("default budget is bounded");
         self.protosize_with(&mut budget)
     }
 }
@@ -588,7 +690,9 @@ impl fmt::Display for Error {
         write!(
             formatter,
             "structural error at {}..{}: {:?}",
-            self.extent.start, self.extent.end, self.problem
+            self.extent.start().get(),
+            self.extent.end().get(),
+            self.problem
         )
     }
 }

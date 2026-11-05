@@ -6,6 +6,7 @@
 //! three read a node the same way: what it holds besides its children, and
 //! its children.
 
+use crate::core::ExtentAccess;
 use crate::{Boundary, Enclosure, Extent, Protos, Separator, Symbol};
 
 /// A node minus its children: everything it holds itself, an enclosure's
@@ -150,7 +151,7 @@ impl Structuring for Protos {
     }
     fn empty() -> Self {
         Self::Bare {
-            extent: Extent { start: 0, end: 0 },
+            extent: Extent::from_offsets(0, 0),
             text: String::new(),
         }
     }

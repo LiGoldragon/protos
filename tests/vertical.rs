@@ -6,7 +6,20 @@
 //! product here, so the text is what is asserted; every expected text is
 //! written out by hand.
 
-use protos::{Canonicalizable, Compactable, Extent, Protos, Protosizable, Textualizable};
+use protos::{
+    BoundedProtosizable, BuildsReaderBudget, Canonicalizable, Compactable, Extent, Protos,
+    ReaderBudget, Textualizable,
+};
+
+trait ReadsFixture {
+    fn protosize(&self) -> Result<Protos, protos::Error>;
+}
+impl<T: BoundedProtosizable + ?Sized> ReadsFixture for T {
+    fn protosize(&self) -> Result<Protos, protos::Error> {
+        let mut budget = ReaderBudget::from_native_limits(4_096, 256).expect("fixture budget");
+        self.protosize_with(&mut budget)
+    }
+}
 
 /// Read the text and print it canonically, holding the print to the reading:
 /// the print reads back as the read structure canonicalized, extents and all,

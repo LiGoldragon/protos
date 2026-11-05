@@ -80,10 +80,211 @@ pub enum Problem {
     Budget,
     Depth,
 }
-/// The number of structural nodes one reading act may visit.
+/// The structural work one reading act may still perform and its deepest
+/// permitted node. Both values are checked at construction and remain exactly
+/// representable as Protos integers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ReaderBudget {
-    pub remaining: usize,
+    remaining: i64,
+    maximum_depth: i64,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ReaderBudgetField {
+    Remaining,
+    MaximumDepth,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ReaderBudgetConstructionReason {
+    Negative,
+    OutsideNativeWidth,
+    OutsideIntegerWidth,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ReaderBudgetConstructionError {
+    pub field: ReaderBudgetField,
+    pub reason: ReaderBudgetConstructionReason,
+}
+pub trait BuildsReaderBudget: Sized {
+    fn from_integer_limits(
+        remaining: i64,
+        maximum_depth: i64,
+    ) -> Result<Self, ReaderBudgetConstructionError>;
+    fn from_native_limits(
+        remaining: usize,
+        maximum_depth: usize,
+    ) -> Result<Self, ReaderBudgetConstructionError>;
+}
+pub trait ReadsReaderBudget {
+    fn remaining(&self) -> i64;
+    fn maximum_depth(&self) -> i64;
+    fn permits_depth(&self, depth: usize) -> bool;
+}
+
+/// A nonrecursive borrowed view of the lexical layer shared by structural
+/// reading and fixed-prefix readers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LexicalCursor<'text> {
+    text: &'text str,
+    offset: usize,
+}
+pub trait LexicallyReadable {
+    fn lexical_cursor(&self) -> LexicalCursor<'_>;
+}
+pub trait LexicallyTraversable<'text> {
+    fn skip_space_and_comments(&mut self);
+    fn expect_delimiter(&mut self, expected: char) -> Result<(), Error>;
+    fn token(&mut self) -> Result<&'text str, Error>;
+    fn offset(&self) -> usize;
+}
+
+impl LexicallyReadable for str {
+    fn lexical_cursor(&self) -> LexicalCursor<'_> {
+        LexicalCursor {
+            text: self,
+            offset: 0,
+        }
+    }
+}
+
+impl<'text> LexicallyTraversable<'text> for LexicalCursor<'text> {
+    fn skip_space_and_comments(&mut self) {
+        loop {
+            while self.glyph().is_some_and(char::is_whitespace) {
+                self.step();
+            }
+            if self.glyph() != Some(';') {
+                return;
+            }
+            while self.glyph().is_some_and(|glyph| glyph != '\n') {
+                self.step();
+            }
+        }
+    }
+
+    fn expect_delimiter(&mut self, expected: char) -> Result<(), Error> {
+        if !matches!(expected, '{' | '}' | '[' | ']' | '<' | '>') {
+            return Err(self.failure(Problem::Unexpected(expected), self.offset));
+        }
+        self.skip_space_and_comments();
+        if self.glyph() == Some(expected) {
+            self.step();
+            Ok(())
+        } else {
+            Err(self.failure(
+                self.glyph()
+                    .map(Problem::Unexpected)
+                    .unwrap_or(Problem::MissingBody),
+                self.offset,
+            ))
+        }
+    }
+
+    fn token(&mut self) -> Result<&'text str, Error> {
+        self.skip_space_and_comments();
+        let start = self.offset;
+        while let Some(glyph) = self.glyph() {
+            if glyph.is_whitespace()
+                || matches!(
+                    glyph,
+                    '{' | '}' | '[' | ']' | '<' | '>' | '«' | '»' | '(' | ')' | ';'
+                )
+            {
+                break;
+            }
+            self.step();
+        }
+        if self.offset == start {
+            Err(self.failure(
+                self.glyph()
+                    .map(Problem::Unexpected)
+                    .unwrap_or(Problem::MissingBody),
+                start,
+            ))
+        } else {
+            Ok(&self.text[start..self.offset])
+        }
+    }
+
+    fn offset(&self) -> usize {
+        self.offset
+    }
+}
+
+impl LexicalCursor<'_> {
+    fn glyph(&self) -> Option<char> {
+        self.text.get(self.offset..)?.chars().next()
+    }
+
+    fn step(&mut self) {
+        if let Some(glyph) = self.glyph() {
+            self.offset += glyph.len_utf8();
+        }
+    }
+
+    fn failure(&self, problem: Problem, start: usize) -> Error {
+        Error {
+            extent: Extent {
+                start,
+                end: self.offset,
+            },
+            problem,
+        }
+    }
+}
+impl BuildsReaderBudget for ReaderBudget {
+    fn from_integer_limits(
+        remaining: i64,
+        maximum_depth: i64,
+    ) -> Result<Self, ReaderBudgetConstructionError> {
+        for (field, value) in [
+            (ReaderBudgetField::Remaining, remaining),
+            (ReaderBudgetField::MaximumDepth, maximum_depth),
+        ] {
+            if value < 0 {
+                return Err(ReaderBudgetConstructionError {
+                    field,
+                    reason: ReaderBudgetConstructionReason::Negative,
+                });
+            }
+            usize::try_from(value).map_err(|_| ReaderBudgetConstructionError {
+                field,
+                reason: ReaderBudgetConstructionReason::OutsideNativeWidth,
+            })?;
+        }
+        Ok(Self {
+            remaining,
+            maximum_depth,
+        })
+    }
+
+    fn from_native_limits(
+        remaining: usize,
+        maximum_depth: usize,
+    ) -> Result<Self, ReaderBudgetConstructionError> {
+        let remaining = i64::try_from(remaining).map_err(|_| ReaderBudgetConstructionError {
+            field: ReaderBudgetField::Remaining,
+            reason: ReaderBudgetConstructionReason::OutsideIntegerWidth,
+        })?;
+        let maximum_depth =
+            i64::try_from(maximum_depth).map_err(|_| ReaderBudgetConstructionError {
+                field: ReaderBudgetField::MaximumDepth,
+                reason: ReaderBudgetConstructionReason::OutsideIntegerWidth,
+            })?;
+        Self::from_integer_limits(remaining, maximum_depth)
+    }
+}
+impl ReadsReaderBudget for ReaderBudget {
+    fn remaining(&self) -> i64 {
+        self.remaining
+    }
+
+    fn maximum_depth(&self) -> i64 {
+        self.maximum_depth
+    }
+
+    fn permits_depth(&self, depth: usize) -> bool {
+        i64::try_from(depth).is_ok_and(|depth| depth < self.maximum_depth)
+    }
 }
 /// A budget a reading spends from, one structural node at a time.
 pub trait Spendable {
@@ -251,7 +452,6 @@ struct Reader<'a> {
     budget: &'a mut ReaderBudget,
     depth: usize,
 }
-const MAXIMUM_READER_DEPTH: usize = 256;
 trait Reading {
     fn whole(&mut self) -> Result<Protos, Error>;
     fn node(&mut self) -> Result<Protos, Error>;
@@ -288,7 +488,7 @@ impl Reading for Reader<'_> {
         if !self.budget.spend() {
             return Err(self.failure(Problem::Budget, self.offset));
         }
-        if self.depth == MAXIMUM_READER_DEPTH {
+        if !self.budget.permits_depth(self.depth) {
             return Err(self.failure(Problem::Depth, self.offset));
         }
         self.depth += 1;
@@ -517,17 +717,12 @@ impl Reading for Reader<'_> {
         })
     }
     fn space(&mut self) {
-        loop {
-            while self.glyph().is_some_and(char::is_whitespace) {
-                self.step();
-            }
-            if self.glyph() != Some(';') {
-                return;
-            }
-            while self.glyph().is_some_and(|glyph| glyph != '\n') {
-                self.step();
-            }
-        }
+        let mut cursor = LexicalCursor {
+            text: self.text,
+            offset: self.offset,
+        };
+        cursor.skip_space_and_comments();
+        self.offset = cursor.offset;
     }
     fn glyph(&self) -> Option<char> {
         self.text.get(self.offset..)?.chars().next()
@@ -547,13 +742,6 @@ impl Reading for Reader<'_> {
         }
     }
 }
-impl Protosizable for String {
-    type Output = Result<Protos, Error>;
-    fn protosize(&self) -> Self::Output {
-        let mut budget = ReaderBudget { remaining: 4_096 };
-        self.protosize_with(&mut budget)
-    }
-}
 impl BoundedProtosizable for String {
     fn protosize_with(&self, budget: &mut ReaderBudget) -> Result<Protos, Error> {
         Reader {
@@ -563,13 +751,6 @@ impl BoundedProtosizable for String {
             depth: 0,
         }
         .whole()
-    }
-}
-impl Protosizable for str {
-    type Output = Result<Protos, Error>;
-    fn protosize(&self) -> Self::Output {
-        let mut budget = ReaderBudget { remaining: 4_096 };
-        self.protosize_with(&mut budget)
     }
 }
 impl BoundedProtosizable for str {

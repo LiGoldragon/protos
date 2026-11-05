@@ -1,8 +1,19 @@
 use protos::{
-    Boundary, BoundedProtosizable, Canonicalizable, Enclosure, Extent, Protos, Protosizable,
-    ReaderBudget, Separator, Symbol, Textualizable,
+    Boundary, BoundedProtosizable, BuildsReaderBudget, Canonicalizable, Enclosure, Extent,
+    LexicallyReadable, LexicallyTraversable, Protos, ReaderBudget, ReaderBudgetConstructionReason,
+    ReaderBudgetField, ReadsReaderBudget, Separator, Spendable, Symbol, Textualizable,
 };
 use std::process::Command;
+
+trait ReadsFixture {
+    fn protosize(&self) -> Result<Protos, protos::Error>;
+}
+impl<T: BoundedProtosizable + ?Sized> ReadsFixture for T {
+    fn protosize(&self) -> Result<Protos, protos::Error> {
+        let mut budget = ReaderBudget::from_native_limits(4_096, 256).expect("fixture budget");
+        self.protosize_with(&mut budget)
+    }
+}
 
 fn form_extent(form: &Protos) -> Extent {
     match form {
@@ -129,8 +140,30 @@ fn a_meaning_keeps_an_ordinary_backslash() {
 
 #[test]
 fn reader_budget_bounds_recursive_descent() {
-    let mut budget = ReaderBudget { remaining: 2 };
+    let mut budget = ReaderBudget::from_native_limits(2, 256).expect("fixture budget");
     assert!("{ { Ada } }".protosize_with(&mut budget).is_err());
+}
+
+#[test]
+fn reader_budget_construction_checks_each_field_and_zero_exhausts_safely() {
+    let mut zero = ReaderBudget::from_integer_limits(0, 1).expect("zero remaining is valid");
+    assert!(!zero.spend());
+    assert_eq!(zero.remaining(), 0);
+    assert_eq!(zero.maximum_depth(), 1);
+
+    let negative = ReaderBudget::from_integer_limits(1, -1).expect_err("negative depth");
+    assert_eq!(negative.field, ReaderBudgetField::MaximumDepth);
+    assert_eq!(negative.reason, ReaderBudgetConstructionReason::Negative);
+}
+
+#[test]
+fn lexical_cursor_uses_the_readers_space_comment_and_token_boundaries() {
+    let mut cursor = " ; comment\n { 65536 next }".lexical_cursor();
+    cursor.expect_delimiter('{').expect("opening delimiter");
+    assert_eq!(cursor.token().expect("first token"), "65536");
+    assert_eq!(cursor.token().expect("second token"), "next");
+    cursor.expect_delimiter('}').expect("closing delimiter");
+    assert_eq!(cursor.offset(), " ; comment\n { 65536 next }".len());
 }
 
 #[test]
@@ -139,14 +172,14 @@ fn bounded_depth_probe_child() {
         return;
     }
     let text = format!("{}Ada{}", "{".repeat(100_001), "}".repeat(100_001));
-    let mut budget = ReaderBudget { remaining: 100_002 };
+    let mut budget = ReaderBudget::from_native_limits(100_002, 256).expect("fixture budget");
     assert!(text.protosize_with(&mut budget).is_err());
 }
 
 #[test]
 fn depth_is_bounded_independently_of_node_budget() {
     let text = format!("[ {}]", "Ada ".repeat(10_000));
-    let mut budget = ReaderBudget { remaining: 10_001 };
+    let mut budget = ReaderBudget::from_native_limits(10_001, 256).expect("fixture budget");
     let form = text.protosize_with(&mut budget).expect("wide structure");
     assert!(matches!(&form, Protos::Enclosed { children, .. } if children.len() == 10_000));
 }

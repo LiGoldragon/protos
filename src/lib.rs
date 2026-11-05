@@ -4,6 +4,8 @@ mod layout;
 mod rendering;
 mod traversing;
 pub use core::{
-    Boundary, BoundedProtosizable, Canonicalizable, Compactable, Enclosure, Error, Extent, Problem,
-    Protos, Protosizable, ReaderBudget, Separator, Spendable, Symbol, Textualizable,
+    Boundary, BoundedProtosizable, BuildsReaderBudget, Canonicalizable, Compactable, Enclosure,
+    Error, Extent, LexicalCursor, LexicallyReadable, LexicallyTraversable, Problem, Protos,
+    Protosizable, ReaderBudget, ReaderBudgetConstructionError, ReaderBudgetConstructionReason,
+    ReaderBudgetField, ReadsReaderBudget, Separator, Spendable, Symbol, Textualizable,
 };

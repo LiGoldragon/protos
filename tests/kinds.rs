@@ -3,7 +3,7 @@
 //! concrete type the declaration associates bears the generated kind through
 //! the hand-written one, and the generated association asserts it.
 
-pub use protos::{Error, Protos, ReaderBudget};
+pub use protos::{BuildsReaderBudget, Error, Protos, ReaderBudget, ReadsReaderBudget};
 
 #[path = "../generated/protos-kinds.rs"]
 mod kinds;
@@ -25,7 +25,8 @@ fn spent_through<B: kinds::Spendable>(budget: &mut B) -> usize {
 
 #[test]
 fn a_reader_budget_spends_through_the_generated_kind_until_it_is_gone() {
-    let mut budget = ReaderBudget { remaining: 3 };
+    let mut budget = ReaderBudget::from_native_limits(3, 256).expect("fixture budget");
     assert_eq!(spent_through(&mut budget), 3);
-    assert_eq!(budget, ReaderBudget { remaining: 0 });
+    assert_eq!(budget.remaining(), 0);
+    assert_eq!(budget.maximum_depth(), 256);
 }

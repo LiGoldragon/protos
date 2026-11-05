@@ -10,8 +10,8 @@
 use std::process::Command;
 
 use protos::{
-    BoundedProtosizable, Canonicalizable, Enclosure, Extent, Protos, ReaderBudget, Separator,
-    Symbol, Textualizable,
+    BoundedProtosizable, BuildsReaderBudget, Canonicalizable, Enclosure, Extent, Protos,
+    ReaderBudget, Separator, Symbol, Textualizable,
 };
 
 const SIZES: [usize; 3] = [1_000, 10_000, 100_000];
@@ -39,9 +39,7 @@ fn peak_kb() -> u64 {
 }
 
 fn generous(n: usize) -> ReaderBudget {
-    ReaderBudget {
-        remaining: 4 * n + 16,
-    }
+    ReaderBudget::from_native_limits(4 * n + 16, 256).expect("fixture budget")
 }
 
 fn nested(n: usize) -> Protos {

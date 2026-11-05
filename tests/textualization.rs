@@ -3,9 +3,19 @@
 
 use proptest::prelude::*;
 use protos::{
-    Boundary, Canonicalizable, Compactable, Enclosure, Extent, Protos, Protosizable, Separator,
-    Symbol, Textualizable,
+    Boundary, BoundedProtosizable, BuildsReaderBudget, Canonicalizable, Compactable, Enclosure,
+    Extent, Protos, ReaderBudget, Separator, Symbol, Textualizable,
 };
+
+trait ReadsFixture {
+    fn protosize(&self) -> Result<Protos, protos::Error>;
+}
+impl<T: BoundedProtosizable + ?Sized> ReadsFixture for T {
+    fn protosize(&self) -> Result<Protos, protos::Error> {
+        let mut budget = ReaderBudget::from_native_limits(4_096, 256).expect("fixture budget");
+        self.protosize_with(&mut budget)
+    }
+}
 
 /// Structures are built here, not read, so they start with no extent of their
 /// own; `agrees` canonicalizes before printing and every extent is then a fact

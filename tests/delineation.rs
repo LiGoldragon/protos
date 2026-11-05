@@ -1,9 +1,19 @@
 //! Reading: every rule of the reader, every error, every extent.
 
 use protos::{
-    Boundary, BoundedProtosizable, Enclosure, Error, Extent, Problem, Protos, Protosizable,
+    Boundary, BoundedProtosizable, BuildsReaderBudget, Enclosure, Error, Extent, Problem, Protos,
     ReaderBudget, Separator, Symbol,
 };
+
+trait ReadsFixture {
+    fn protosize(&self) -> Result<Protos, Error>;
+}
+impl<T: BoundedProtosizable + ?Sized> ReadsFixture for T {
+    fn protosize(&self) -> Result<Protos, Error> {
+        let mut budget = ReaderBudget::from_native_limits(4_096, 256).expect("fixture budget");
+        self.protosize_with(&mut budget)
+    }
+}
 
 fn read(text: &str) -> Protos {
     text.protosize()
@@ -312,9 +322,7 @@ fn every_refusal_names_its_problem_and_where_it_arose() {
 #[test]
 fn descent_is_bounded_by_depth_before_it_is_bounded_by_the_stack() {
     let text = format!("{}1{}", "[".repeat(300), "]".repeat(300));
-    let mut budget = ReaderBudget {
-        remaining: usize::MAX,
-    };
+    let mut budget = ReaderBudget::from_native_limits(1_000, 256).expect("fixture budget");
     assert_eq!(
         text.protosize_with(&mut budget)
             .expect_err("too deep")

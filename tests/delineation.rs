@@ -324,6 +324,24 @@ fn descent_is_bounded_by_depth_before_it_is_bounded_by_the_stack() {
 }
 
 #[test]
+fn reader_errors_name_the_first_unavailable_locus_after_lookahead() {
+    let mut budget = ReaderBudget { remaining: 1 };
+    let error = "Vector<Text>"
+        .protosize_with(&mut budget)
+        .expect_err("the child exceeds the one-node budget");
+    assert_eq!(error.problem, Problem::Budget);
+    assert_eq!(error.extent, Extent { start: 7, end: 7 });
+
+    // A trailing separator is part of an invalid chain and therefore remains
+    // one bare run; the comment is whitespace after that run.
+    assert_eq!(read("A.; comment to end of file"), bare("A."));
+
+    let error = failure("A<B>;comment\n");
+    assert_eq!(error.problem, Problem::Multiple);
+    assert_eq!(error.extent, Extent { start: 1, end: 1 });
+}
+
+#[test]
 fn a_string_protosizes_like_a_str() {
     let owned = String::from("{ 1 }");
     assert_eq!(owned.protosize().expect("structure"), read("{ 1 }"));

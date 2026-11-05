@@ -154,6 +154,63 @@ fn reader_budget_construction_checks_each_field_and_zero_exhausts_safely() {
     let negative = ReaderBudget::from_integer_limits(1, -1).expect_err("negative depth");
     assert_eq!(negative.field, ReaderBudgetField::MaximumDepth);
     assert_eq!(negative.reason, ReaderBudgetConstructionReason::Negative);
+
+    let negative_remaining =
+        ReaderBudget::from_integer_limits(-1, 1).expect_err("negative remaining");
+    assert_eq!(negative_remaining.field, ReaderBudgetField::Remaining);
+    assert_eq!(
+        negative_remaining.reason,
+        ReaderBudgetConstructionReason::Negative
+    );
+}
+
+#[test]
+fn reader_budget_checks_widths_and_preserves_the_shared_maximum() {
+    let shared_maximum = usize::try_from(i64::MAX).unwrap_or(usize::MAX);
+    let budget = ReaderBudget::from_native_limits(shared_maximum, shared_maximum)
+        .expect("largest value shared by native and integer widths");
+    assert_eq!(budget.remaining(), shared_maximum as i64);
+    assert_eq!(budget.maximum_depth(), shared_maximum as i64);
+
+    #[cfg(target_pointer_width = "64")]
+    for (remaining, maximum_depth, field) in [
+        (usize::MAX, 1, ReaderBudgetField::Remaining),
+        (1, usize::MAX, ReaderBudgetField::MaximumDepth),
+    ] {
+        let error = ReaderBudget::from_native_limits(remaining, maximum_depth)
+            .expect_err("usize value outside the integer width");
+        assert_eq!(error.field, field);
+        assert_eq!(
+            error.reason,
+            ReaderBudgetConstructionReason::OutsideIntegerWidth
+        );
+    }
+
+    #[cfg(target_pointer_width = "32")]
+    for (remaining, maximum_depth, field) in [
+        (i64::from(u32::MAX) + 1, 1, ReaderBudgetField::Remaining),
+        (1, i64::from(u32::MAX) + 1, ReaderBudgetField::MaximumDepth),
+    ] {
+        let error = ReaderBudget::from_integer_limits(remaining, maximum_depth)
+            .expect_err("integer value outside the native width");
+        assert_eq!(error.field, field);
+        assert_eq!(
+            error.reason,
+            ReaderBudgetConstructionReason::OutsideNativeWidth
+        );
+    }
+}
+
+#[test]
+fn reader_budget_depth_boundary_and_consumption_are_exact() {
+    let mut budget = ReaderBudget::from_native_limits(1, 3).expect("fixture budget");
+    assert!(budget.permits_depth(2));
+    assert!(!budget.permits_depth(3));
+    assert!(!budget.permits_depth(usize::MAX));
+    assert!(budget.spend());
+    assert_eq!(budget.remaining(), 0);
+    assert_eq!(budget.maximum_depth(), 3);
+    assert!(!budget.spend());
 }
 
 #[test]
@@ -164,6 +221,62 @@ fn lexical_cursor_uses_the_readers_space_comment_and_token_boundaries() {
     assert_eq!(cursor.token().expect("second token"), "next");
     cursor.expect_delimiter('}').expect("closing delimiter");
     assert_eq!(cursor.offset(), " ; comment\n { 65536 next }".len());
+}
+
+#[test]
+fn lexical_cursor_counts_unicode_space_and_tokens_in_utf8_bytes() {
+    let text = "\u{2003}\u{3000}; 猫\n 龍.虎 }";
+    let mut cursor = text.lexical_cursor();
+    assert_eq!(cursor.token().expect("utf8 token"), "龍.虎");
+    assert_eq!(
+        cursor.offset(),
+        text.find("龍.虎").expect("utf8 token start") + "龍.虎".len()
+    );
+    let error = cursor.token().expect_err("delimiter is not a token");
+    let delimiter = text.find('}').expect("closing delimiter");
+    assert_eq!(
+        error.extent,
+        Extent {
+            start: delimiter,
+            end: delimiter
+        }
+    );
+    cursor
+        .expect_delimiter('}')
+        .expect("utf8-positioned delimiter");
+    assert_eq!(cursor.offset(), text.len());
+}
+
+#[test]
+fn lexical_cursor_accepts_only_the_structural_delimiters() {
+    for delimiter in ['{', '}', '[', ']', '<', '>'] {
+        let text = delimiter.to_string();
+        let mut cursor = text.as_str().lexical_cursor();
+        cursor
+            .expect_delimiter(delimiter)
+            .expect("accepted delimiter");
+        assert_eq!(cursor.offset(), delimiter.len_utf8());
+    }
+
+    for delimiter in ['(', ')', '«', '»', ';', '.'] {
+        let mut cursor = "".lexical_cursor();
+        let error = cursor
+            .expect_delimiter(delimiter)
+            .expect_err("nonstructural delimiter");
+        assert_eq!(error.extent, Extent { start: 0, end: 0 });
+    }
+}
+
+#[test]
+fn lexical_cursor_stops_tokens_at_every_lexical_boundary() {
+    for boundary in [
+        " ", "\n", "{", "}", "[", "]", "<", ">", "«", "»", "(", ")", ";",
+    ] {
+        let text = format!("token{boundary}next");
+        let mut cursor = text.as_str().lexical_cursor();
+        assert_eq!(cursor.token().expect("token"), "token", "{boundary:?}");
+        assert_eq!(cursor.offset(), "token".len(), "{boundary:?}");
+    }
 }
 
 #[test]

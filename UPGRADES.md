@@ -28,3 +28,16 @@ An angled enclosure is written tight after a headed element too
 (`Generated.Vector<String>`), unless the element's last leaf ends on a
 separator, where tight angles would read back as a head's constraints. No
 reading changes; deploy by repinning.
+
+## 0.33.0
+
+Breaking: a guillemet string is read by balance, as a parenthesized region is: a « »
+pair inside it is content, nesting to any depth, and the string closes at the
+guillemet that balances the one that opened it. `\«` is now an escape, as `\»`
+is. The writer leaves balanced pairs bare and escapes only an unbalanced
+guillemet, so content `a » b` is still written `«a \» b»`, content `a « b` is
+now written `«a \« b»`, and `«a «b» c»` reads as content `a «b» c`.
+
+To deploy: repin protos, then run the consumer's tests. Text that held a bare
+unbalanced `«` inside a guillemet string, or a literal `\«`, now reads
+differently; such text is rewritten with the escape.

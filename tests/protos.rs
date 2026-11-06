@@ -92,6 +92,47 @@ fn opaque_guillemets_escape_their_closer() {
 }
 
 #[test]
+fn nested_guillemets_read_and_round_trip() {
+    for (text, content) in [
+        (
+            "«Publish the proposal titled «The Belief Nexus made small» today»",
+            "Publish the proposal titled «The Belief Nexus made small» today",
+        ),
+        ("«a «b «c» d» e»", "a «b «c» d» e"),
+    ] {
+        let form = text.protosize().expect("string");
+        assert_eq!(form.textualize(), text, "{text:?}");
+        let Protos::Opaque {
+            boundary: Boundary::Guillemets,
+            content: read,
+            ..
+        } = &form
+        else {
+            panic!("{text:?} is not a guillemet string");
+        };
+        assert_eq!(read, content, "{text:?}");
+    }
+    let text = "Refused.{ «no «such» file» 2 }";
+    let form = text.protosize().expect("structure");
+    assert_eq!(form.textualize(), text);
+}
+
+#[test]
+fn an_unbalanced_guillemet_is_escaped_and_round_trips() {
+    for (text, content) in [
+        ("«an unbalanced \\» inside»", "an unbalanced » inside"),
+        ("«an unbalanced \\« inside»", "an unbalanced « inside"),
+    ] {
+        let form = text.protosize().expect("string");
+        assert_eq!(form.textualize(), text, "{text:?}");
+        let Protos::Opaque { content: read, .. } = &form else {
+            panic!("{text:?} is not a guillemet string");
+        };
+        assert_eq!(read, content, "{text:?}");
+    }
+}
+
+#[test]
 fn a_guillemet_escape_does_not_consume_an_ordinary_backslash() {
     let form = "«path\\segment»".protosize().expect("string");
     assert_eq!(form.textualize(), "«path\\segment»");

@@ -71,7 +71,7 @@ for any other X is a literal backslash followed by X.
 
 | boundary | escapable | nests |
 |---|---|---|
-| `« »` | `\\` `\»` | no, so every `»` inside is escaped |
+| `« »` | `\\` `\«` `\»` | yes, so only an unbalanced guillemet is escaped |
 | `( )` | `\\` `\(` `\)` | yes, so only an unbalanced parenthesis is escaped |
 
 Escaping is minimal: the writer prefixes a backslash only where leaving the

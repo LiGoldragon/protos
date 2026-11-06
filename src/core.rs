@@ -283,33 +283,24 @@ pub(crate) trait Escaping {
 impl Escaping for Boundary {
     fn escapes(self) -> &'static [char] {
         match self {
-            Self::Guillemets => &['\\', '»'],
+            Self::Guillemets => &['\\', '«', '»'],
             Self::Parentheses => &['\\', '(', ')'],
         }
     }
     fn forced(self, content: &str) -> BTreeSet<usize> {
-        match self {
-            // Guillemets do not nest: every closer inside is content.
-            Self::Guillemets => content
-                .char_indices()
-                .filter_map(|(index, glyph)| (glyph == '»').then_some(index))
-                .collect(),
-            // Parentheses are read by balance, so a balanced pair is content
-            // and only an unmatched parenthesis needs the backslash.
-            Self::Parentheses => {
-                let mut opens = Vec::new();
-                let mut forced = BTreeSet::new();
-                for (index, glyph) in content.char_indices() {
-                    if glyph == '(' {
-                        opens.push(index);
-                    } else if glyph == ')' && opens.pop().is_none() {
-                        forced.insert(index);
-                    }
-                }
-                forced.extend(opens);
-                forced
+        // Both boundaries are read by balance, so a balanced pair is content
+        // and only an unmatched opener or closer needs the backslash.
+        let mut opens = Vec::new();
+        let mut forced = BTreeSet::new();
+        for (index, glyph) in content.char_indices() {
+            if glyph == self.opener() {
+                opens.push(index);
+            } else if glyph == self.closer() && opens.pop().is_none() {
+                forced.insert(index);
             }
         }
+        forced.extend(opens);
+        forced
     }
     fn print_opaque(self, content: &str, out: &mut String) {
         let escapes = self.escapes();
@@ -458,7 +449,7 @@ impl Reading for Reader<'_> {
                 self.step();
                 continue;
             }
-            if boundary == Boundary::Parentheses && glyph == '(' {
+            if glyph == boundary.opener() {
                 depth += 1;
                 content.push(glyph);
                 self.step();

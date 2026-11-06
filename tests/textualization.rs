@@ -178,7 +178,7 @@ fn only_an_unbalanced_parenthesis_or_an_ambiguous_backslash_is_escaped() {
 }
 
 #[test]
-fn only_a_closing_guillemet_or_an_ambiguous_backslash_is_escaped() {
+fn only_an_unbalanced_guillemet_or_an_ambiguous_backslash_is_escaped() {
     for (content, expected) in [
         ("a b", "«a b»"),
         ("a»b", "«a\\»b»"),
@@ -190,9 +190,17 @@ fn only_a_closing_guillemet_or_an_ambiguous_backslash_is_escaped() {
         // Before anything else a backslash is content and stays bare.
         ("a\\b", "«a\\b»"),
         ("C:\\Users\\ada", "«C:\\Users\\ada»"),
-        // Guillemets do not nest, so an opener inside is plain content.
-        ("a«b", "«a«b»"),
-        ("a\\«b", "«a\\«b»"),
+        // Guillemets are read by balance: a balanced pair is written bare,
+        // nesting to any depth, and only an unmatched guillemet is escaped.
+        (
+            "Publish the proposal titled «The Belief Nexus made small» today",
+            "«Publish the proposal titled «The Belief Nexus made small» today»",
+        ),
+        ("«a «b» c»", "««a «b» c»»"),
+        ("a«b", "«a\\«b»"),
+        ("»a«", "«\\»a\\«»"),
+        ("a«b«c»", "«a\\«b«c»»"),
+        ("a\\«b", "«a\\\\\\«b»"),
         // Every other delimiter is content too.
         ("{ [ ( ; ” “", "«{ [ ( ; ” “»"),
     ] {

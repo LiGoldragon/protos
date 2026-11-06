@@ -214,6 +214,40 @@ fn guillemets_hold_every_glyph_as_content() {
 }
 
 #[test]
+fn guillemets_are_read_by_balance() {
+    for (text, content) in [
+        (
+            "«Publish the proposal titled «The Belief Nexus made small» today»",
+            "Publish the proposal titled «The Belief Nexus made small» today",
+        ),
+        (
+            "«Title «The Belief Nexus made small»»",
+            "Title «The Belief Nexus made small»",
+        ),
+        ("«a «b «c» d» e»", "a «b «c» d» e"),
+        ("«an unbalanced \\» inside»", "an unbalanced » inside"),
+        ("«an unbalanced \\« inside»", "an unbalanced « inside"),
+        ("«\\»a\\«»", "»a«"),
+        ("«a\\«b«c»»", "a«b«c»"),
+    ] {
+        let form = read(text);
+        assert_eq!(
+            form,
+            Protos::Opaque {
+                extent: Extent::new(
+                    Position::try_from(0).unwrap(),
+                    Position::try_from(text.len()).unwrap()
+                )
+                .unwrap(),
+                boundary: Boundary::Guillemets,
+                content: String::from(content),
+            },
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
 fn parentheses_are_read_by_balance() {
     for (text, content) in [
         ("(a (b) c)", "a (b) c"),
@@ -300,6 +334,12 @@ fn every_refusal_names_its_problem_and_where_it_arose() {
         ("Some.{ 1 ", Problem::Unclosed('{')),
         ("A<B", Problem::Unclosed('<')),
         ("«abc", Problem::Unclosed('«')),
+        ("«a «b»", Problem::Unclosed('«')),
+        ("««a»", Problem::Unclosed('«')),
+        ("«a\\", Problem::Unclosed('«')),
+        ("«a \\»", Problem::Unclosed('«')),
+        // An escaped opener does not nest, so the first bare closer ends it.
+        ("«a \\«b» c", Problem::Multiple),
         ("(a", Problem::Unclosed('(')),
         ("(a\\", Problem::Unclosed('(')),
         ("((a)", Problem::Unclosed('(')),

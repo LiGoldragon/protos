@@ -113,12 +113,14 @@ that takes one line at a time. Writing cannot error.
 | `traversing` | iterative `Clone`, `PartialEq` and `Drop` | `Structuring` |
 
 No free functions, no inherent impls, no zero-sized bearers, no variant rosters:
-`nix flake check` carries the guards, with build, test, fmt, clippy and doc.
+`checks.default` carries the guards, with test, fmt, clippy and doc; the crate
+is built per crate on github:LiGoldragon/build-base from the committed
+`Cargo.nix`.
 
 The `rkyv` feature archives `Extent`, `Separator`, `Error` and `Problem`, the
 types a generated ethos contract may hold in a position: every generated type
-archives, so a contract holding them crosses a wire. The `archival` check runs
-`tests/archival.rs` under it.
+archives, so a contract holding them crosses a wire. The `protos` check runs
+every test under it, `tests/archival.rs` among them.
 
 `protos.ethos` and `protos-kinds.ethos` state the datom anatomy of the public
 types and kinds. The crate is hand-written because Ethos cannot yet state what

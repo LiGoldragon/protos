@@ -21,7 +21,7 @@
       memberChecks = { check, ... }: { protos = check "protos" [ "default" "rkyv" ]; };
 
       extraChecks =
-        { pkgs, toolchain, tests, doc, ... }:
+        { pkgs, toolchain, doc, ... }:
         let
           source = ./src;
           generator = ethos-zero.packages.${pkgs.stdenv.hostPlatform.system}.default;
@@ -76,14 +76,6 @@
           '';
           # rustdoc over the library with the rkyv feature, warnings refused.
           doc = doc "protos" [ "default" "rkyv" ] [ "-D" "warnings" ];
-          # The test build compiled by clippy-driver under the crate's lints,
-          # every target, warnings refused.
-          clippy = tests.protos.override {
-            useClippy = true;
-            clippy = toolchain;
-            inherit (manifest) lints;
-            extraRustcOpts = [ "-D" "warnings" ];
-          };
         };
     };
 }

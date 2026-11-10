@@ -3,9 +3,7 @@
 //! archive and restore equal, so a generated contract holding them can
 //! cross a wire.
 
-use protos::{
-    BudgetAccess, Error, Extent, ExtentAccess, Position, PositionAccess, Problem, Separator,
-};
+use protos::{Error, Extent, ExtentAccess, Position, Problem, Separator};
 
 #[test]
 fn a_reading_error_and_a_separator_cross_the_wire() {

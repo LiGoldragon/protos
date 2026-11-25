@@ -35,6 +35,9 @@ meaning. `Vector<String>` with no heading separator after it stays the adjacent
 nodes `Bare("Vector")` and an angled `Enclosed`, for its conceptual reader to
 relate.
 
+White square brackets `⟦ ⟧` read as `Enclosed.WhiteBracketed`; their meaning
+belongs to the conceptual reader.
+
 One text is one structure: a second structure at the top level is a `Multiple`
 error, and an empty text is `Empty`.
 
@@ -96,7 +99,7 @@ Locked.{ 442
 [ flow:[ FlowId Voice Event ] ]
 ```
 
-`{ a b }` and `[ a b ]` spaced, `{}` `[]` empty; `<a b>` tight, and tight
+`{ a b }`, `[ a b ]` and `⟦ a b ⟧` spaced, `{}` `[]` `⟦⟧` empty; `<a b>` tight, and tight
 against the element it follows (`Vector<Event>`); `Head.body` with nothing
 around the separator; opaque regions verbatim with their glyphs. `textualize`
 writes it, and `canonicalize` assigns its extents. `compact` (`Compactable`)

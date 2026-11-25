@@ -114,6 +114,7 @@ pub enum Enclosure {
     Braced,
     Bracketed,
     Angled,
+    WhiteBracketed,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Boundary {
@@ -231,38 +232,88 @@ pub trait Canonicalizable {
     fn canonicalize(&mut self);
 }
 
-pub(crate) trait Glyphing {
-    fn opener(self) -> char;
-    fn closer(self) -> char;
+pub(crate) struct GlyphPair {
+    opener: char,
+    closer: char,
 }
-impl Glyphing for Enclosure {
+
+pub(crate) trait Glyphing: Copy + 'static {
+    const SHAPES: &'static [Self];
+
+    fn glyph_pair(self) -> GlyphPair;
     fn opener(self) -> char {
-        match self {
-            Self::Braced => '{',
-            Self::Bracketed => '[',
-            Self::Angled => '<',
-        }
+        self.glyph_pair().opener
     }
     fn closer(self) -> char {
+        self.glyph_pair().closer
+    }
+    fn opening(glyph: char) -> Option<Self> {
+        Self::SHAPES
+            .iter()
+            .copied()
+            .find(|shape| shape.opener() == glyph)
+    }
+    fn closes(glyph: char) -> bool {
+        Self::SHAPES.iter().any(|shape| shape.closer() == glyph)
+    }
+}
+impl Glyphing for Enclosure {
+    const SHAPES: &'static [Self] = &[
+        Self::Braced,
+        Self::Bracketed,
+        Self::Angled,
+        Self::WhiteBracketed,
+    ];
+
+    fn glyph_pair(self) -> GlyphPair {
         match self {
-            Self::Braced => '}',
-            Self::Bracketed => ']',
-            Self::Angled => '>',
+            Self::Braced => GlyphPair {
+                opener: '{',
+                closer: '}',
+            },
+            Self::Bracketed => GlyphPair {
+                opener: '[',
+                closer: ']',
+            },
+            Self::Angled => GlyphPair {
+                opener: '<',
+                closer: '>',
+            },
+            Self::WhiteBracketed => GlyphPair {
+                opener: '⟦',
+                closer: '⟧',
+            },
         }
     }
 }
 impl Glyphing for Boundary {
-    fn opener(self) -> char {
+    const SHAPES: &'static [Self] = &[Self::Guillemets, Self::Parentheses];
+
+    fn glyph_pair(self) -> GlyphPair {
         match self {
-            Self::Guillemets => '«',
-            Self::Parentheses => '(',
+            Self::Guillemets => GlyphPair {
+                opener: '«',
+                closer: '»',
+            },
+            Self::Parentheses => GlyphPair {
+                opener: '(',
+                closer: ')',
+            },
         }
     }
-    fn closer(self) -> char {
-        match self {
-            Self::Guillemets => '»',
-            Self::Parentheses => ')',
-        }
+}
+
+trait Delimiting {
+    fn opening(self) -> bool;
+    fn closing(self) -> bool;
+}
+
+impl Delimiting for char {
+    fn opening(self) -> bool {
+        Enclosure::opening(self).is_some() || Boundary::opening(self).is_some()
+    }
+    fn closing(self) -> bool {
+        Enclosure::closes(self) || Boundary::closes(self)
     }
 }
 /// The escape rule of an opaque boundary.
@@ -393,16 +444,17 @@ impl Reading for Reader<'_> {
         self.depth += 1;
         self.space();
         let result = match self.glyph() {
-            Some('{') => self.enclosed(Enclosure::Braced),
-            Some('[') => self.enclosed(Enclosure::Bracketed),
-            Some('<') => self.enclosed(Enclosure::Angled),
-            Some('«') => self.opaque(Boundary::Guillemets),
-            Some('(') => self.opaque(Boundary::Parentheses),
-            Some('}' | ']' | '>' | '»' | ')') => Err(self.failure(
-                Problem::Unexpected(self.glyph().expect("matched")),
-                self.offset,
-            )),
-            Some(_) => self.bare_or_headed(),
+            Some(glyph) => {
+                if let Some(enclosure) = Enclosure::opening(glyph) {
+                    self.enclosed(enclosure)
+                } else if let Some(boundary) = Boundary::opening(glyph) {
+                    self.opaque(boundary)
+                } else if glyph.closing() {
+                    Err(self.failure(Problem::Unexpected(glyph), self.offset))
+                } else {
+                    self.bare_or_headed()
+                }
+            }
             None => Err(self.failure(Problem::MissingBody, self.offset)),
         };
         self.depth -= 1;
@@ -478,12 +530,8 @@ impl Reading for Reader<'_> {
         let run_end = self.text[start..]
             .char_indices()
             .find_map(|(relative, glyph)| {
-                (glyph.is_whitespace()
-                    || matches!(
-                        glyph,
-                        '{' | '}' | '[' | ']' | '<' | '>' | '«' | '»' | '(' | ')' | ';'
-                    ))
-                .then_some(start + relative)
+                (glyph.is_whitespace() || glyph.opening() || glyph.closing() || glyph == ';')
+                    .then_some(start + relative)
             })
             .unwrap_or(self.text.len());
         let whole_run = &self.text[start..run_end];
@@ -517,7 +565,7 @@ impl Reading for Reader<'_> {
             && self.text[run_end..]
                 .chars()
                 .next()
-                .is_some_and(|glyph| matches!(glyph, '{' | '[' | '<' | '«' | '('));
+                .is_some_and(Delimiting::opening);
         if !segments_are_symbols && !opens_body {
             self.offset = run_end;
             return Ok(Protos::Bare {
@@ -528,10 +576,9 @@ impl Reading for Reader<'_> {
         let mut run = String::new();
         while let Some(glyph) = self.glyph() {
             if glyph.is_whitespace()
-                || matches!(
-                    glyph,
-                    '{' | '}' | '[' | ']' | '>' | '«' | '»' | '(' | ')' | ';'
-                )
+                || (glyph.opening() && glyph != Enclosure::Angled.opener())
+                || glyph.closing()
+                || glyph == ';'
             {
                 break;
             }
@@ -546,15 +593,15 @@ impl Reading for Reader<'_> {
                 }
                 self.step();
                 if self.glyph().is_none()
-                    || self.glyph().is_some_and(|next| {
-                        next.is_whitespace() || matches!(next, '}' | ']' | '>' | '»' | ')')
-                    })
+                    || self
+                        .glyph()
+                        .is_some_and(|next| next.is_whitespace() || next.closing())
                 {
                     return Err(self.failure(Problem::MissingBody, self.offset));
                 }
                 return self.headed(Symbol(run), None, start, separator);
             }
-            if glyph == '<' {
+            if glyph == Enclosure::Angled.opener() {
                 if run.is_empty() {
                     return Err(self.failure(Problem::MissingHead, start));
                 }
@@ -576,9 +623,9 @@ impl Reading for Reader<'_> {
                 };
                 self.step();
                 if self.glyph().is_none()
-                    || self.glyph().is_some_and(|next| {
-                        next.is_whitespace() || matches!(next, '}' | ']' | '>' | '»' | ')')
-                    })
+                    || self
+                        .glyph()
+                        .is_some_and(|next| next.is_whitespace() || next.closing())
                 {
                     return Err(self.failure(Problem::MissingBody, self.offset));
                 }

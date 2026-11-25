@@ -129,3 +129,27 @@ fn protos_extent(node: &Protos) -> Extent {
         | Protos::Bare { extent, .. } => *extent,
     }
 }
+
+#[test]
+fn white_brackets_are_structural_and_padded() {
+    let source = "Outer.⟦⟦Name⟧ Container<Item>⟧";
+    let canonical = "Outer.⟦ ⟦ Name ⟧ Container<Item> ⟧";
+    assert_eq!(reprint(source), canonical);
+    let parsed = source.protosize().unwrap();
+    let Protos::Headed { body, .. } = &parsed else {
+        panic!("headed white enclosure");
+    };
+    let Protos::Enclosed {
+        enclosure,
+        children,
+        ..
+    } = body.as_ref()
+    else {
+        panic!("white enclosure");
+    };
+    assert_eq!(*enclosure, protos::Enclosure::WhiteBracketed);
+    assert_eq!(children.len(), 3);
+    assert!("⟦ Name ]".protosize().is_err());
+    assert!("⟦ Name".protosize().is_err());
+    assert_eq!(reprint("«⟦ Name ⟧»"), "«⟦ Name ⟧»");
+}

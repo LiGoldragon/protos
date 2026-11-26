@@ -2,8 +2,11 @@
     dead_code,
     non_camel_case_types,
     non_snake_case,
+    unused_extern_crates,
     clippy::type_complexity
 )]
+#[rustfmt::skip]
+extern crate alloc;
 #[rustfmt::skip]
 pub trait Spendable {
     fn spend(&mut self) -> bool;
@@ -13,7 +16,7 @@ pub trait BoundedProtosizable {
     fn protosize_with<N: Spendable>(
         &self,
         input: N,
-    ) -> std::result::Result<crate::Protos, crate::Error>;
+    ) -> core::result::Result<crate::Protos, crate::Error>;
 }
 #[rustfmt::skip]
 pub trait Protosizable {
@@ -22,11 +25,11 @@ pub trait Protosizable {
 }
 #[rustfmt::skip]
 pub trait Textualizable {
-    fn textualize(&self) -> String;
+    fn textualize(&self) -> alloc::string::String;
 }
 #[rustfmt::skip]
 pub trait Compactable {
-    fn compact(&self) -> String;
+    fn compact(&self) -> alloc::string::String;
 }
 #[rustfmt::skip]
 pub trait Canonicalizable {}

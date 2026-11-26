@@ -4,7 +4,7 @@
   inputs = {
     base.url = "github:LiGoldragon/build-base";
     ethos-zero = {
-      url = "github:LiGoldragon/ethos-zero";
+      url = "github:LiGoldragon/ethos-zero/5b51443d3523cd48d12cc1a97dc8f0c8be9f80bf";
       inputs.base.follows = "base";
     };
   };

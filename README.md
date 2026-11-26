@@ -31,7 +31,7 @@ the fact of where it sits in the text — read in by the reader, or assigned by
 A `Headed` node has a `Symbol` head and an optional extent-bearing angled
 `Enclosed` node in `constraints`. That holds the anatomy of
 `Processable<[ Clonable Sendable ] Serializable>.[ ... ]` with no type or kind
-meaning. `Vector<String>` with no heading separator after it stays the adjacent
+meaning. `Option<String>` with no heading separator after it stays the adjacent
 nodes `Bare("Vector")` and an angled `Enclosed`, for its conceptual reader to
 relate.
 
@@ -56,7 +56,7 @@ non-empty run with no separator.
 - A run of symbols immediately followed by `<` constrains its head:
   `A<B>.{ 1 }`, `A<B>.C`.
 - Every other adjacency is a second structure: `a..{ 1 }`, `a<b>c`,
-  `a.{ 1 }.b`, `Vector<Text>` alone.
+  `a.{ 1 }.b`, `Option<Text>` alone.
 
 Errors are structural only and carry their extent. The reader has a fixed
 structural-depth boundary independent of its public node budget, so a read tree
@@ -100,7 +100,7 @@ Locked.{ 442
 ```
 
 `{ a b }`, `[ a b ]` and `⟦ a b ⟧` spaced, `{}` `[]` `⟦⟧` empty; `<a b>` tight, and tight
-against the element it follows (`Vector<Event>`); `Head.body` with nothing
+against the element it follows (`Option<Event>`); `Head.body` with nothing
 around the separator; opaque regions verbatim with their glyphs. `textualize`
 writes it, and `canonicalize` assigns its extents. `compact` (`Compactable`)
 writes the same structure on one line, siblings one space apart, for a reader

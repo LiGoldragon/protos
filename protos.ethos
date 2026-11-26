@@ -10,7 +10,7 @@ Library
   Enclosure.[ Braced Bracketed Angled WhiteBracketed ]
   Boundary.[ Guillemets Parentheses ]
   Protos.[ Headed.{ Extent Symbol Option<Protos> Separator Protos }
-           Enclosed.{ Extent Enclosure Vector<Protos> }
+           Enclosed.{ Extent Enclosure ⟦ Protos ⟧ }
            Opaque.{ Extent Boundary String }
            Bare.{ Extent String } ]
   Error.{ Extent Problem }

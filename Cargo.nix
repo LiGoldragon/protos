@@ -917,7 +917,7 @@ rec {
       };
       "protos" = rec {
         crateName = "protos";
-        version = "0.34.0";
+        version = "0.34.1";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         dependencies = [

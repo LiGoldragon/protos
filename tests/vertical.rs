@@ -133,7 +133,7 @@ fn protos_extent(node: &Protos) -> Extent {
 #[test]
 fn white_brackets_are_structural_and_padded() {
     let source = "Outer.⟦⟦Name⟧ Container<Item>⟧";
-    let canonical = "Outer.⟦ ⟦ Name ⟧ Container<Item> ⟧";
+    let canonical = "Outer.⟦ ⟦ Name ⟧\n        Container<Item> ⟧";
     assert_eq!(reprint(source), canonical);
     let parsed = source.protosize().unwrap();
     let Protos::Headed { body, .. } = &parsed else {
@@ -162,4 +162,14 @@ fn delimiter_glyphs_match_the_reader_boundaries() {
     for glyph in " Aa0.:".chars() {
         assert!(!glyph.is_protos_delimiter(), "{glyph}");
     }
+}
+
+#[test]
+fn a_nonempty_white_enclosure_gives_its_parent_a_next_layer() {
+    assert_eq!(
+        reprint("{ Item ⟦ Name ⟧ Tail }"),
+        "{ Item\n  ⟦ Name ⟧\n  Tail }"
+    );
+    assert_eq!(reprint("[ ⟦ Name ⟧ ]"), "[ ⟦ Name ⟧ ]");
+    assert_eq!(reprint("{ Item ⟦⟧ Tail }"), "{ Item ⟦⟧ Tail }");
 }

@@ -56,7 +56,7 @@ impl Grouping for [Protos] {
 /// What an element is, for the layout.
 pub(crate) trait Layered {
     /// The element has a next layer: its node is headed or a non-empty brace
-    /// or bracket enclosure.
+    /// or square bracket enclosure, ordinary or white.
     fn layered(&self) -> bool;
     /// An angled enclosure written tight after the element reads back as its
     /// sibling: the element's last leaf does not end on a separator, which
@@ -68,7 +68,7 @@ impl Layered for [&Protos] {
         match self.first() {
             Some(Protos::Headed { .. }) => true,
             Some(Protos::Enclosed {
-                enclosure: Enclosure::Braced | Enclosure::Bracketed,
+                enclosure: Enclosure::Braced | Enclosure::Bracketed | Enclosure::WhiteBracketed,
                 children,
                 ..
             }) => !children.is_empty(),

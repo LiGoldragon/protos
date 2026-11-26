@@ -85,11 +85,11 @@ built, printed, and read back to the same structure.
 
 ## Writing
 
-The canonical text expands vertically. A `{ }` or `[ ]` enclosure with more
-than one element, one of which has a next layer (headed, or a non-empty brace
-or bracket enclosure), opens on its line and its elements hang beneath the
-first, aligned; the closer ends the last element's line. Elements that are all
-leaves sit on one line, and so does a lone element with a next layer:
+The canonical text expands vertically. A `{ }`, `[ ]`, or `⟦ ⟧` enclosure
+with more than one element hangs its elements when at least one is headed
+or is itself a non-empty enclosure of one of those three shapes. The
+elements align beneath the first, and the closer ends the last element's
+line. Leaves stay on one line, and so does a lone element with a next layer:
 
 ```
 Locked.{ 442

@@ -7,8 +7,8 @@
 //! written out by hand.
 
 use protos::{
-    Canonicalizable, Compactable, Extent, ExtentAccess, Position, Protos, Protosizable,
-    Textualizable,
+    Canonicalizable, Compactable, DelimiterGlyph, Extent, ExtentAccess, Position, Protos,
+    Protosizable, Textualizable,
 };
 
 /// Read the text and print it canonically, holding the print to the reading:
@@ -152,4 +152,14 @@ fn white_brackets_are_structural_and_padded() {
     assert!("⟦ Name ]".protosize().is_err());
     assert!("⟦ Name".protosize().is_err());
     assert_eq!(reprint("«⟦ Name ⟧»"), "«⟦ Name ⟧»");
+}
+
+#[test]
+fn delimiter_glyphs_match_the_reader_boundaries() {
+    for glyph in "{}[]<>⟦⟧«»();".chars() {
+        assert!(glyph.is_protos_delimiter(), "{glyph}");
+    }
+    for glyph in " Aa0.:".chars() {
+        assert!(!glyph.is_protos_delimiter(), "{glyph}");
+    }
 }

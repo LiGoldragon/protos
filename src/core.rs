@@ -316,6 +316,19 @@ impl Delimiting for char {
         Enclosure::closes(self) || Boundary::closes(self)
     }
 }
+/// The capability for identifying characters reserved by the Protos reader.
+pub trait DelimiterGlyph {
+    /// Whether this character opens or closes an enclosure or opaque boundary,
+    /// or opens a line comment. Whitespace is not a delimiter glyph.
+    fn is_protos_delimiter(&self) -> bool;
+}
+
+impl DelimiterGlyph for char {
+    fn is_protos_delimiter(&self) -> bool {
+        self.opening() || self.closing() || *self == ';'
+    }
+}
+
 /// The escape rule of an opaque boundary.
 ///
 /// Inside an opaque region a backslash escapes the boundary's own glyphs and
@@ -530,8 +543,7 @@ impl Reading for Reader<'_> {
         let run_end = self.text[start..]
             .char_indices()
             .find_map(|(relative, glyph)| {
-                (glyph.is_whitespace() || glyph.opening() || glyph.closing() || glyph == ';')
-                    .then_some(start + relative)
+                (glyph.is_whitespace() || glyph.is_protos_delimiter()).then_some(start + relative)
             })
             .unwrap_or(self.text.len());
         let whole_run = &self.text[start..run_end];
